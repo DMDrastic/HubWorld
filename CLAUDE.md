@@ -68,9 +68,29 @@ npm run build            # tsc -b && vite build
 npm run preview
 npm run typecheck
 npm run lint             # oxlint, not eslint
+npm test                 # vitest run
+npm run test:watch
 ```
 
-No test runner is set up yet.
+## Tests
+
+**Vitest**, installed separately in each folder (no workspace). Backend tests
+live in `tests/` and are typechecked by `tsconfig.test.json` — the build's
+`rootDir` is `src`, so without that second config they would never be checked.
+Frontend tests live in `src/__tests__/` with jsdom + Testing Library.
+
+Backend coverage is the pure ledger logic: `TransferFee` scaling, the
+`tfTransferable` flag, URI limits, and the offer builders. These are values that
+decide who gets paid and whether a ticket can move at all — a wrong constant is
+not a crash, it is a silently wrong royalty found on mainnet.
+
+**Frontend tests render inside `<StrictMode>` deliberately.** The original
+sign-in bug was a `useRef` set during cleanup: StrictMode's
+mount → cleanup → remount left it permanently true, so polling died silently.
+It survived manual testing because the backend was driven with curl, which never
+ran the React loop. The double-invocation *is* the thing under test — these tests
+were confirmed to fail when that bug is reintroduced. Any new polling loop
+belongs under the same discipline.
 
 ## Local environment
 
