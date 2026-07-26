@@ -257,6 +257,16 @@ signs it is a local status flip, but once the offer exists it takes a signed
 `NFTokenCancelOffer`. If sender and recipient both sign, the ledger settles the
 race and the poll reports whichever won.
 
+**An `NFTokenOffer` has no expiry.** `Gift.expiresAt` is the lifetime of an
+*unsigned Xaman payload*, never the gift's — see `src/gift-policy.ts`. Conflating
+them is a trap worth naming: marking an `OFFERED` gift expired while its offer
+stays live on-ledger means the recipient can still accept it in Xaman, ownership
+moves, and the `GIFT` provenance row is never written. So only `PENDING_OFFER`
+expires; on-ledger states end solely by acceptance or withdrawal, and a stale
+*accept* payload reverts to `OFFERED` so the recipient can retry. Any endpoint
+minting a fresh payload must also refresh `expiresAt`, or the retry is born
+expired and reverts on its first poll.
+
 **Ownership is re-read from the ledger before a gift starts** (`holdsNft`). If it
 disagrees with `Ticket.ownerAddress` the cache is cleared rather than trusted —
 the holder may have moved the ticket in Xaman without touching Hubworld.

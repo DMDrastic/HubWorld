@@ -21,6 +21,7 @@ import { xamanMode } from '../env.js'
 import { xaman, SIGNIN_TTL_MINUTES } from '../xaman.js'
 import { issuesOf, usernameSchema } from '../schemas.js'
 import { requireAuth } from '../session.js'
+import { ON_LEDGER_STATES, mayExpire } from '../gift-policy.js'
 import {
   buildAcceptOfferTx,
   buildCancelOfferTx,
@@ -33,8 +34,17 @@ import {
 
 export const giftsRouter = Router()
 
-// Longer than sign-in: the recipient may not be at their phone, and the offer
-// sits safely on-ledger meanwhile.
+/**
+ * How long an UNSIGNED Xaman payload stays valid. Longer than sign-in because
+ * the recipient may not be at their phone.
+ *
+ * This is a payload TTL, NOT a gift TTL. An XRPL NFTokenOffer has no expiry —
+ * once it exists on-ledger it lives until accepted or cancelled. Treating this
+ * timeout as the gift's lifetime would mark a gift `expired` while its offer is
+ * still live and acceptable in Xaman, and if the recipient then accepted it we
+ * would never write the GIFT provenance row. So expiry applies only while
+ * nothing has reached the ledger.
+ */
 const GIFT_TTL_MINUTES = 60
 const GIFT_TTL_MS = GIFT_TTL_MINUTES * 60 * 1000
 
@@ -43,9 +53,6 @@ const NfTokenIdParams = z.object({
   nfTokenId: z.string().regex(/^[0-9A-Fa-f]{64}$/, 'not a valid NFTokenID'),
 })
 const GiftBody = z.object({ to: usernameSchema })
-
-/** Live states — a ticket may only have one gift in flight at a time. */
-const IN_FLIGHT = ['PENDING_OFFER', 'OFFERED', 'ACCEPTING', 'CANCELLING'] as const
 
 /**
  * POST /api/tickets/:nfTokenId/gift
@@ -107,8 +114,16 @@ giftsRouter.post('/tickets/:nfTokenId/gift', requireAuth, async (req, res) => {
     return
   }
 
+  // A live on-ledger offer counts as in-flight regardless of the payload TTL —
+  // only an unsigned PENDING_OFFER goes stale.
   const existing = await prisma.gift.findFirst({
-    where: { ticketId: ticket.id, status: { in: [...IN_FLIGHT] }, expiresAt: { gt: new Date() } },
+    where: {
+      ticketId: ticket.id,
+      OR: [
+        { status: { in: [...ON_LEDGER_STATES] } },
+        { status: 'PENDING_OFFER', expiresAt: { gt: new Date() } },
+      ],
+    },
   })
   if (existing) {
     res.status(409).json({ error: 'This ticket already has a gift in flight' })
@@ -182,10 +197,9 @@ giftsRouter.post('/gifts/:id/accept', requireAuth, async (req, res) => {
     res.status(409).json({ error: `Gift is ${gift.status.toLowerCase()}, not awaiting acceptance` })
     return
   }
-  if (gift.expiresAt < new Date()) {
-    res.status(409).json({ error: 'This gift has expired' })
-    return
-  }
+  // Deliberately no expiry check: the offer is on-ledger and has none. Refusing
+  // here would only push the recipient to accept in Xaman instead, where we
+  // would never observe it.
 
   const payload = await xaman.createPayload(
     buildAcceptOfferTx({
@@ -197,7 +211,12 @@ giftsRouter.post('/gifts/:id/accept', requireAuth, async (req, res) => {
 
   await prisma.gift.update({
     where: { id: gift.id },
-    data: { acceptPayloadUuid: payload.uuid },
+    data: {
+      acceptPayloadUuid: payload.uuid,
+      // Refresh the payload TTL. Without this a retry after one stale payload
+      // would be born already expired and revert on its first poll.
+      expiresAt: new Date(Date.now() + GIFT_TTL_MS),
+    },
   })
 
   res.status(201).json({
@@ -263,7 +282,10 @@ giftsRouter.post('/gifts/:id/cancel', requireAuth, async (req, res) => {
 
   await prisma.gift.update({
     where: { id: gift.id },
-    data: { cancelPayloadUuid: payload.uuid },
+    data: {
+      cancelPayloadUuid: payload.uuid,
+      expiresAt: new Date(Date.now() + GIFT_TTL_MS),
+    },
   })
 
   res.status(201).json({
@@ -330,7 +352,8 @@ giftsRouter.get('/gifts/:id', requireAuth, async (req, res) => {
     return
   }
 
-  const expired = gift.expiresAt < new Date()
+  // Only meaningful while nothing is on-ledger yet — see GIFT_TTL_MINUTES.
+  const payloadExpired = gift.expiresAt < new Date()
 
   // ---- phase 1: waiting on the sender's offer -----------------------------
   if (gift.status === 'PENDING_OFFER') {
@@ -342,7 +365,9 @@ giftsRouter.get('/gifts/:id', requireAuth, async (req, res) => {
       return
     }
     if (!status?.signed) {
-      if (expired || status?.expired) {
+      // Nothing on-ledger yet, so expiring is honest here — mayExpire is what
+      // guarantees that, and keeps this branch tied to the documented rule.
+      if (mayExpire(gift.status) && (payloadExpired || status?.expired)) {
         await prisma.gift.update({ where: { id: gift.id }, data: { status: 'EXPIRED' } })
         res.json({ ...view(), state: 'expired' })
         return
@@ -429,17 +454,12 @@ giftsRouter.get('/gifts/:id', requireAuth, async (req, res) => {
   }
 
   // ---- phase 2: waiting on the recipient ---------------------------------
-  if (gift.status === 'OFFERED') {
-    if (expired) {
-      await prisma.gift.update({ where: { id: gift.id }, data: { status: 'EXPIRED' } })
-      res.json({ ...view(), state: 'expired' })
-      return
-    }
-    // No accept payload yet — the recipient has not started their half.
-    if (!gift.acceptPayloadUuid) {
-      res.json(view({ awaitingRecipient: true }))
-      return
-    }
+  //
+  // An OFFERED gift never expires: the offer is on-ledger and the ledger gives
+  // it no lifetime. It ends only by acceptance or withdrawal.
+  if (gift.status === 'OFFERED' && !gift.acceptPayloadUuid) {
+    res.json(view({ awaitingRecipient: true }))
+    return
   }
 
   if (!gift.acceptPayloadUuid) {
@@ -455,9 +475,15 @@ giftsRouter.get('/gifts/:id', requireAuth, async (req, res) => {
     return
   }
   if (!status?.signed) {
-    if (expired || status?.expired) {
-      await prisma.gift.update({ where: { id: gift.id }, data: { status: 'EXPIRED' } })
-      res.json({ ...view(), state: 'expired' })
+    // The ACCEPT payload went stale unsigned. The offer itself is untouched, so
+    // drop the dead payload and fall back to OFFERED — the recipient can simply
+    // start their half again rather than losing the gift.
+    if (payloadExpired || status?.expired) {
+      await prisma.gift.update({
+        where: { id: gift.id },
+        data: { status: 'OFFERED', acceptPayloadUuid: null },
+      })
+      res.json({ ...view(), state: 'offered', awaitingRecipient: true })
       return
     }
     res.json(view({ awaitingRecipient: true }))
@@ -543,10 +569,18 @@ giftsRouter.get('/gifts', requireAuth, async (req, res) => {
   }
 
   const gifts = await prisma.gift.findMany({
+    // OFFERED entries are listed regardless of the payload TTL — the on-ledger
+    // offer is still live and the recipient must keep seeing it.
     where:
       parsed.data.role === 'incoming'
         ? { toId: req.userId!, status: { in: ['OFFERED', 'ACCEPTING'] } }
-        : { fromId: req.userId!, status: { in: [...IN_FLIGHT] } },
+        : {
+            fromId: req.userId!,
+            OR: [
+              { status: { in: [...ON_LEDGER_STATES] } },
+              { status: 'PENDING_OFFER', expiresAt: { gt: new Date() } },
+            ],
+          },
     include: {
       ticket: { include: { event: { select: { slug: true, title: true } } } },
       from: { select: { username: true } },
