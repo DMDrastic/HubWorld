@@ -354,12 +354,15 @@ price + fee. The organizer's royalty is not modelled at all: the NFToken's nativ
 `TransferFee` deducts it and pays the issuer automatically.
 
 **XRPL skips `TransferFee` entirely when the issuer is party to the trade.**
-Verified on testnet: a 10 XRP sale where the issuer was the buyer paid the seller
-the full 10 XRP, with no royalty leg at all. This is not a bug and it happens to
-match the business model — an organizer selling a ticket keeps 100%, and the
-royalty only applies on genuine secondary resale between two other people. But it
-has a testing consequence: **a royalty split cannot be exercised unless neither
-side is the issuer.** Two wallets are not enough when one of them minted.
+Both halves are verified on testnet:
+
+- issuer as buyer, 10 XRP sale → seller received the full **10.0**, no royalty leg
+- issuer uninvolved, 10 XRP sale → seller **9.5**, issuer **+0.5**, broker **0.25**
+
+Not a bug, and it matches the model: an organizer selling keeps 100%, while a
+genuine secondary resale pays them a royalty with no involvement at all. The
+testing consequence: **a royalty split cannot be exercised unless neither side is
+the issuer** — two wallets are not enough when one of them minted.
 
 Settlement costs Hubworld the transaction fee (~12 drops observed), since the
 broker submits it. Netted against `platformBps` that is negligible, but the

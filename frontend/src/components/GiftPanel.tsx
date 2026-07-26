@@ -218,11 +218,35 @@ export function GiftPanel({ onChanged }: { onChanged: () => void }) {
               >
                 <div className="min-w-0">
                   <div className="truncate text-sm">{g.ticket.event.title}</div>
-                  <div className="text-muted-foreground text-xs">from {g.from}</div>
+                  <div className="text-muted-foreground text-xs">
+                    from {g.from}
+                    {g.state === 'accepting' ? ' · accepted, confirming…' : ''}
+                  </div>
                 </div>
-                <Button size="sm" disabled={busy} onClick={() => void accept(g.giftId)}>
-                  Accept
-                </Button>
+                {/* An ACCEPTING gift has already been signed — offering "Accept"
+                    again would only 409. It needs resuming, not re-signing. */}
+                {g.state === 'accepting' ? (
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    disabled={busy}
+                    onClick={() => {
+                      setGiftState(null)
+                      setPhase({
+                        kind: 'active',
+                        giftId: g.giftId,
+                        payload: null,
+                        label: `Gift from ${g.from}`,
+                      })
+                    }}
+                  >
+                    Check
+                  </Button>
+                ) : (
+                  <Button size="sm" disabled={busy} onClick={() => void accept(g.giftId)}>
+                    Accept
+                  </Button>
+                )}
               </div>
             ))}
           </div>

@@ -11,6 +11,38 @@ import { giftsRouter } from './routes/gifts.js'
 import { ticketsRouter } from './routes/tickets.js'
 import { listingsRouter } from './routes/listings.js'
 
+/** Codes that mean "the network was unreachable", not "the request was wrong". */
+const TRANSIENT_CODES = new Set([
+  'ETIMEDOUT',
+  'ECONNRESET',
+  'ECONNREFUSED',
+  'ENOTFOUND',
+  'EAI_AGAIN',
+  'EPIPE',
+  'UND_ERR_CONNECT_TIMEOUT',
+  'UND_ERR_SOCKET',
+])
+
+/**
+ * Walks the error chain, because `fetch` reports these as a bare
+ * `TypeError: fetch failed` and hides the real code under `cause`.
+ */
+export function isTransientNetworkError(err: unknown, depth = 0): boolean {
+  if (depth > 4 || err === null || typeof err !== 'object') return false
+
+  const e = err as { code?: unknown; cause?: unknown; errors?: unknown; message?: unknown }
+  if (typeof e.code === 'string' && TRANSIENT_CODES.has(e.code)) return true
+
+  // AggregateError from a multi-address connect attempt.
+  if (Array.isArray(e.errors) && e.errors.some((x) => isTransientNetworkError(x, depth + 1))) {
+    return true
+  }
+  if (e.cause !== undefined && isTransientNetworkError(e.cause, depth + 1)) return true
+
+  // xrpl.js surfaces a disconnect as its own error type rather than a code.
+  return typeof e.message === 'string' && /NotConnectedError|websocket was closed/i.test(e.message)
+}
+
 export function createApp() {
   const app = express()
 
@@ -44,6 +76,19 @@ export function createApp() {
   // Express 5 forwards rejected async handlers here automatically.
   app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
     console.error(err)
+
+    // Reaching Xaman or the XRP Ledger can simply fail — DNS, a dropped
+    // connection, a timeout. That is not a bug in Hubworld and it is not
+    // permanent, so it must not read as "Internal server error": the user's
+    // transaction may well have gone through, and the honest answer is "try
+    // again shortly" rather than something that looks like data loss.
+    if (isTransientNetworkError(err)) {
+      res.status(503).json({
+        error: 'Could not reach the ledger or Xaman just now. Nothing was lost — try again.',
+      })
+      return
+    }
+
     res.status(500).json({ error: 'Internal server error' })
   })
 
