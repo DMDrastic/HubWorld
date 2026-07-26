@@ -14,6 +14,7 @@ import {
 } from '@/lib/api'
 import { SignIn } from '@/components/SignIn'
 import { MintPanel } from '@/components/MintPanel'
+import { GiftPanel } from '@/components/GiftPanel'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -248,11 +249,14 @@ export default function App() {
       )}
 
       {me && token && (
-        <MintPanel
-          token={token}
-          events={events.filter((e) => e.organizer.username === me.username)}
-          onMinted={handleMinted}
-        />
+        <>
+          <MintPanel
+            token={token}
+            events={events.filter((e) => e.organizer.username === me.username)}
+            onMinted={handleMinted}
+          />
+          <GiftPanel token={token} onChanged={handleMinted} />
+        </>
       )}
 
       <HandleLookup />

@@ -227,6 +227,118 @@ export function pollMint(uuid: string, token: string): Promise<MintPoll> {
   return request(`/mint/${encodeURIComponent(uuid)}`, MintPollSchema, { token })
 }
 
+// -------------------------------------------------------------- inventory --
+
+export const OwnedTicketSchema = z.object({
+  nfTokenId: z.string(),
+  seat: z.string().nullable(),
+  tier: z.string().nullable(),
+  status: z.string(),
+  syncedAt: z.string().nullable(),
+  // null when unverified; false means the ledger disagrees with our cache.
+  onLedger: z.boolean().nullable(),
+  event: z.object({ slug: z.string(), title: z.string(), startsAt: z.string() }),
+})
+
+export const InventorySchema = z.object({
+  address: z.string(),
+  verified: z.boolean(),
+  tickets: z.array(OwnedTicketSchema),
+})
+
+export type OwnedTicket = z.infer<typeof OwnedTicketSchema>
+export type Inventory = z.infer<typeof InventorySchema>
+
+export function fetchInventory(token: string, verify = false): Promise<Inventory> {
+  return request(`/tickets/mine?verify=${verify}`, InventorySchema, { token })
+}
+
+// ------------------------------------------------------------------ gifts --
+
+export const GiftCreatedSchema = z.object({
+  giftId: z.string(),
+  uuid: z.string(),
+  next: z.string(),
+  qrPng: z.string(),
+  mode: z.enum(['live', 'stub']),
+  to: z.object({ username: z.string(), xrplAddress: z.string() }).optional(),
+})
+
+const GiftTicketSchema = z.object({
+  nfTokenId: z.string(),
+  seat: z.string().nullable(),
+  tier: z.string().nullable(),
+  event: z.object({ slug: z.string(), title: z.string() }),
+})
+
+/**
+ * Gift states mirror the two-signature reality: pending_offer (sender has not
+ * signed) → offered (live on-ledger, recipient's turn) → accepting → accepted.
+ */
+export const GiftStateSchema = z.object({
+  state: z.enum([
+    'pending_offer',
+    'offered',
+    'accepting',
+    'accepted',
+    'declined',
+    'cancelled',
+    'expired',
+    'failed',
+  ]),
+  giftId: z.string(),
+  role: z.enum(['sender', 'recipient']),
+  from: z.string(),
+  to: z.string(),
+  ticket: GiftTicketSchema,
+  signed: z.boolean().optional(),
+  awaitingRecipient: z.boolean().optional(),
+  reason: z.string().optional(),
+})
+
+export const GiftListSchema = z.object({
+  gifts: z.array(
+    z.object({
+      giftId: z.string(),
+      state: z.string(),
+      from: z.string(),
+      to: z.string(),
+      expiresAt: z.string(),
+      ticket: GiftTicketSchema,
+    }),
+  ),
+})
+
+export type GiftCreated = z.infer<typeof GiftCreatedSchema>
+export type GiftState = z.infer<typeof GiftStateSchema>
+export type GiftListItem = z.infer<typeof GiftListSchema>['gifts'][number]
+
+export function createGift(nfTokenId: string, to: string, token: string): Promise<GiftCreated> {
+  return request(`/tickets/${encodeURIComponent(nfTokenId)}/gift`, GiftCreatedSchema, {
+    method: 'POST',
+    token,
+    body: { to: to.replace(/^@/, '') },
+  })
+}
+
+export function acceptGift(giftId: string, token: string): Promise<GiftCreated> {
+  return request(`/gifts/${encodeURIComponent(giftId)}/accept`, GiftCreatedSchema, {
+    method: 'POST',
+    token,
+  })
+}
+
+export function pollGift(giftId: string, token: string): Promise<GiftState> {
+  return request(`/gifts/${encodeURIComponent(giftId)}`, GiftStateSchema, { token })
+}
+
+export function fetchGifts(
+  token: string,
+  role: 'incoming' | 'outgoing' = 'incoming',
+): Promise<GiftListItem[]> {
+  return request(`/gifts?role=${role}`, GiftListSchema, { token }).then((r) => r.gifts)
+}
+
 // Token storage. localStorage is readable by any script on the page, so an XSS
 // bug leaks the session. Acceptable for local dev; before production, move to
 // an httpOnly, SameSite cookie issued by the backend.

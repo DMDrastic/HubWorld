@@ -34,6 +34,8 @@ model User {
   sessions        Session[]
   signInRequests  SignInRequest[]
   mintRequests    MintRequest[]
+  giftsSent       Gift[]          @relation("GiftSender")
+  giftsReceived   Gift[]          @relation("GiftRecipient")
 
   @@index([xrplAddress])
 }
@@ -211,9 +213,72 @@ model Ticket {
   listings  Listing[]
   auctions  Auction[]
   transfers Transfer[]
+  gifts     Gift[]
 
   @@index([eventId, status])
   @@index([ownerId])
+}
+
+/**
+ * A peer-to-peer gift in flight.
+ *
+ * XRPL has no "transfer" transaction, so a gift is TWO signatures on two
+ * different devices: the sender creates a zero-amount sell offer restricted to
+ * the recipient, then the recipient accepts it. Ownership does not move until
+ * that second signature validates.
+ *
+ * Both halves are tracked here because the sender and the recipient poll
+ * independently, and either can abandon partway.
+ */
+model Gift {
+  id String @id @default(uuid())
+
+  ticketId String
+  ticket   Ticket @relation(fields: [ticketId], references: [id])
+
+  fromId String
+  from   User   @relation("GiftSender", fields: [fromId], references: [id])
+
+  toId String
+  to   User   @relation("GiftRecipient", fields: [toId], references: [id])
+
+  // Snapshotted at creation: the addresses the offer was actually built for.
+  // Re-resolving @handles later could silently retarget a gift in flight.
+  fromAddress String
+  toAddress   String
+
+  status GiftStatus @default(PENDING_OFFER)
+
+  // Phase 1 — sender creates the offer.
+  offerPayloadUuid String  @unique
+  offerTxHash      String?
+  offerIndex       String? // NFTokenOffer ledger index, assigned by the ledger
+
+  // Phase 2 — recipient accepts it.
+  acceptPayloadUuid String? @unique
+  acceptTxHash      String?
+
+  failureReason String?
+
+  createdAt  DateTime  @default(now())
+  expiresAt  DateTime
+  offeredAt  DateTime?
+  resolvedAt DateTime?
+
+  @@index([toId, status])
+  @@index([fromId, status])
+  @@index([ticketId, createdAt])
+}
+
+enum GiftStatus {
+  PENDING_OFFER // waiting for the sender to sign
+  OFFERED // offer is live on-ledger, waiting for the recipient
+  ACCEPTING // recipient signed, ledger result not yet confirmed
+  ACCEPTED // ownership moved
+  DECLINED // recipient refused
+  CANCELLED // sender withdrew, or never signed
+  EXPIRED
+  FAILED // a signed transaction the ledger rejected
 }
 
 enum TicketStatus {
