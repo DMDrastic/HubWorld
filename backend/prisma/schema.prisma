@@ -1,0 +1,288 @@
+// HubWorld data model.
+//
+// The XRP Ledger owns the truth about ticket ownership — a holder can transfer
+// an NFToken in Xaman without ever touching Hubworld. Postgres is therefore an
+// *index* over the ledger plus the off-ledger data XRPL cannot hold (usernames,
+// event copy, bid history). Anything ownership-related carries a `syncedAt` so
+// stale reads are detectable rather than silently wrong.
+//
+// Money is always BigInt drops (1 XRP = 1_000_000 drops). Never Float.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------- identity --
+
+model User {
+  id          String   @id @default(uuid())
+  username    String   @unique // @handle, stored lowercase
+  xrplAddress String   @unique // r-address. Never a seed — Xaman holds the keys.
+  displayName String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  organizedEvents Event[]         @relation("EventOrganizer")
+  ticketsOwned    Ticket[]        @relation("TicketOwner")
+  listings        Listing[]
+  bids            Bid[]
+  sessions        Session[]
+  signInRequests  SignInRequest[]
+
+  @@index([xrplAddress])
+}
+
+/**
+ * One Xaman SignIn payload. The user scans it in the Xaman app and signs;
+ * signing proves they control the address, which is the only trustworthy way
+ * to bind an @handle to an r-address.
+ */
+model SignInRequest {
+  id          String       @id @default(uuid())
+  payloadUuid String       @unique // Xaman payload UUID
+  status      SignInStatus @default(PENDING)
+
+  // Populated once Xaman reports the payload signed.
+  resolvedAddress String?
+  resolvedAt      DateTime?
+
+  // Null when the address has never signed in before — the client must then
+  // claim a username before a session is issued.
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id])
+
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+
+  // Set the moment a session is issued from this request. A signed payload is
+  // single-use: without this, re-polling it would mint unlimited sessions from
+  // one signature.
+  consumedAt DateTime?
+
+  @@index([status, expiresAt])
+}
+
+enum SignInStatus {
+  PENDING
+  SIGNED
+  REJECTED
+  EXPIRED
+}
+
+/**
+ * Bearer session. Only the SHA-256 hash of the token is stored, so a database
+ * leak does not hand over live sessions.
+ */
+model Session {
+  id        String @id @default(uuid())
+  tokenHash String @unique
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+
+  createdAt  DateTime  @default(now())
+  expiresAt  DateTime
+  lastSeenAt DateTime?
+  revokedAt  DateTime?
+
+  @@index([userId])
+}
+
+// ------------------------------------------------------------------ events --
+
+model Event {
+  id          String   @id @default(uuid())
+  slug        String   @unique
+  title       String
+  description String?
+  venue       String?
+  startsAt    DateTime
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  organizerId String
+  organizer   User   @relation("EventOrganizer", fields: [organizerId], references: [id])
+
+  // On-ledger issuance. Taxon groups every ticket for this event.
+  nftTaxon Int
+
+  // Basis points (100 bps = 1%). Under brokered mode the organizer is the
+  // issuer and collects royaltyBps as TransferFee; Hubworld brokers the
+  // NFTokenAcceptOffer and takes platformBps from the spread.
+  royaltyBps  Int @default(0)
+  platformBps Int @default(0)
+
+  ticketCount Int         @default(0)
+  status      EventStatus @default(DRAFT)
+
+  tickets Ticket[]
+
+  @@index([status, startsAt])
+}
+
+enum EventStatus {
+  DRAFT
+  PUBLISHED
+  SOLD_OUT
+  COMPLETED
+  CANCELLED
+}
+
+// ----------------------------------------------------------------- tickets --
+
+model Ticket {
+  id        String @id @default(uuid())
+  nfTokenId String @unique // 64-char hex NFTokenID — the ticket's real identity
+
+  eventId String
+  event   Event  @relation(fields: [eventId], references: [id])
+
+  // Last KNOWN owner. Reconciled from the ledger; may lag reality, and may be
+  // an address belonging to nobody with a Hubworld account.
+  ownerId      String?
+  owner        User?     @relation("TicketOwner", fields: [ownerId], references: [id])
+  ownerAddress String?
+  syncedAt     DateTime?
+
+  seat   String?
+  tier   String?
+  status TicketStatus @default(MINTED)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  listings  Listing[]
+  auctions  Auction[]
+  transfers Transfer[]
+
+  @@index([eventId, status])
+  @@index([ownerId])
+}
+
+enum TicketStatus {
+  MINTED
+  LISTED
+  IN_AUCTION
+  REDEEMED
+  BURNED
+}
+
+// ------------------------------------------------------- fixed-price sales --
+
+model Listing {
+  id String @id @default(uuid())
+
+  ticketId String
+  ticket   Ticket @relation(fields: [ticketId], references: [id])
+
+  sellerId String
+  seller   User   @relation(fields: [sellerId], references: [id])
+
+  priceDrops BigInt
+  offerIndex String? // XRPL NFTokenOffer object index
+
+  status    ListingStatus @default(ACTIVE)
+  createdAt DateTime      @default(now())
+  closedAt  DateTime?
+
+  @@index([status, createdAt])
+}
+
+enum ListingStatus {
+  ACTIVE
+  SOLD
+  CANCELLED
+  EXPIRED
+}
+
+// ---------------------------------------------------------------- auctions --
+
+model Auction {
+  id String @id @default(uuid())
+
+  ticketId String
+  ticket   Ticket @relation(fields: [ticketId], references: [id])
+
+  startsAt     DateTime
+  endsAt       DateTime
+  reserveDrops BigInt?
+
+  status    AuctionStatus @default(SCHEDULED)
+  createdAt DateTime      @default(now())
+
+  bids Bid[]
+
+  @@index([status, endsAt])
+}
+
+enum AuctionStatus {
+  SCHEDULED
+  LIVE
+  SETTLING
+  SETTLED
+  CANCELLED
+}
+
+model Bid {
+  id String @id @default(uuid())
+
+  auctionId String
+  auction   Auction @relation(fields: [auctionId], references: [id])
+
+  bidderId String
+  bidder   User   @relation(fields: [bidderId], references: [id])
+
+  amountDrops BigInt
+
+  // XRPL Escrow locking the bid. escrowSeq is required to later
+  // EscrowFinish (winner) or EscrowCancel (losers).
+  escrowSeq    Int?
+  escrowTxHash String?
+
+  status   BidStatus @default(PENDING)
+  placedAt DateTime  @default(now())
+
+  // Drives the real-time price tracker: bids for one auction, in time order.
+  @@index([auctionId, placedAt])
+}
+
+enum BidStatus {
+  PENDING
+  ESCROWED
+  OUTBID
+  WON
+  REFUNDED
+  CANCELLED
+}
+
+// -------------------------------------------------- provenance / transfers --
+
+// Append-only history. For ticketing this is anti-fraud infrastructure:
+// "who held this, when, and by which transaction" must be answerable.
+model Transfer {
+  id String @id @default(uuid())
+
+  ticketId String
+  ticket   Ticket @relation(fields: [ticketId], references: [id])
+
+  fromAddress String?
+  toAddress   String
+  txHash      String       @unique
+  kind        TransferKind
+  occurredAt  DateTime
+
+  @@index([ticketId, occurredAt])
+}
+
+enum TransferKind {
+  MINT
+  GIFT
+  SALE
+  AUCTION_SETTLE
+  BURN
+}
