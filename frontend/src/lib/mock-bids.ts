@@ -89,6 +89,25 @@ export function mockAuction(now = Date.now()): Auction {
   }
 }
 
+/**
+ * Which events currently have a live auction.
+ *
+ * PLACEHOLDER for a field the API will carry — `EventSummary.activeAuction`, or
+ * a `GET /api/events/:slug/auction`. Only sold-out events go to auction (see the
+ * domain notes), so the seeded sold-out event is the one wired up here.
+ */
+const AUCTION_SLUGS = new Set(['peachs-castle-afterparty'])
+
+export function hasLiveAuction(slug: string): boolean {
+  return AUCTION_SLUGS.has(slug)
+}
+
+/** The auction for an event, or null when it has none. */
+export function mockAuctionFor(slug: string, title: string, now = Date.now()): Auction | null {
+  if (!hasLiveAuction(slug)) return null
+  return { ...mockAuction(now), id: `auction-${slug}`, eventTitle: title }
+}
+
 /** Appends one higher bid, for simulating live arrivals. */
 export function nextMockBid(auction: Auction): Bid {
   const escrowed = auction.bids.filter((b) => b.status !== 'PENDING')

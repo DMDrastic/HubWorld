@@ -14,9 +14,16 @@ TypeScript end-to-end.
 
 **Ledger** — xrpl.js for XRPL interaction, Xaman for wallet signing.
 
-**Live bidding (later)** — Socket.IO for realtime transport, Recharts for bid visualizations. The auction backend is not built; do not scaffold ahead of it. The price tracker UI exists as a **preview only** (`BidChart` + `AuctionPreview`, driven by `lib/mock-bids.ts`) so the visual could be reviewed before escrow logic. `BidChart` takes real `Bid`-shaped data and should not change when the API lands; `AuctionPreview` and `mock-bids.ts` get deleted then.
+**Live bidding (later)** — Socket.IO for realtime transport, Recharts for bid visualizations. The auction backend is not built; do not scaffold ahead of it. The price tracker UI exists as a **preview only** (`BidChart` + `AuctionDialog`, driven by `lib/mock-bids.ts`) so the visual could be reviewed before escrow logic. `BidChart` takes real `Bid`-shaped data and should not change when the API lands; `mock-bids.ts` gets deleted then and `AuctionDialog` switches to fetch + subscribe.
 
-Recharts is ~410kB, which more than doubled the main bundle, so `AuctionPreview` is loaded with `React.lazy`. Keep it code-split.
+The auction lives in a dialog opened from an event row, **not** on the main page,
+and only events with a live auction are clickable — a control that opens an empty
+window is worse than no control. `hasLiveAuction(slug)` is the placeholder for a
+field the API will carry (`EventSummary.activeAuction`).
+
+Recharts is ~410kB, which more than doubled the main bundle, so `AuctionDialog`
+is loaded with `React.lazy` and is now not fetched at all until someone opens an
+auction. Keep it code-split, and keep it the only importer of `BidChart`.
 
 ## Structure
 

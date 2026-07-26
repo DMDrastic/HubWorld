@@ -16,11 +16,7 @@ import { SignIn } from '@/components/SignIn'
 import { MintPanel } from '@/components/MintPanel'
 import { GiftPanel } from '@/components/GiftPanel'
 import { SellPanel } from '@/components/SellPanel'
-// Recharts is ~410kB and only the auction view needs it. Loading it eagerly
-// more than doubled the main bundle (318kB -> 728kB), so it is split out.
-const AuctionPreview = lazy(() =>
-  import('@/components/AuctionPreview').then((m) => ({ default: m.AuctionPreview })),
-)
+import { hasLiveAuction } from '@/lib/mock-bids'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -31,6 +27,13 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
+
+// Recharts is ~410kB and only the auction dialog needs it. Loading it eagerly
+// more than doubled the main bundle (318kB -> 728kB), so it stays split out —
+// and now it is not even fetched until someone opens an auction.
+const AuctionDialog = lazy(() =>
+  import('@/components/AuctionDialog').then((m) => ({ default: m.AuctionDialog })),
+)
 
 const dateFmt = new Intl.DateTimeFormat(undefined, {
   dateStyle: 'medium',
@@ -113,7 +116,13 @@ function HandleLookup() {
   )
 }
 
-function EventList({ events }: { events: EventSummary[] }) {
+export function EventList({
+  events,
+  onOpenAuction,
+}: {
+  events: EventSummary[]
+  onOpenAuction: (event: EventSummary) => void
+}) {
   if (events.length === 0) {
     return (
       <p className="text-muted-foreground text-sm">
@@ -124,8 +133,12 @@ function EventList({ events }: { events: EventSummary[] }) {
 
   return (
     <ul className="space-y-3">
-      {events.map((e) => (
-        <li key={e.slug} className="rounded-lg border p-4">
+      {events.map((e) => {
+        // Only an event with a live auction is interactive. Everything else is
+        // a plain row, so clicking never opens an empty window.
+        const live = hasLiveAuction(e.slug)
+
+        const body = (
           <div className="flex items-start justify-between gap-3">
             <div>
               <div className="font-medium">{e.title}</div>
@@ -135,13 +148,45 @@ function EventList({ events }: { events: EventSummary[] }) {
               <div className="text-muted-foreground mt-1 text-xs">
                 by @{e.organizer.username} · {e.ticketsMinted}/{e.ticketCount} minted
               </div>
+              {live && (
+                <div className="text-primary mt-2 text-xs font-medium">
+                  View live bidding →
+                </div>
+              )}
             </div>
-            <Badge variant={e.status === 'SOLD_OUT' ? 'destructive' : 'secondary'}>
-              {e.status.replace('_', ' ').toLowerCase()}
-            </Badge>
+            <div className="flex shrink-0 flex-col items-end gap-1">
+              <Badge variant={e.status === 'SOLD_OUT' ? 'destructive' : 'secondary'}>
+                {e.status.replace('_', ' ').toLowerCase()}
+              </Badge>
+              {live && (
+                <span className="flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400">
+                  <span className="size-1.5 animate-pulse rounded-full bg-emerald-500" aria-hidden />
+                  auction live
+                </span>
+              )}
+            </div>
           </div>
-        </li>
-      ))}
+        )
+
+        return (
+          <li key={e.slug}>
+            {live ? (
+              // A real button, not a clickable div — it must be keyboard
+              // reachable and announced as activatable.
+              <button
+                type="button"
+                onClick={() => onOpenAuction(e)}
+                aria-label={`View live bidding for ${e.title}`}
+                className="hover:border-primary/60 hover:bg-accent/40 focus-visible:ring-ring w-full rounded-lg border p-4 text-left transition-colors focus-visible:ring-2 focus-visible:outline-none"
+              >
+                {body}
+              </button>
+            ) : (
+              <div className="rounded-lg border p-4">{body}</div>
+            )}
+          </li>
+        )
+      })}
     </ul>
   )
 }
@@ -177,6 +222,8 @@ export default function App() {
   const [events, setEvents] = useState<EventSummary[]>([])
   const [me, setMe] = useState<User | null>(null)
   const [error, setError] = useState<string | null>(null)
+  // Which event's auction window is open, or null for none.
+  const [auctionEvent, setAuctionEvent] = useState<EventSummary | null>(null)
 
   const load = useCallback(async () => {
     try {
@@ -259,20 +306,23 @@ export default function App() {
 
       <HandleLookup />
 
-      <Suspense
-        fallback={
-          <div className="text-muted-foreground rounded-lg border p-6 text-sm">
-            Loading price tracker…
-          </div>
-        }
-      >
-        <AuctionPreview />
-      </Suspense>
-
       <section className="space-y-3">
         <h2 className="text-lg font-medium">Events</h2>
-        <EventList events={events} />
+        <EventList events={events} onOpenAuction={setAuctionEvent} />
       </section>
+
+      {auctionEvent && (
+        <Suspense fallback={null}>
+          <AuctionDialog
+            slug={auctionEvent.slug}
+            title={auctionEvent.title}
+            open={true}
+            onOpenChange={(open) => {
+              if (!open) setAuctionEvent(null)
+            }}
+          />
+        </Suspense>
+      )}
     </main>
   )
 }
