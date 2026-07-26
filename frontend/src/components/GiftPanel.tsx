@@ -33,7 +33,13 @@ const POLL_MS = 2500
  */
 type Phase =
   | { kind: 'idle' }
-  | { kind: 'active'; payload: GiftCreated; label: string; state: GiftState | null }
+  /**
+   * `payload` is null when resuming a gift that already exists — after a reload
+   * we know its id but not the QR, and for an offer already signed there is
+   * nothing left to scan anyway. Without this a gift whose poll was interrupted
+   * would be unreachable from the UI and could never advance.
+   */
+  | { kind: 'active'; giftId: string; payload: GiftCreated | null; label: string }
   | { kind: 'failed'; reason: string }
 
 /** Which states still need the QR on screen. */
@@ -51,6 +57,12 @@ export function GiftPanel({ onChanged }: { onChanged: () => void }) {
   const [nfTokenId, setNfTokenId] = useState('')
   const [recipient, setRecipient] = useState('')
   const [phase, setPhase] = useState<Phase>({ kind: 'idle' })
+  // Held separately from `phase` on purpose. Folding the polled state into the
+  // phase object meant every poll produced a new object, the effect's `phase`
+  // dependency changed, and the effect re-ran — firing the next request
+  // immediately instead of after POLL_MS. That is a request-per-round-trip loop,
+  // and it got us rate-limited by Xaman (429) the first time a gift was signed.
+  const [giftState, setGiftState] = useState<GiftState | null>(null)
   const [busy, setBusy] = useState(false)
 
   const refresh = useCallback(async () => {
@@ -75,20 +87,24 @@ export function GiftPanel({ onChanged }: { onChanged: () => void }) {
     void refresh()
   }, [refresh])
 
+  // The gift being tracked, as a primitive. The effect below keys on THIS, not
+  // on `phase` — a dependency that changes on every poll restarts the effect and
+  // turns a 2.5s poll into a tight request loop.
+  const activeGiftId = phase.kind === 'active' ? phase.giftId : null
+
   // Per-run flag, not a ref — same StrictMode trap as SignIn and MintPanel.
   useEffect(() => {
-    if (phase.kind !== 'active') return
-    const { payload, label } = phase
+    if (!activeGiftId) return
     let stopped = false
     let timer: number
 
     const tick = async () => {
       if (stopped) return
       try {
-        const state = await pollGift(payload.giftId)
+        const state = await pollGift(activeGiftId)
         if (stopped) return
 
-        setPhase({ kind: 'active', payload, label, state })
+        setGiftState(state)
 
         const settled = ['accepted', 'declined', 'cancelled', 'expired', 'failed']
         if (settled.includes(state.state)) {
@@ -111,17 +127,18 @@ export function GiftPanel({ onChanged }: { onChanged: () => void }) {
       stopped = true
       window.clearTimeout(timer)
     }
-  }, [phase, refresh, onChanged])
+  }, [activeGiftId, refresh, onChanged])
 
   async function send() {
     setBusy(true)
     try {
       const payload = await createGift(nfTokenId, recipient)
+      setGiftState(null)
       setPhase({
         kind: 'active',
+        giftId: payload.giftId,
         payload,
         label: `Gift to @${recipient.replace(/^@/, '')}`,
-        state: null,
       })
     } catch (err) {
       setPhase({
@@ -137,7 +154,8 @@ export function GiftPanel({ onChanged }: { onChanged: () => void }) {
     setBusy(true)
     try {
       const payload = await acceptGift(giftId)
-      setPhase({ kind: 'active', payload, label: 'Accept this gift', state: null })
+      setGiftState(null)
+      setPhase({ kind: 'active', giftId: payload.giftId, payload, label: 'Accept this gift' })
     } catch (err) {
       setPhase({
         kind: 'failed',
@@ -157,7 +175,13 @@ export function GiftPanel({ onChanged }: { onChanged: () => void }) {
     try {
       const result = await cancelGift(giftId)
       if ('uuid' in result) {
-        setPhase({ kind: 'active', payload: result, label: 'Withdraw this gift', state: null })
+        setGiftState(null)
+        setPhase({
+          kind: 'active',
+          giftId: result.giftId,
+          payload: result,
+          label: 'Withdraw this gift',
+        })
       } else {
         setPhase({ kind: 'idle' })
         void refresh()
@@ -218,14 +242,34 @@ export function GiftPanel({ onChanged }: { onChanged: () => void }) {
                     to {g.to} · {g.state.replace('_', ' ')}
                   </div>
                 </div>
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  disabled={busy}
-                  onClick={() => void withdraw(g.giftId)}
-                >
-                  Withdraw
-                </Button>
+                <div className="flex shrink-0 gap-2">
+                  {/* Resumes polling. A gift whose poll was interrupted sits
+                      unadvanced until something asks about it again. */}
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled={busy}
+                    onClick={() => {
+                      setGiftState(null)
+                      setPhase({
+                        kind: 'active',
+                        giftId: g.giftId,
+                        payload: null,
+                        label: `Gift to ${g.to}`,
+                      })
+                    }}
+                  >
+                    Check
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    disabled={busy}
+                    onClick={() => void withdraw(g.giftId)}
+                  >
+                    Withdraw
+                  </Button>
+                </div>
               </div>
             ))}
           </div>
@@ -281,10 +325,10 @@ export function GiftPanel({ onChanged }: { onChanged: () => void }) {
           <div className="flex flex-col items-center gap-3">
             <div className="text-sm font-medium">{phase.label}</div>
 
-            {(phase.state === null || NEEDS_SIGNATURE.has(phase.state.state)) && (
+            {phase.payload !== null && (giftState === null || NEEDS_SIGNATURE.has(giftState.state)) && (
               <>
                 <img
-                  src={phase.payload.qrPng}
+                  src={phase.payload!.qrPng}
                   alt="Xaman signing QR code"
                   className="size-44 rounded-md border"
                 />
@@ -294,13 +338,13 @@ export function GiftPanel({ onChanged }: { onChanged: () => void }) {
               </>
             )}
 
-            {phase.state && (
+            {giftState && (
               <>
                 <div className="flex items-center gap-2">
-                  <Badge variant="secondary">{phase.state.state.replace('_', ' ')}</Badge>
-                  {phase.state.awaitingRecipient && (
+                  <Badge variant="secondary">{giftState.state.replace('_', ' ')}</Badge>
+                  {giftState.awaitingRecipient && (
                     <span className="text-muted-foreground text-xs">
-                      waiting on {phase.state.to}
+                      waiting on {giftState.to}
                     </span>
                   )}
                 </div>
@@ -309,15 +353,15 @@ export function GiftPanel({ onChanged }: { onChanged: () => void }) {
                   {
                     {
                       pending_offer: 'Waiting for the offer to be signed…',
-                      offered: `Offer is live on-ledger. ${phase.state.to} can now accept.`,
+                      offered: `Offer is live on-ledger. ${giftState.to} can now accept.`,
                       accepting: 'Accepted — waiting for the ledger to validate…',
                       accepted: 'Done. The ticket has moved.',
                       declined: 'The recipient declined.',
                       cancelling: 'Withdrawing — waiting for the ledger to validate…',
                       cancelled: 'The gift was withdrawn.',
                       expired: 'The gift expired.',
-                      failed: phase.state.reason ?? 'The ledger rejected it.',
-                    }[phase.state.state]
+                      failed: giftState.reason ?? 'The ledger rejected it.',
+                    }[giftState.state]
                   }
                 </p>
               </>

@@ -46,6 +46,21 @@ export type PayloadStatus = {
   txid: string | null
 }
 
+/**
+ * Xaman rate-limited us. Transient and carries no information about the
+ * payload, so polls should report "still pending" instead of an error — the
+ * user may well have already signed.
+ */
+export class XamanRateLimited extends Error {
+  readonly retryAfterSeconds: number
+
+  constructor(retryAfterSeconds: number) {
+    super(`Xaman rate limit hit; retry in ${retryAfterSeconds}s`)
+    this.name = 'XamanRateLimited'
+    this.retryAfterSeconds = retryAfterSeconds
+  }
+}
+
 export type PayloadOptions = {
   /** Minutes until Xaman expires the payload. */
   expireMinutes?: number
@@ -121,6 +136,12 @@ class LiveXamanClient implements XamanClient {
     const res = await fetch(`${XAMAN_API}/payload/${uuid}`, { headers: this.headers() })
 
     if (res.status === 404) return null
+    // Rate limiting is transient and says nothing about the payload. Callers
+    // must treat it as "unknown, ask again" rather than as a failure, or a
+    // signature that already landed looks like a crashed flow.
+    if (res.status === 429) {
+      throw new XamanRateLimited(Number(res.headers.get('retry-after')) || 5)
+    }
     if (!res.ok) {
       throw new Error(`Xaman payload fetch failed: ${res.status}`)
     }
@@ -214,6 +235,26 @@ function stubQrSvg(): string {
 
 export const xaman: XamanClient =
   xamanMode === 'live' ? new LiveXamanClient() : new StubXamanClient()
+
+/**
+ * `getPayload`, but a rate limit becomes the sentinel `'unavailable'` rather
+ * than a throw.
+ *
+ * Every poll route wants the same thing here: "we could not find out, so keep
+ * reporting pending." Letting the 429 propagate turns a transient limit into a
+ * 500 and makes an already-signed transaction look like a crash — which is
+ * exactly what happened the first time a gift was signed.
+ */
+export async function tryGetPayload(
+  uuid: string,
+): Promise<PayloadStatus | null | 'unavailable'> {
+  try {
+    return await xaman.getPayload(uuid)
+  } catch (err) {
+    if (err instanceof XamanRateLimited) return 'unavailable'
+    throw err
+  }
+}
 
 /** Narrowing helper so routes can reach `simulate` only in stub mode. */
 export function asStub(client: XamanClient): StubXamanClient | null {

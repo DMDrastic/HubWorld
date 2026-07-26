@@ -89,6 +89,20 @@ Backend coverage is the pure ledger logic: `TransferFee` scaling, the
 decide who gets paid and whether a ticket can move at all — a wrong constant is
 not a crash, it is a silently wrong royalty found on mainnet.
 
+**Polling must be paced, and pacing must be asserted by counting requests.** A
+runaway poll still reaches the right final state, so no state-based test catches
+it. `GiftPanel` once stored polled state inside its phase object, so every
+response produced a new object, the effect's dependency changed, the effect
+re-ran, and it fired the next request immediately instead of after `POLL_MS` —
+15 requests where 5 was correct, until Xaman answered 429 and the UI showed
+"internal server error" on a gift that had signed perfectly. **Never put
+poll-updated state in an effect's dependency list**; key the effect on a
+primitive id.
+
+Rate limiting is transient and says nothing about a payload, so `tryGetPayload`
+turns a 429 into `'unavailable'` and every poll route reports `pending`. Letting
+it propagate makes an already-signed transaction look like a crash.
+
 **Frontend tests render inside `<StrictMode>` deliberately.** The original
 sign-in bug was a `useRef` set during cleanup: StrictMode's
 mount → cleanup → remount left it permanently true, so polling died silently.

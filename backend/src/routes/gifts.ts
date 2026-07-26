@@ -18,7 +18,7 @@ import { Router } from 'express'
 import { z } from 'zod'
 import { prisma } from '../prisma.js'
 import { xamanMode } from '../env.js'
-import { xaman, SIGNIN_TTL_MINUTES } from '../xaman.js'
+import { tryGetPayload, xaman, SIGNIN_TTL_MINUTES } from '../xaman.js'
 import { issuesOf, usernameSchema } from '../schemas.js'
 import { requireAuth } from '../session.js'
 import { ON_LEDGER_STATES, mayExpire } from '../gift-policy.js'
@@ -357,7 +357,11 @@ giftsRouter.get('/gifts/:id', requireAuth, async (req, res) => {
 
   // ---- phase 1: waiting on the sender's offer -----------------------------
   if (gift.status === 'PENDING_OFFER') {
-    const status = await xaman.getPayload(gift.offerPayloadUuid)
+    const status = await tryGetPayload(gift.offerPayloadUuid)
+    if (status === 'unavailable') {
+      res.json(view())
+      return
+    }
 
     if (status?.cancelled) {
       await prisma.gift.update({ where: { id: gift.id }, data: { status: 'CANCELLED' } })
@@ -423,7 +427,11 @@ giftsRouter.get('/gifts/:id', requireAuth, async (req, res) => {
   // fall through to the acceptance path and let the ledger settle the race —
   // whichever transaction validates first wins, and we report what happened.
   if (gift.cancelPayloadUuid && !gift.acceptPayloadUuid) {
-    const cancel = await xaman.getPayload(gift.cancelPayloadUuid)
+    const cancel = await tryGetPayload(gift.cancelPayloadUuid)
+    if (cancel === 'unavailable') {
+      res.json(view())
+      return
+    }
 
     if (cancel?.signed && cancel.txid) {
       const ok = await txSucceeded(cancel.txid)
@@ -467,7 +475,11 @@ giftsRouter.get('/gifts/:id', requireAuth, async (req, res) => {
     return
   }
 
-  const status = await xaman.getPayload(gift.acceptPayloadUuid)
+  const status = await tryGetPayload(gift.acceptPayloadUuid)
+  if (status === 'unavailable') {
+    res.json(view({ awaitingRecipient: true }))
+    return
+  }
 
   if (status?.cancelled) {
     await prisma.gift.update({ where: { id: gift.id }, data: { status: 'DECLINED' } })

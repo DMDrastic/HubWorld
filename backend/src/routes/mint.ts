@@ -17,7 +17,7 @@ import { Router } from 'express'
 import { z } from 'zod'
 import { prisma } from '../prisma.js'
 import { xamanMode } from '../env.js'
-import { xaman, SIGNIN_TTL_MINUTES } from '../xaman.js'
+import { tryGetPayload, xaman, SIGNIN_TTL_MINUTES } from '../xaman.js'
 import { issuesOf, slugSchema } from '../schemas.js'
 import { requireAuth } from '../session.js'
 import { buildMintTx, nftokenIdFromTx, XAMAN_NETWORK } from '../ledger.js'
@@ -170,7 +170,11 @@ mintRouter.get('/mint/:uuid', requireAuth, async (req, res) => {
 
   // Xaman first, our clock second — same reasoning as sign-in: deciding
   // "expired" locally throws away signatures that landed inside the window.
-  const status = await xaman.getPayload(parsed.data.uuid)
+  const status = await tryGetPayload(parsed.data.uuid)
+  if (status === 'unavailable') {
+    res.json({ state: 'pending' })
+    return
+  }
   const locallyExpired = request.status === 'EXPIRED' || request.expiresAt < new Date()
 
   const markExpired = async () => {

@@ -2,7 +2,7 @@ import { Router } from 'express'
 import { z } from 'zod'
 import { prisma } from '../prisma.js'
 import { env, xamanMode } from '../env.js'
-import { asStub, xaman, SIGNIN_TTL_MINUTES } from '../xaman.js'
+import { asStub, tryGetPayload, xaman, SIGNIN_TTL_MINUTES } from '../xaman.js'
 import { issuesOf, usernameSchema, xrplAddressSchema } from '../schemas.js'
 import {
   clearSessionCookie,
@@ -80,7 +80,12 @@ authRouter.get('/auth/signin/:uuid', async (req, res) => {
   // Ask Xaman BEFORE applying our own expiry. Xaman is the authority on whether
   // the payload was signed in time; deciding "expired" from our clock first
   // throws away signatures that actually landed inside the window.
-  const status = await xaman.getPayload(parsed.data.uuid)
+  const status = await tryGetPayload(parsed.data.uuid)
+  if (status === 'unavailable') {
+    // Rate-limited: we learned nothing, so do not let local expiry fire.
+    res.json({ state: 'pending' })
+    return
+  }
   const locallyExpired = request.status === 'EXPIRED' || request.expiresAt < new Date()
 
   const markExpired = async () => {
