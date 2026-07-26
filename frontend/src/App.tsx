@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { Suspense, lazy, useCallback, useEffect, useState } from 'react'
 import {
   ApiError,
   fetchEvents,
@@ -16,6 +16,11 @@ import { SignIn } from '@/components/SignIn'
 import { MintPanel } from '@/components/MintPanel'
 import { GiftPanel } from '@/components/GiftPanel'
 import { SellPanel } from '@/components/SellPanel'
+// Recharts is ~410kB and only the auction view needs it. Loading it eagerly
+// more than doubled the main bundle (318kB -> 728kB), so it is split out.
+const AuctionPreview = lazy(() =>
+  import('@/components/AuctionPreview').then((m) => ({ default: m.AuctionPreview })),
+)
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -253,6 +258,16 @@ export default function App() {
       )}
 
       <HandleLookup />
+
+      <Suspense
+        fallback={
+          <div className="text-muted-foreground rounded-lg border p-6 text-sm">
+            Loading price tracker…
+          </div>
+        }
+      >
+        <AuctionPreview />
+      </Suspense>
 
       <section className="space-y-3">
         <h2 className="text-lg font-medium">Events</h2>

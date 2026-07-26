@@ -14,7 +14,9 @@ TypeScript end-to-end.
 
 **Ledger** — xrpl.js for XRPL interaction, Xaman for wallet signing.
 
-**Live bidding (later)** — Socket.IO for realtime transport, Recharts for bid visualizations. Not built yet; do not scaffold ahead of it.
+**Live bidding (later)** — Socket.IO for realtime transport, Recharts for bid visualizations. The auction backend is not built; do not scaffold ahead of it. The price tracker UI exists as a **preview only** (`BidChart` + `AuctionPreview`, driven by `lib/mock-bids.ts`) so the visual could be reviewed before escrow logic. `BidChart` takes real `Bid`-shaped data and should not change when the API lands; `AuctionPreview` and `mock-bids.ts` get deleted then.
+
+Recharts is ~410kB, which more than doubled the main bundle, so `AuctionPreview` is loaded with `React.lazy`. Keep it code-split.
 
 ## Structure
 
@@ -110,6 +112,27 @@ It survived manual testing because the backend was driven with curl, which never
 ran the React loop. The double-invocation *is* the thing under test — these tests
 were confirmed to fail when that bug is reintroduced. Any new polling loop
 belongs under the same discipline.
+
+## Price tracker
+
+Decisions that are load-bearing, not stylistic:
+
+- **Only funded bids set the price.** A bid is real once its XRPL escrow
+  validates, so `ESCROWED`/`OUTBID`/`WON` count and `PENDING` does not. Plotting
+  unfunded bids would let anyone pump the visible price with money they never
+  committed — the chart would become a manipulation surface. Pending bids render
+  ghosted, never as price. `BidChart.test.tsx` tests exactly this attack.
+- **Step, not line** (`stepAfter`). The leading bid holds flat until someone
+  outbids; a smooth line implies interpolation that never happened.
+- **Running maximum, not latest.** The price never goes down.
+- **Candlesticks were considered and rejected.** OHLC compresses many trades per
+  interval into a range; an auction has few monotonically rising bids, so every
+  candle would be a rangeless doji — sophisticated-looking and uninformative.
+- **Velocity gets its own strip.** Bids-per-interval rising toward the close is
+  the tension a price line cannot show.
+- **X-axis is time-to-close**, not wall-clock.
+- **Distinct bidder count is shown**, because one person walking up their own bid
+  is a different market from three competing and price cannot distinguish them.
 
 ## Local environment
 
