@@ -21,6 +21,13 @@ const EnvSchema = z.object({
   // XRPL network. Everything is testnet until explicitly told otherwise —
   // minting on mainnet costs real XRP and cannot be undone.
   XRPL_NETWORK: z.enum(['testnet', 'devnet', 'mainnet']).default('testnet'),
+
+  // Hubworld's broker account seed. This is the ONE key Hubworld holds, and it
+  // exists solely to sign the brokered NFTokenAcceptOffer that settles a sale.
+  // It is never a user's key, it never custodies sale funds, and it must never
+  // reach the frontend bundle. Optional: without it, listings can still be
+  // created and browsed, but sales cannot settle.
+  PLATFORM_SEED: z.string().min(1).optional(),
 })
 
 const parsed = EnvSchema.safeParse(process.env)
@@ -53,4 +60,16 @@ if (xamanMode === 'stub') {
 if (xamanMode === 'stub' && env.NODE_ENV === 'production') {
   console.error('Refusing to start: stub sign-in mode is not permitted in production.')
   process.exit(1)
+}
+
+/**
+ * Whether Hubworld can broker a sale. Listings work without it; settlement does
+ * not, because settlement requires our signature.
+ */
+export const brokerMode: 'live' | 'disabled' = env.PLATFORM_SEED ? 'live' : 'disabled'
+
+if (brokerMode === 'disabled') {
+  console.warn(
+    'PLATFORM_SEED not set — sales cannot settle. Run `npm run platform:setup` (testnet).',
+  )
 }

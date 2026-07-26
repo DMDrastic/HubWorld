@@ -1,12 +1,19 @@
 /**
  * XRP Ledger access.
  *
- * Read-only plus transaction *construction*. Nothing here signs anything —
- * HubWorld holds no seeds. Every transaction is handed to Xaman for the owner
- * to sign on their own device.
+ * Read-only plus transaction *construction*. Hubworld holds no USER keys —
+ * every transaction that moves someone's ticket or money is handed to Xaman for
+ * that person to sign on their own device.
+ *
+ * There is exactly ONE exception: `brokerSale` signs with Hubworld's own
+ * platform account (PLATFORM_SEED). Brokered mode requires the broker's
+ * signature to match a seller's offer to a buyer's, and that is the only thing
+ * this key can do — it never holds a user's NFT, and sale funds move
+ * buyer -> seller/issuer atomically without resting here.
  */
 import {
   Client,
+  Wallet,
   getNFTokenID,
   convertStringToHex,
   type NFTokenMint,
@@ -116,6 +123,148 @@ export async function accountNfts(address: string) {
   const c = await ledger()
   const res = await c.request({ command: 'account_nfts', account: address })
   return res.result.account_nfts
+}
+
+// ------------------------------------------------------- brokered sales ----
+
+/**
+ * Hubworld's broker wallet, derived from PLATFORM_SEED.
+ *
+ * This is the only signing key Hubworld holds. It exists to submit the brokered
+ * NFTokenAcceptOffer and nothing else — it never holds a user's NFT, and sale
+ * funds move buyer -> seller/issuer atomically without resting here.
+ */
+let platform: Wallet | null = null
+
+export function platformWallet(): Wallet {
+  if (!env.PLATFORM_SEED) {
+    throw new Error('PLATFORM_SEED is not set — cannot broker a sale')
+  }
+  platform ??= Wallet.fromSeed(env.PLATFORM_SEED)
+  return platform
+}
+
+export function platformAddress(): string {
+  return platformWallet().classicAddress
+}
+
+/**
+ * Platform cut in drops, floored.
+ *
+ * BigInt throughout: drops are integers and a Number would lose precision above
+ * 2^53. Flooring means Hubworld rounds against itself, never overcharging the
+ * buyer by a drop.
+ */
+export function platformFeeDrops(priceDrops: bigint, platformBps: number): bigint {
+  if (platformBps < 0 || platformBps > 10000) {
+    throw new Error(`platformBps ${platformBps} is outside 0–10000`)
+  }
+  return (priceDrops * BigInt(platformBps)) / 10000n
+}
+
+/**
+ * Build the seller's side: a sell offer for real money.
+ *
+ * `Destination` is set to the broker deliberately. Without it, any buyer could
+ * accept the sell offer directly and Hubworld's fee would be trivially
+ * bypassable — the offer would be a public, free-to-take order.
+ */
+export function buildSellOfferTx(params: {
+  ownerAddress: string
+  nfTokenId: string
+  amountDrops: bigint
+  brokerAddress: string
+}): NFTokenCreateOffer {
+  if (params.amountDrops <= 0n) {
+    throw new Error('a sale price must be greater than zero')
+  }
+  return {
+    TransactionType: 'NFTokenCreateOffer',
+    Account: params.ownerAddress,
+    NFTokenID: params.nfTokenId,
+    Amount: params.amountDrops.toString(),
+    // Only the broker may match this offer.
+    Destination: params.brokerAddress,
+    Flags: TF_SELL_NFTOKEN,
+  }
+}
+
+/**
+ * Build the buyer's side: a buy offer naming the current owner.
+ *
+ * No tfSellNFToken flag — its absence is what makes this a bid. `Owner` is
+ * required on a buy offer so the ledger knows whose token is being bid on.
+ *
+ * `Destination` is the broker for the same reason as the sell side, and the
+ * threat here is the mirror image: the bid is for price + fee, so a seller who
+ * could accept it directly would pocket Hubworld's cut. Both offers must be
+ * broker-only for brokerage to actually be enforced rather than merely intended.
+ */
+export function buildBuyOfferTx(params: {
+  buyerAddress: string
+  ownerAddress: string
+  nfTokenId: string
+  amountDrops: bigint
+  brokerAddress: string
+}): NFTokenCreateOffer {
+  if (params.buyerAddress === params.ownerAddress) {
+    throw new Error('cannot buy your own ticket')
+  }
+  if (params.amountDrops <= 0n) {
+    throw new Error('a bid must be greater than zero')
+  }
+  return {
+    TransactionType: 'NFTokenCreateOffer',
+    Account: params.buyerAddress,
+    NFTokenID: params.nfTokenId,
+    Amount: params.amountDrops.toString(),
+    Owner: params.ownerAddress,
+    Destination: params.brokerAddress,
+  }
+}
+
+/**
+ * Settle a sale: match both offers and take the platform cut, signed by
+ * Hubworld's broker account.
+ *
+ * The ledger enforces `buyAmount >= sellAmount + brokerFee`, so the buy offer is
+ * created for price + fee. The organizer's royalty is NOT handled here — the
+ * native TransferFee on the NFToken deducts it automatically and pays the issuer,
+ * which is exactly why minting sets it.
+ */
+export async function brokerSale(params: {
+  sellOfferIndex: string
+  buyOfferIndex: string
+  brokerFeeDrops: bigint
+}): Promise<{ hash: string; succeeded: boolean; result: string }> {
+  const wallet = platformWallet()
+  const c = await ledger()
+
+  const tx: NFTokenAcceptOffer = {
+    TransactionType: 'NFTokenAcceptOffer',
+    Account: wallet.classicAddress,
+    NFTokenSellOffer: params.sellOfferIndex,
+    NFTokenBuyOffer: params.buyOfferIndex,
+  }
+  // Omit a zero fee rather than sending "0" — the field is optional and a zero
+  // brokered fee is a valid configuration.
+  if (params.brokerFeeDrops > 0n) {
+    tx.NFTokenBrokerFee = params.brokerFeeDrops.toString()
+  }
+
+  const prepared = await c.autofill(tx)
+  const signed = wallet.sign(prepared)
+  const submitted = await c.submitAndWait(signed.tx_blob)
+
+  const meta = submitted.result.meta
+  const result =
+    meta && typeof meta !== 'string' ? meta.TransactionResult : 'unknown'
+
+  return {
+    hash: submitted.result.hash,
+    succeeded: result === 'tesSUCCESS',
+    result,
+  }
 }
 
 // ------------------------------------------------------------------ gifting --

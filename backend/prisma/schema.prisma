@@ -29,7 +29,8 @@ model User {
 
   organizedEvents Event[]         @relation("EventOrganizer")
   ticketsOwned    Ticket[]        @relation("TicketOwner")
-  listings        Listing[]
+  listingsSelling Listing[]       @relation("ListingSeller")
+  listingsBuying  Listing[]       @relation("ListingBuyer")
   bids            Bid[]
   sessions        Session[]
   signInRequests  SignInRequest[]
@@ -298,6 +299,19 @@ enum TicketStatus {
 
 // ------------------------------------------------------- fixed-price sales --
 
+/**
+ * A fixed-price resale, settled in XRPL brokered mode.
+ *
+ * THREE signatures, on three different accounts:
+ *   1. seller   NFTokenCreateOffer  Amount=price, Destination=broker, tfSell
+ *   2. buyer    NFTokenCreateOffer  Amount=price+fee, Owner=seller  (a bid)
+ *   3. Hubworld NFTokenAcceptOffer  both offers + NFTokenBrokerFee=fee
+ *
+ * The seller's `Destination` is the broker so nobody can accept the sell offer
+ * directly and bypass the platform fee. The organizer's royalty is not modelled
+ * here at all — the NFToken's native TransferFee deducts it and pays the issuer
+ * automatically, which is the whole reason minting sets it.
+ */
 model Listing {
   id String @id @default(uuid())
 
@@ -305,23 +319,59 @@ model Listing {
   ticket   Ticket @relation(fields: [ticketId], references: [id])
 
   sellerId String
-  seller   User   @relation(fields: [sellerId], references: [id])
+  seller   User   @relation("ListingSeller", fields: [sellerId], references: [id])
+  // Snapshotted: re-resolving later could retarget a listing already on-ledger.
+  sellerAddress String
 
+  /// What the seller receives before the issuer's TransferFee. Always drops.
   priceDrops BigInt
-  offerIndex String? // XRPL NFTokenOffer object index
+  /// Hubworld's cut, fixed at listing time from the event's platformBps, so a
+  /// later config change cannot alter the terms a buyer already saw.
+  platformFeeDrops BigInt @default(0)
 
-  status    ListingStatus @default(ACTIVE)
-  createdAt DateTime      @default(now())
+  // Phase 1 — the seller's sell offer.
+  listPayloadUuid String  @unique
+  listTxHash      String?
+  offerIndex      String? // NFTokenOffer index, assigned by the ledger
+
+  // Phase 2 — the buyer's bid.
+  buyerId        String?
+  buyer          User?   @relation("ListingBuyer", fields: [buyerId], references: [id])
+  buyerAddress   String?
+  buyPayloadUuid String? @unique
+  buyTxHash      String?
+  buyOfferIndex  String?
+
+  // Phase 3 — Hubworld's brokered match.
+  brokerTxHash String?
+
+  // Withdrawal, which needs a signed NFTokenCancelOffer once the offer exists.
+  cancelPayloadUuid String? @unique
+  cancelTxHash      String?
+
+  status        ListingStatus @default(PENDING_OFFER)
+  failureReason String?
+
+  createdAt DateTime  @default(now())
+  expiresAt DateTime
+  listedAt  DateTime?
   closedAt  DateTime?
 
   @@index([status, createdAt])
+  @@index([ticketId, createdAt])
+  @@index([sellerId, status])
 }
 
 enum ListingStatus {
-  ACTIVE
+  PENDING_OFFER // waiting for the seller to sign
+  ACTIVE // sell offer live on-ledger, purchasable
+  BUYER_PENDING // a buyer committed, waiting for their signature
+  SETTLING // both offers exist; Hubworld is brokering
   SOLD
+  CANCELLING // seller signed a withdrawal, not yet confirmed
   CANCELLED
   EXPIRED
+  FAILED
 }
 
 // ---------------------------------------------------------------- auctions --

@@ -354,6 +354,109 @@ export function fetchGifts(role: 'incoming' | 'outgoing' = 'incoming'): Promise<
   return request(`/gifts?role=${role}`, GiftListSchema).then((r) => r.gifts)
 }
 
+// --------------------------------------------------------------- listings --
+
+/**
+ * Drops are strings end to end. The backend serialises BigInt as strings and the
+ * client must not parse them into JS numbers — above 2^53 that silently loses
+ * precision, and this is money.
+ */
+export const ListingSchema = z.object({
+  listingId: z.string(),
+  state: z.enum([
+    'pending_offer',
+    'active',
+    'buyer_pending',
+    'settling',
+    'sold',
+    'cancelling',
+    'cancelled',
+    'expired',
+    'failed',
+  ]),
+  priceDrops: z.string(),
+  platformFeeDrops: z.string(),
+  buyerPaysDrops: z.string(),
+  seller: z.string(),
+  buyer: z.string().nullable(),
+  ticket: z.object({
+    nfTokenId: z.string(),
+    seat: z.string().nullable(),
+    tier: z.string().nullable(),
+    event: z.object({ slug: z.string(), title: z.string() }),
+  }),
+  signed: z.boolean().optional(),
+  reason: z.string().optional(),
+  brokerTxHash: z.string().optional(),
+  role: z.enum(['seller', 'buyer']).optional(),
+})
+
+export const ListingCreatedSchema = z.object({
+  listingId: z.string(),
+  uuid: z.string(),
+  next: z.string(),
+  qrPng: z.string(),
+  mode: z.enum(['live', 'stub']),
+  priceDrops: z.string().optional(),
+  platformFeeDrops: z.string().optional(),
+  paysDrops: z.string().optional(),
+})
+
+export type Listing = z.infer<typeof ListingSchema>
+export type ListingCreated = z.infer<typeof ListingCreatedSchema>
+
+/** 1 XRP = 1_000_000 drops. Formats for display only — never for arithmetic. */
+export function dropsToXrp(drops: string): string {
+  const d = BigInt(drops)
+  const whole = d / 1_000_000n
+  const frac = (d % 1_000_000n).toString().padStart(6, '0').replace(/0+$/, '')
+  return frac ? `${whole}.${frac}` : whole.toString()
+}
+
+export function xrpToDrops(xrp: string): string {
+  const [whole = '0', frac = ''] = xrp.trim().split('.')
+  const padded = (frac + '000000').slice(0, 6)
+  return (BigInt(whole || '0') * 1_000_000n + BigInt(padded || '0')).toString()
+}
+
+export function createListing(nfTokenId: string, priceDrops: string): Promise<ListingCreated> {
+  return request(`/tickets/${encodeURIComponent(nfTokenId)}/list`, ListingCreatedSchema, {
+    method: 'POST',
+    body: { priceDrops },
+  })
+}
+
+export function buyListing(listingId: string): Promise<ListingCreated> {
+  return request(`/listings/${encodeURIComponent(listingId)}/buy`, ListingCreatedSchema, {
+    method: 'POST',
+  })
+}
+
+export const ListingCancelSchema = z.union([
+  ListingCreatedSchema,
+  z.object({ state: z.literal('cancelled'), listingId: z.string() }),
+])
+
+export function cancelListing(listingId: string): Promise<z.infer<typeof ListingCancelSchema>> {
+  return request(`/listings/${encodeURIComponent(listingId)}/cancel`, ListingCancelSchema, {
+    method: 'POST',
+  })
+}
+
+export function pollListing(listingId: string): Promise<Listing> {
+  return request(`/listings/${encodeURIComponent(listingId)}`, ListingSchema)
+}
+
+export function fetchMarket(): Promise<Listing[]> {
+  return request('/listings', z.object({ listings: z.array(ListingSchema) })).then((r) => r.listings)
+}
+
+export function fetchMyListings(): Promise<Listing[]> {
+  return request('/listings/mine', z.object({ listings: z.array(ListingSchema) })).then(
+    (r) => r.listings,
+  )
+}
+
 // There is deliberately no token storage here.
 //
 // The session lives in an httpOnly SameSite=Lax cookie set by the backend, so

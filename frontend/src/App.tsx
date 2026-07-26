@@ -15,6 +15,7 @@ import {
 import { SignIn } from '@/components/SignIn'
 import { MintPanel } from '@/components/MintPanel'
 import { GiftPanel } from '@/components/GiftPanel'
+import { SellPanel } from '@/components/SellPanel'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -247,6 +248,7 @@ export default function App() {
             onMinted={handleMinted}
           />
           <GiftPanel onChanged={handleMinted} />
+          <SellPanel onChanged={handleMinted} />
         </>
       )}
 

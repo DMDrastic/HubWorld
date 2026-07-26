@@ -134,8 +134,13 @@ belongs under the same discipline.
 ## Domain model
 
 HubWorld is NFT event ticketing on the XRP Ledger, themed on video-game hub
-worlds. Tickets are XRPL NFTokens held in the user's own wallet (Xaman signs;
-Hubworld never holds keys or seeds).
+worlds. Tickets are XRPL NFTokens held in the user's own wallet.
+
+**Hubworld never holds a USER's key.** Xaman signs everything that moves someone
+else's ticket or money, on their own device. The one key Hubworld does hold is
+its own broker account (`PLATFORM_SEED`), and it exists solely to sign the
+brokered `NFTokenAcceptOffer` that settles a sale — see Selling below. It cannot
+move anyone's ticket on its own, and sale funds never rest with us.
 
 **The ledger is the source of truth for ownership, not Postgres.** A holder can
 transfer a ticket in Xaman without touching Hubworld, so `Ticket.ownerId` /
@@ -176,6 +181,12 @@ Hubworld out of the funds-custody path. Changing this changes who mints.
 | `POST /api/gifts/:id/cancel` | sender-only; withdraw the offer |
 | `GET /api/gifts/:id` | poll the gift state machine |
 | `GET /api/gifts?role=incoming\|outgoing` | gifts awaiting me / sent by me |
+| `POST /api/tickets/:nfTokenId/list` | owner-only; list for sale at a drops price |
+| `GET /api/listings` | the marketplace (public); ACTIVE listings only |
+| `GET /api/listings/mine` | what I'm selling and what I'm buying |
+| `POST /api/listings/:id/buy` | buyer bids price + platform fee |
+| `POST /api/listings/:id/cancel` | seller-only; withdraw |
+| `GET /api/listings/:id` | poll the three-phase sale |
 
 Errors are `{ error, details? }` with 400 for validation and 404 for missing.
 
@@ -285,6 +296,36 @@ expired and reverts on its first poll.
 disagrees with `Ticket.ownerAddress` the cache is cleared rather than trusted —
 the holder may have moved the ticket in Xaman without touching Hubworld.
 `GET /tickets/mine?verify=true` surfaces the same check per ticket as `onLedger`.
+
+## Selling (brokered)
+
+Fixed-price resale takes **three signatures on three accounts**:
+
+1. **seller** `NFTokenCreateOffer` — `Amount` = price, `Destination` = broker, tfSell
+2. **buyer** `NFTokenCreateOffer` — `Amount` = price + fee, `Owner` = seller (a bid)
+3. **Hubworld** `NFTokenAcceptOffer` — both offers plus `NFTokenBrokerFee`
+
+Step 3 is the one exception to "Hubworld holds no keys": brokered mode requires
+the broker's signature, so `PLATFORM_SEED` exists. It signs nothing else. Funds
+still never rest with Hubworld — the ledger moves buyer → seller and
+buyer → issuer atomically in that single transaction.
+
+Create the account with `npm run platform:setup` (testnet/devnet only; it refuses
+mainnet and refuses to overwrite an existing seed). The seed is written straight
+to `.env`, never printed, and `.env` is chmod 600.
+
+**Both offers must set `Destination` = broker.** On the sell side that stops a
+buyer taking the offer directly; on the buy side it stops the seller accepting a
+bid that already includes our fee. Omit either and the platform fee is
+bypassable — brokerage is only enforced when neither party can settle alone.
+
+The ledger requires `buy >= sell + brokerFee`, which is why the bid is
+price + fee. The organizer's royalty is not modelled at all: the NFToken's native
+`TransferFee` deducts it and pays the issuer automatically.
+
+`platformFeeDrops` is frozen on the Listing at creation, so changing an event's
+`platformBps` later cannot alter terms a buyer has already been shown. Fee
+arithmetic floors, so rounding never favours the platform.
 
 ## Health check
 

@@ -9,6 +9,7 @@ import { authRouter } from './routes/auth.js'
 import { mintRouter } from './routes/mint.js'
 import { giftsRouter } from './routes/gifts.js'
 import { ticketsRouter } from './routes/tickets.js'
+import { listingsRouter } from './routes/listings.js'
 
 export function createApp() {
   const app = express()
@@ -34,6 +35,7 @@ export function createApp() {
   app.use('/api', mintRouter)
   app.use('/api', giftsRouter)
   app.use('/api', ticketsRouter)
+  app.use('/api', listingsRouter)
 
   app.use((_req, res) => {
     res.status(404).json({ error: 'Not found' })
