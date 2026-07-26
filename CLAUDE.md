@@ -45,11 +45,16 @@ Both dev servers must be running for the app to work.
 declare `engines`, and `.npmrc` sets `engine-strict=true`, so npm refuses to
 install on an older runtime instead of failing later inside Vite or tsx.
 
-This machine still has a stale `/usr/local/bin/node` v18 from a 2023 `.pkg`
-install. Homebrew's v23 now wins in login *and* interactive shells (`brew
-shellenv` is in both `~/.zprofile` and `~/.zshrc`), but v18 still wins in
-non-interactive shells — `zsh -c '...'`, some CI runners, and cron. If a script
-fails with `EBADENGINE`, that's this.
+A stale `/usr/local/bin/node` v18 from a 2023 `.pkg` install used to shadow
+Homebrew's v23 in non-interactive shells (`zsh -c '...'`, CI runners, cron),
+causing `EBADENGINE` even though interactive shells were fine. **Resolved** — the
+v18 `node`/`npm`/`npx`/`corepack` were moved to `~/node18-disabled/`, so all
+three shell types now resolve `/opt/homebrew/bin/node` v23. `/usr/local/bin` is
+user-owned, so no sudo was involved; restore with
+`mv ~/node18-disabled/* /usr/local/bin/`.
+
+Note that `ng`, `vue`, `tsc`, `tsserver` and `yarn` still symlink into
+`/usr/local/lib/node_modules` and now run under v23. Nothing here uses them.
 
 ```sh
 # backend/ — http://localhost:4000
