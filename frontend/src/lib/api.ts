@@ -57,7 +57,6 @@ const API_BASE = '/api'
 type RequestOpts = {
   method?: 'GET' | 'POST'
   body?: unknown
-  token?: string | null
 }
 
 async function request<T>(
@@ -67,13 +66,15 @@ async function request<T>(
 ): Promise<T> {
   const headers: Record<string, string> = { Accept: 'application/json' }
   if (opts.body !== undefined) headers['Content-Type'] = 'application/json'
-  if (opts.token) headers['Authorization'] = `Bearer ${opts.token}`
 
   let res: Response
   try {
     res = await fetch(`${API_BASE}${path}`, {
       method: opts.method ?? 'GET',
       headers,
+      // The session is an httpOnly cookie — no script can read it, so there is
+      // no token to attach. The browser sends it because of this flag.
+      credentials: 'same-origin',
       body: opts.body === undefined ? undefined : JSON.stringify(opts.body),
     })
   } catch {
@@ -122,9 +123,11 @@ export const SignInCreatedSchema = z.object({
   mode: z.enum(['live', 'stub']),
 })
 
+// No token field: the session arrives as an httpOnly cookie the page cannot
+// read. Being authenticated is something the server tells us, not something we
+// hold.
 const AuthenticatedSchema = z.object({
   state: z.literal('authenticated'),
-  token: z.string(),
   expiresAt: z.string(),
   user: AuthUserSchema,
 })
@@ -157,14 +160,14 @@ export function claimUsername(uuid: string, username: string, displayName?: stri
   })
 }
 
-export function fetchMe(token: string): Promise<User> {
-  return request('/auth/me', UserSchema, { token })
+export function fetchMe(): Promise<User> {
+  return request('/auth/me', UserSchema)
 }
 
-export async function signOut(token: string): Promise<void> {
+export async function signOut(): Promise<void> {
   await fetch(`${API_BASE}/auth/signout`, {
     method: 'POST',
-    headers: { Authorization: `Bearer ${token}` },
+    credentials: 'same-origin',
   }).catch(() => undefined)
 }
 
@@ -213,18 +216,16 @@ export type MintedTicket = z.infer<typeof MintedTicketSchema>
 
 export function createMint(
   slug: string,
-  token: string,
   body: { seat?: string; tier?: string } = {},
 ): Promise<MintCreated> {
   return request(`/events/${encodeURIComponent(slug)}/mint`, MintCreatedSchema, {
     method: 'POST',
-    token,
     body,
   })
 }
 
-export function pollMint(uuid: string, token: string): Promise<MintPoll> {
-  return request(`/mint/${encodeURIComponent(uuid)}`, MintPollSchema, { token })
+export function pollMint(uuid: string): Promise<MintPoll> {
+  return request(`/mint/${encodeURIComponent(uuid)}`, MintPollSchema)
 }
 
 // -------------------------------------------------------------- inventory --
@@ -249,8 +250,8 @@ export const InventorySchema = z.object({
 export type OwnedTicket = z.infer<typeof OwnedTicketSchema>
 export type Inventory = z.infer<typeof InventorySchema>
 
-export function fetchInventory(token: string, verify = false): Promise<Inventory> {
-  return request(`/tickets/mine?verify=${verify}`, InventorySchema, { token })
+export function fetchInventory(verify = false): Promise<Inventory> {
+  return request(`/tickets/mine?verify=${verify}`, InventorySchema)
 }
 
 // ------------------------------------------------------------------ gifts --
@@ -282,6 +283,7 @@ export const GiftStateSchema = z.object({
     'accepting',
     'accepted',
     'declined',
+    'cancelling',
     'cancelled',
     'expired',
     'failed',
@@ -313,39 +315,58 @@ export type GiftCreated = z.infer<typeof GiftCreatedSchema>
 export type GiftState = z.infer<typeof GiftStateSchema>
 export type GiftListItem = z.infer<typeof GiftListSchema>['gifts'][number]
 
-export function createGift(nfTokenId: string, to: string, token: string): Promise<GiftCreated> {
+export function createGift(nfTokenId: string, to: string): Promise<GiftCreated> {
   return request(`/tickets/${encodeURIComponent(nfTokenId)}/gift`, GiftCreatedSchema, {
     method: 'POST',
-    token,
     body: { to: to.replace(/^@/, '') },
   })
 }
 
-export function acceptGift(giftId: string, token: string): Promise<GiftCreated> {
+export function acceptGift(giftId: string): Promise<GiftCreated> {
   return request(`/gifts/${encodeURIComponent(giftId)}/accept`, GiftCreatedSchema, {
     method: 'POST',
-    token,
   })
 }
 
-export function pollGift(giftId: string, token: string): Promise<GiftState> {
-  return request(`/gifts/${encodeURIComponent(giftId)}`, GiftStateSchema, { token })
+/**
+ * Withdraw a gift. Returns a Xaman payload when the offer is already live
+ * on-ledger (it takes a signed NFTokenCancelOffer to remove), or just the
+ * settled state when nothing was ever signed.
+ */
+export const GiftCancelSchema = z.union([
+  GiftCreatedSchema,
+  z.object({ state: z.literal('cancelled'), giftId: z.string() }),
+])
+
+export type GiftCancel = z.infer<typeof GiftCancelSchema>
+
+export function cancelGift(giftId: string): Promise<GiftCancel> {
+  return request(`/gifts/${encodeURIComponent(giftId)}/cancel`, GiftCancelSchema, {
+    method: 'POST',
+  })
 }
 
-export function fetchGifts(
-  token: string,
-  role: 'incoming' | 'outgoing' = 'incoming',
-): Promise<GiftListItem[]> {
-  return request(`/gifts?role=${role}`, GiftListSchema, { token }).then((r) => r.gifts)
+export function pollGift(giftId: string): Promise<GiftState> {
+  return request(`/gifts/${encodeURIComponent(giftId)}`, GiftStateSchema)
 }
 
-// Token storage. localStorage is readable by any script on the page, so an XSS
-// bug leaks the session. Acceptable for local dev; before production, move to
-// an httpOnly, SameSite cookie issued by the backend.
-const TOKEN_KEY = 'hubworld.token'
+export function fetchGifts(role: 'incoming' | 'outgoing' = 'incoming'): Promise<GiftListItem[]> {
+  return request(`/gifts?role=${role}`, GiftListSchema).then((r) => r.gifts)
+}
 
-export const tokenStore = {
-  get: () => localStorage.getItem(TOKEN_KEY),
-  set: (t: string) => localStorage.setItem(TOKEN_KEY, t),
-  clear: () => localStorage.removeItem(TOKEN_KEY),
+// There is deliberately no token storage here.
+//
+// The session lives in an httpOnly SameSite=Lax cookie set by the backend, so
+// this page cannot read it and an XSS bug cannot exfiltrate it. "Am I signed
+// in?" is answered by calling /auth/me and seeing whether it succeeds — not by
+// inspecting anything the page holds.
+export const LEGACY_TOKEN_KEY = 'hubworld.token'
+
+/** One-time cleanup of tokens left in localStorage by the old scheme. */
+export function purgeLegacyToken(): void {
+  try {
+    localStorage.removeItem(LEGACY_TOKEN_KEY)
+  } catch {
+    // Private-mode browsers can throw on storage access; nothing to do.
+  }
 }

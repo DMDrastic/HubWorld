@@ -5,8 +5,8 @@ import {
   fetchHealth,
   fetchMe,
   lookupUser,
+  purgeLegacyToken,
   signOut,
-  tokenStore,
   type AuthUser,
   type EventSummary,
   type Health,
@@ -170,7 +170,6 @@ export default function App() {
   const [health, setHealth] = useState<Health | null>(null)
   const [events, setEvents] = useState<EventSummary[]>([])
   const [me, setMe] = useState<User | null>(null)
-  const [token, setToken] = useState<string | null>(() => tokenStore.get())
   const [error, setError] = useState<string | null>(null)
 
   const load = useCallback(async () => {
@@ -184,42 +183,35 @@ export default function App() {
     }
   }, [])
 
-  // Restore an existing session on load; a stale token is discarded silently.
+  // Restore an existing session. The cookie is unreadable from here, so the
+  // only way to know is to ask; a 401 simply means not signed in.
   const restore = useCallback(async () => {
-    const token = tokenStore.get()
-    if (!token) return
     try {
-      setMe(await fetchMe(token))
+      setMe(await fetchMe())
     } catch {
-      tokenStore.clear()
-      setToken(null)
+      setMe(null)
     }
   }, [])
 
   useEffect(() => {
+    // Drop any token the previous localStorage scheme left behind.
+    purgeLegacyToken()
     void load()
     void restore()
   }, [load, restore])
 
   // Stable identity: SignIn's polling effect depends on this, and a new
   // function each render would restart the poll loop continuously.
-  const handleAuthenticated = useCallback((newToken: string, _user: AuthUser) => {
-    tokenStore.set(newToken)
-    setToken(newToken)
-    // Re-fetch through /auth/me so the view uses one canonical shape.
-    void fetchMe(newToken)
+  const handleAuthenticated = useCallback((_user: AuthUser) => {
+    // The cookie is already set by the response that told us this. Re-fetch
+    // through /auth/me so the view uses one canonical shape.
+    void fetchMe()
       .then(setMe)
-      .catch(() => {
-        tokenStore.clear()
-        setToken(null)
-      })
+      .catch(() => setMe(null))
   }, [])
 
   const handleSignOut = useCallback(async () => {
-    const current = tokenStore.get()
-    if (current) await signOut(current)
-    tokenStore.clear()
-    setToken(null)
+    await signOut()
     setMe(null)
   }, [])
 
@@ -248,14 +240,13 @@ export default function App() {
         <SignIn onAuthenticated={handleAuthenticated} />
       )}
 
-      {me && token && (
+      {me && (
         <>
           <MintPanel
-            token={token}
             events={events.filter((e) => e.organizer.username === me.username)}
             onMinted={handleMinted}
           />
-          <GiftPanel token={token} onChanged={handleMinted} />
+          <GiftPanel onChanged={handleMinted} />
         </>
       )}
 

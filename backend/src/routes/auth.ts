@@ -4,7 +4,14 @@ import { prisma } from '../prisma.js'
 import { env, xamanMode } from '../env.js'
 import { asStub, xaman, SIGNIN_TTL_MINUTES } from '../xaman.js'
 import { issuesOf, usernameSchema, xrplAddressSchema } from '../schemas.js'
-import { bearerFrom, createSession, requireAuth, revokeSession } from '../session.js'
+import {
+  clearSessionCookie,
+  createSession,
+  requireAuth,
+  revokeSession,
+  setSessionCookie,
+  tokenFrom,
+} from '../session.js'
 
 export const authRouter = Router()
 
@@ -141,9 +148,12 @@ authRouter.get('/auth/signin/:uuid', async (req, res) => {
     data: { consumedAt: new Date() },
   })
 
+  // The token goes into an httpOnly cookie and is NOT returned in the body.
+  // Handing it to JavaScript is exactly the exposure we are closing.
+  setSessionCookie(res, token, expiresAt)
+
   res.json({
     state: 'authenticated',
-    token,
     expiresAt: expiresAt.toISOString(),
     user: {
       username: user.username,
@@ -216,9 +226,10 @@ authRouter.post('/auth/claim', async (req, res) => {
   })
 
   const { token, expiresAt } = await createSession(user.id)
+  setSessionCookie(res, token, expiresAt)
+
   res.status(201).json({
     state: 'authenticated',
-    token,
     expiresAt: expiresAt.toISOString(),
     user: {
       username: user.username,
@@ -252,8 +263,9 @@ authRouter.get('/auth/me', requireAuth, async (req, res) => {
 
 /** POST /api/auth/signout */
 authRouter.post('/auth/signout', async (req, res) => {
-  const token = bearerFrom(req)
+  const token = tokenFrom(req)
   if (token) await revokeSession(token)
+  clearSessionCookie(res)
   res.status(204).end()
 })
 

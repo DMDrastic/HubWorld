@@ -27,7 +27,7 @@ type Phase =
   | { kind: 'claiming'; payload: SignInCreated; address: string }
   | { kind: 'failed'; reason: string }
 
-export function SignIn({ onAuthenticated }: { onAuthenticated: (t: string, u: AuthUser) => void }) {
+export function SignIn({ onAuthenticated }: { onAuthenticated: (u: AuthUser) => void }) {
   const [phase, setPhase] = useState<Phase>({ kind: 'idle' })
   const [busy, setBusy] = useState(false)
   const [handle, setHandle] = useState('')
@@ -69,7 +69,7 @@ export function SignIn({ onAuthenticated }: { onAuthenticated: (t: string, u: Au
             timer = window.setTimeout(tick, POLL_MS)
             return
           case 'authenticated':
-            onAuthenticated(result.token, result.user)
+            onAuthenticated(result.user)
             return
           case 'needs_username':
             setPhase({ kind: 'claiming', payload, address: result.address })
@@ -108,7 +108,7 @@ export function SignIn({ onAuthenticated }: { onAuthenticated: (t: string, u: Au
     setBusy(true)
     try {
       const result = await claimUsername(phase.payload.uuid, handle)
-      onAuthenticated(result.token, result.user)
+      onAuthenticated(result.user)
     } catch (err) {
       setClaimError(err instanceof ApiError ? err.message : 'Could not claim that handle')
     } finally {

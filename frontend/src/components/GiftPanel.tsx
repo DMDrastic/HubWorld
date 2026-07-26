@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import {
   ApiError,
   acceptGift,
+  cancelGift,
   createGift,
   fetchGifts,
   fetchInventory,
@@ -43,9 +44,10 @@ function ticketLabel(t: OwnedTicket) {
   return bits ? `${t.event.title} — ${bits}` : t.event.title
 }
 
-export function GiftPanel({ token, onChanged }: { token: string; onChanged: () => void }) {
+export function GiftPanel({ onChanged }: { onChanged: () => void }) {
   const [tickets, setTickets] = useState<OwnedTicket[]>([])
   const [incoming, setIncoming] = useState<GiftListItem[]>([])
+  const [outgoing, setOutgoing] = useState<GiftListItem[]>([])
   const [nfTokenId, setNfTokenId] = useState('')
   const [recipient, setRecipient] = useState('')
   const [phase, setPhase] = useState<Phase>({ kind: 'idle' })
@@ -55,17 +57,19 @@ export function GiftPanel({ token, onChanged }: { token: string; onChanged: () =
     try {
       // verify=true reconciles against the ledger — worth the round-trip here
       // because the next thing the user does is act on ownership.
-      const [inv, gifts] = await Promise.all([
-        fetchInventory(token, true),
-        fetchGifts(token, 'incoming'),
+      const [inv, gifts, sent] = await Promise.all([
+        fetchInventory(true),
+        fetchGifts('incoming'),
+        fetchGifts('outgoing'),
       ])
       setTickets(inv.tickets)
       setIncoming(gifts)
+      setOutgoing(sent)
       setNfTokenId((cur) => cur || (inv.tickets[0]?.nfTokenId ?? ''))
     } catch {
       // Non-fatal: the panel just shows nothing to gift.
     }
-  }, [token])
+  }, [])
 
   useEffect(() => {
     void refresh()
@@ -81,7 +85,7 @@ export function GiftPanel({ token, onChanged }: { token: string; onChanged: () =
     const tick = async () => {
       if (stopped) return
       try {
-        const state = await pollGift(payload.giftId, token)
+        const state = await pollGift(payload.giftId)
         if (stopped) return
 
         setPhase({ kind: 'active', payload, label, state })
@@ -107,12 +111,12 @@ export function GiftPanel({ token, onChanged }: { token: string; onChanged: () =
       stopped = true
       window.clearTimeout(timer)
     }
-  }, [phase, token, refresh, onChanged])
+  }, [phase, refresh, onChanged])
 
   async function send() {
     setBusy(true)
     try {
-      const payload = await createGift(nfTokenId, recipient, token)
+      const payload = await createGift(nfTokenId, recipient)
       setPhase({
         kind: 'active',
         payload,
@@ -132,12 +136,37 @@ export function GiftPanel({ token, onChanged }: { token: string; onChanged: () =
   async function accept(giftId: string) {
     setBusy(true)
     try {
-      const payload = await acceptGift(giftId, token)
+      const payload = await acceptGift(giftId)
       setPhase({ kind: 'active', payload, label: 'Accept this gift', state: null })
     } catch (err) {
       setPhase({
         kind: 'failed',
         reason: err instanceof ApiError ? err.message : 'Could not accept',
+      })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  /**
+   * Withdraw. If the offer is already on-ledger the server hands back a payload
+   * to sign; if nothing was ever signed it just comes back cancelled.
+   */
+  async function withdraw(giftId: string) {
+    setBusy(true)
+    try {
+      const result = await cancelGift(giftId)
+      if ('uuid' in result) {
+        setPhase({ kind: 'active', payload: result, label: 'Withdraw this gift', state: null })
+      } else {
+        setPhase({ kind: 'idle' })
+        void refresh()
+        onChanged()
+      }
+    } catch (err) {
+      setPhase({
+        kind: 'failed',
+        reason: err instanceof ApiError ? err.message : 'Could not withdraw',
       })
     } finally {
       setBusy(false)
@@ -169,6 +198,33 @@ export function GiftPanel({ token, onChanged }: { token: string; onChanged: () =
                 </div>
                 <Button size="sm" disabled={busy} onClick={() => void accept(g.giftId)}>
                   Accept
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {outgoing.length > 0 && phase.kind === 'idle' && (
+          <div className="space-y-2">
+            <div className="text-sm font-medium">Sent, not yet accepted</div>
+            {outgoing.map((g) => (
+              <div
+                key={g.giftId}
+                className="flex items-center justify-between gap-3 rounded-md border p-3"
+              >
+                <div className="min-w-0">
+                  <div className="truncate text-sm">{g.ticket.event.title}</div>
+                  <div className="text-muted-foreground text-xs">
+                    to {g.to} · {g.state.replace('_', ' ')}
+                  </div>
+                </div>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  disabled={busy}
+                  onClick={() => void withdraw(g.giftId)}
+                >
+                  Withdraw
                 </Button>
               </div>
             ))}
@@ -257,7 +313,8 @@ export function GiftPanel({ token, onChanged }: { token: string; onChanged: () =
                       accepting: 'Accepted — waiting for the ledger to validate…',
                       accepted: 'Done. The ticket has moved.',
                       declined: 'The recipient declined.',
-                      cancelled: 'The gift was cancelled.',
+                      cancelling: 'Withdrawing — waiting for the ledger to validate…',
+                      cancelled: 'The gift was withdrawn.',
                       expired: 'The gift expired.',
                       failed: phase.state.reason ?? 'The ledger rejected it.',
                     }[phase.state.state]

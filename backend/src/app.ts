@@ -1,5 +1,6 @@
 import express, { type NextFunction, type Request, type Response } from 'express'
 import cors from 'cors'
+import cookieParser from 'cookie-parser'
 import { env } from './env.js'
 import { healthRouter } from './routes/health.js'
 import { usersRouter } from './routes/users.js'
@@ -19,8 +20,12 @@ export function createApp() {
     typeof value === 'bigint' ? value.toString() : value,
   )
 
-  app.use(cors({ origin: env.CORS_ORIGIN }))
+  // `credentials` lets the session cookie ride cross-origin responses. It
+  // requires a specific origin — the spec forbids pairing it with `*`, which is
+  // why CORS_ORIGIN is a concrete value rather than a wildcard.
+  app.use(cors({ origin: env.CORS_ORIGIN, credentials: true }))
   app.use(express.json())
+  app.use(cookieParser())
 
   app.use('/api', healthRouter)
   app.use('/api', authRouter)

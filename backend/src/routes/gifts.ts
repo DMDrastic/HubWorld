@@ -23,6 +23,7 @@ import { issuesOf, usernameSchema } from '../schemas.js'
 import { requireAuth } from '../session.js'
 import {
   buildAcceptOfferTx,
+  buildCancelOfferTx,
   buildGiftOfferTx,
   holdsNft,
   offerIndexFromTx,
@@ -44,7 +45,7 @@ const NfTokenIdParams = z.object({
 const GiftBody = z.object({ to: usernameSchema })
 
 /** Live states — a ticket may only have one gift in flight at a time. */
-const IN_FLIGHT = ['PENDING_OFFER', 'OFFERED', 'ACCEPTING'] as const
+const IN_FLIGHT = ['PENDING_OFFER', 'OFFERED', 'ACCEPTING', 'CANCELLING'] as const
 
 /**
  * POST /api/tickets/:nfTokenId/gift
@@ -209,6 +210,72 @@ giftsRouter.post('/gifts/:id/accept', requireAuth, async (req, res) => {
 })
 
 /**
+ * POST /api/gifts/:id/cancel
+ * Sender-only withdrawal.
+ *
+ * Two cases, and they are genuinely different:
+ *   - not yet signed  → no ledger object exists, so this is a local flip
+ *   - already offered → an NFTokenOffer is live on-ledger and can only be
+ *                       removed by a signed NFTokenCancelOffer
+ *
+ * Once the recipient has signed their acceptance it is too late; the ledger
+ * decides that race, not us.
+ */
+giftsRouter.post('/gifts/:id/cancel', requireAuth, async (req, res) => {
+  const parsed = IdParams.safeParse(req.params)
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Invalid gift id', details: issuesOf(parsed.error) })
+    return
+  }
+
+  const gift = await prisma.gift.findUnique({ where: { id: parsed.data.id } })
+  if (!gift) {
+    res.status(404).json({ error: 'Gift not found' })
+    return
+  }
+  if (gift.fromId !== req.userId) {
+    res.status(403).json({ error: 'Only the sender can withdraw a gift' })
+    return
+  }
+
+  // Nothing on-ledger yet — withdrawing is just abandoning the payload.
+  if (gift.status === 'PENDING_OFFER') {
+    await prisma.gift.update({
+      where: { id: gift.id },
+      data: { status: 'CANCELLED', resolvedAt: new Date() },
+    })
+    res.json({ state: 'cancelled', giftId: gift.id })
+    return
+  }
+
+  if (gift.status !== 'OFFERED' || !gift.offerIndex) {
+    res.status(409).json({ error: `Gift is ${gift.status.toLowerCase()} and cannot be withdrawn` })
+    return
+  }
+
+  const payload = await xaman.createPayload(
+    buildCancelOfferTx({
+      ownerAddress: gift.fromAddress,
+      offerIndex: gift.offerIndex,
+    }) as unknown as Record<string, unknown>,
+    { expireMinutes: GIFT_TTL_MINUTES, forceNetwork: XAMAN_NETWORK },
+  )
+
+  await prisma.gift.update({
+    where: { id: gift.id },
+    data: { cancelPayloadUuid: payload.uuid },
+  })
+
+  res.status(201).json({
+    giftId: gift.id,
+    uuid: payload.uuid,
+    next: payload.next,
+    qrPng: payload.qrPng,
+    mode: xamanMode,
+  })
+})
+
+/**
  * GET /api/gifts/:id
  *
  * Poll target for both halves. Either party may poll; the state machine
@@ -324,6 +391,41 @@ giftsRouter.get('/gifts/:id', requireAuth, async (req, res) => {
     })
     res.json({ ...view(), state: 'offered' })
     return
+  }
+
+  // ---- withdrawal --------------------------------------------------------
+  // Only when the recipient has not started their half. If both have signed,
+  // fall through to the acceptance path and let the ledger settle the race —
+  // whichever transaction validates first wins, and we report what happened.
+  if (gift.cancelPayloadUuid && !gift.acceptPayloadUuid) {
+    const cancel = await xaman.getPayload(gift.cancelPayloadUuid)
+
+    if (cancel?.signed && cancel.txid) {
+      const ok = await txSucceeded(cancel.txid)
+      if (ok === null) {
+        await prisma.gift.update({
+          where: { id: gift.id },
+          data: { status: 'CANCELLING', cancelTxHash: cancel.txid },
+        })
+        res.json({ ...view(), state: 'cancelling' })
+        return
+      }
+      if (ok) {
+        await prisma.gift.update({
+          where: { id: gift.id },
+          data: { status: 'CANCELLED', cancelTxHash: cancel.txid, resolvedAt: new Date() },
+        })
+        res.json({ ...view(), state: 'cancelled' })
+        return
+      }
+      // The cancel itself failed — most likely the offer was already taken.
+      await prisma.gift.update({
+        where: { id: gift.id },
+        data: { cancelTxHash: cancel.txid, failureReason: 'The withdrawal was rejected' },
+      })
+    }
+    // Not signed yet: the offer is still live, so fall through and keep
+    // reporting `offered`.
   }
 
   // ---- phase 2: waiting on the recipient ---------------------------------

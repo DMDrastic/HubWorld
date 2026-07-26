@@ -258,6 +258,12 @@ model Gift {
   acceptPayloadUuid String? @unique
   acceptTxHash      String?
 
+  // Withdrawal — the sender changing their mind. Once the offer exists
+  // on-ledger it can only be removed by a signed NFTokenCancelOffer, so this
+  // needs its own payload rather than a local status flip.
+  cancelPayloadUuid String? @unique
+  cancelTxHash      String?
+
   failureReason String?
 
   createdAt  DateTime  @default(now())
@@ -276,6 +282,7 @@ enum GiftStatus {
   ACCEPTING // recipient signed, ledger result not yet confirmed
   ACCEPTED // ownership moved
   DECLINED // recipient refused
+  CANCELLING // sender signed a withdrawal, ledger result not yet confirmed
   CANCELLED // sender withdrew, or never signed
   EXPIRED
   FAILED // a signed transaction the ledger rejected

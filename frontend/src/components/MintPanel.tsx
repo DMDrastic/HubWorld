@@ -27,11 +27,9 @@ type Phase =
   | { kind: 'failed'; reason: string }
 
 export function MintPanel({
-  token,
   events,
   onMinted,
 }: {
-  token: string
   events: EventSummary[]
   onMinted: () => void
 }) {
@@ -51,7 +49,7 @@ export function MintPanel({
   async function start() {
     setBusy(true)
     try {
-      const payload = await createMint(slug, token, {
+      const payload = await createMint(slug, {
         seat: seat.trim() || undefined,
         tier: tier.trim() || undefined,
       })
@@ -77,7 +75,7 @@ export function MintPanel({
     const tick = async () => {
       if (stopped) return
       try {
-        const result = await pollMint(payload.uuid, token)
+        const result = await pollMint(payload.uuid)
         if (stopped) return
 
         switch (result.state) {
@@ -119,7 +117,7 @@ export function MintPanel({
       stopped = true
       window.clearTimeout(timer)
     }
-  }, [phase, token, onMinted])
+  }, [phase, onMinted])
 
   if (events.length === 0) {
     return (

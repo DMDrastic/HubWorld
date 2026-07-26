@@ -131,6 +131,12 @@ Hubworld out of the funds-custody path. Changing this changes who mints.
 | `GET /api/events/:slug` | event detail |
 | `POST /api/events/:slug/mint` | organizer-only; build an NFTokenMint → Xaman payload |
 | `GET /api/mint/:uuid` | poll → `pending` / `minted` / `rejected` / `expired` / `failed` |
+| `GET /api/tickets/mine?verify=` | inventory; `verify=true` reconciles against the ledger |
+| `POST /api/tickets/:nfTokenId/gift` | owner-only; zero-amount offer to an @handle |
+| `POST /api/gifts/:id/accept` | recipient-only; sign the acceptance |
+| `POST /api/gifts/:id/cancel` | sender-only; withdraw the offer |
+| `GET /api/gifts/:id` | poll the gift state machine |
+| `GET /api/gifts?role=incoming\|outgoing` | gifts awaiting me / sent by me |
 
 Errors are `{ error, details? }` with 400 for validation and 404 for missing.
 
@@ -157,9 +163,28 @@ signing. That endpoint is double-guarded (stub-mode only, and never when
 `NODE_ENV=production`); the server refuses to boot at all in stub mode under
 production. Going live is only setting the two env vars.
 
-Sessions are bearer tokens, SHA-256 hashed at rest, 7-day expiry. The frontend
-keeps the token in `localStorage`, which an XSS bug would leak — **switch to an
-httpOnly SameSite cookie before production.**
+## Sessions
+
+Session tokens are SHA-256 hashed at rest with a 7-day expiry, and are delivered
+to the browser as an **httpOnly `SameSite=Lax` cookie** (`hubworld_session`).
+`Secure` is set only when `NODE_ENV=production`, since it would make the cookie
+undeliverable over plain-HTTP localhost.
+
+The token is deliberately **not** returned in any response body. No script on
+the page can read it, so an XSS bug cannot exfiltrate a session the way reading
+`localStorage` could. "Am I signed in?" is answered by calling `/auth/me` and
+seeing whether it succeeds — the frontend holds no credential at all.
+
+`SameSite=Lax` is what closes the CSRF hole that cookie auth would otherwise
+open: the cookie is not sent on cross-site POSTs, and every mutation here is a
+POST. **That protection assumes the API is same-origin with the app.** In dev
+the Vite proxy guarantees it. If you ever deploy the two on different hosts,
+`Lax` will stop sending the cookie on XHR at all, and the fix is to put both
+behind one origin — not to switch to `SameSite=None`, which would reintroduce
+CSRF and require token defences.
+
+`Authorization: Bearer` is still accepted, for curl and scripts. That is not the
+risk being managed; the exposure was only ever JavaScript-readable storage.
 
 Not built: the Xaman webhook (polling is used instead, so no public tunnel is
 needed in dev), and any real XRPL transaction — no xrpl.js yet.
@@ -188,6 +213,29 @@ There is no event-creation API yet; organizers are onboarded by hand:
 ```sh
 npm run event:create -- --organizer <handle> --title "<title>" [--tickets 50]
 ```
+
+## Gifting
+
+XRPL has **no transfer transaction**, so a gift is two signatures on two
+devices:
+
+1. sender — `NFTokenCreateOffer`, `Amount: "0"`, `Destination` = recipient
+2. recipient — `NFTokenAcceptOffer` on the offer index
+
+Ownership does not move until the second one validates. `Destination` means the
+in-flight offer is claimable by nobody else. The offer index is assigned *by the
+ledger*, so it has to be read back out of the transaction metadata
+(`offerIndexFromTx`) — it is not in what we submitted.
+
+Withdrawal splits on whether anything reached the ledger: before the sender
+signs it is a local status flip, but once the offer exists it takes a signed
+`NFTokenCancelOffer`. If sender and recipient both sign, the ledger settles the
+race and the poll reports whichever won.
+
+**Ownership is re-read from the ledger before a gift starts** (`holdsNft`). If it
+disagrees with `Ticket.ownerAddress` the cache is cleared rather than trusted —
+the holder may have moved the ticket in Xaman without touching Hubworld.
+`GET /tickets/mine?verify=true` surfaces the same check per ticket as `onLedger`.
 
 ## Health check
 
