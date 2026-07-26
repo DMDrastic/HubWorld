@@ -177,6 +177,56 @@ export function simulateSign(uuid: string, outcome: 'sign' | 'reject' = 'sign') 
   )
 }
 
+// ------------------------------------------------------------------ mint --
+
+export const MintCreatedSchema = z.object({
+  uuid: z.string(),
+  next: z.string(),
+  qrPng: z.string(),
+  expiresAt: z.string(),
+  mode: z.enum(['live', 'stub']),
+})
+
+export const MintedTicketSchema = z.object({
+  id: z.string(),
+  nfTokenId: z.string(),
+  seat: z.string().nullable(),
+  tier: z.string().nullable(),
+  status: z.string(),
+  ownerAddress: z.string().nullable(),
+  event: z.object({ slug: z.string(), title: z.string() }),
+})
+
+export const MintPollSchema = z.discriminatedUnion('state', [
+  // `signed` marks the gap between a signature and ledger validation — the
+  // NFTokenID does not exist until the transaction is in a validated ledger.
+  z.object({ state: z.literal('pending'), signed: z.boolean().optional() }),
+  z.object({ state: z.literal('rejected') }),
+  z.object({ state: z.literal('expired') }),
+  z.object({ state: z.literal('failed'), reason: z.string() }),
+  z.object({ state: z.literal('minted'), ticket: MintedTicketSchema.nullable() }),
+])
+
+export type MintCreated = z.infer<typeof MintCreatedSchema>
+export type MintPoll = z.infer<typeof MintPollSchema>
+export type MintedTicket = z.infer<typeof MintedTicketSchema>
+
+export function createMint(
+  slug: string,
+  token: string,
+  body: { seat?: string; tier?: string } = {},
+): Promise<MintCreated> {
+  return request(`/events/${encodeURIComponent(slug)}/mint`, MintCreatedSchema, {
+    method: 'POST',
+    token,
+    body,
+  })
+}
+
+export function pollMint(uuid: string, token: string): Promise<MintPoll> {
+  return request(`/mint/${encodeURIComponent(uuid)}`, MintPollSchema, { token })
+}
+
 // Token storage. localStorage is readable by any script on the page, so an XSS
 // bug leaks the session. Acceptable for local dev; before production, move to
 // an httpOnly, SameSite cookie issued by the backend.

@@ -13,6 +13,7 @@ import {
   type User,
 } from '@/lib/api'
 import { SignIn } from '@/components/SignIn'
+import { MintPanel } from '@/components/MintPanel'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -168,6 +169,7 @@ export default function App() {
   const [health, setHealth] = useState<Health | null>(null)
   const [events, setEvents] = useState<EventSummary[]>([])
   const [me, setMe] = useState<User | null>(null)
+  const [token, setToken] = useState<string | null>(() => tokenStore.get())
   const [error, setError] = useState<string | null>(null)
 
   const load = useCallback(async () => {
@@ -189,6 +191,7 @@ export default function App() {
       setMe(await fetchMe(token))
     } catch {
       tokenStore.clear()
+      setToken(null)
     }
   }, [])
 
@@ -199,20 +202,32 @@ export default function App() {
 
   // Stable identity: SignIn's polling effect depends on this, and a new
   // function each render would restart the poll loop continuously.
-  const handleAuthenticated = useCallback((token: string, _user: AuthUser) => {
-    tokenStore.set(token)
+  const handleAuthenticated = useCallback((newToken: string, _user: AuthUser) => {
+    tokenStore.set(newToken)
+    setToken(newToken)
     // Re-fetch through /auth/me so the view uses one canonical shape.
-    void fetchMe(token)
+    void fetchMe(newToken)
       .then(setMe)
-      .catch(() => tokenStore.clear())
+      .catch(() => {
+        tokenStore.clear()
+        setToken(null)
+      })
   }, [])
 
   const handleSignOut = useCallback(async () => {
-    const token = tokenStore.get()
-    if (token) await signOut(token)
+    const current = tokenStore.get()
+    if (current) await signOut(current)
     tokenStore.clear()
+    setToken(null)
     setMe(null)
   }, [])
+
+  // A fresh mint changes both the event's minted count and the issuer's
+  // inventory. Stable identity — MintPanel's poll effect depends on it.
+  const handleMinted = useCallback(() => {
+    void load()
+    void restore()
+  }, [load, restore])
 
   return (
     <main className="mx-auto min-h-svh max-w-2xl space-y-6 p-6">
@@ -230,6 +245,14 @@ export default function App() {
         <Inventory me={me} onSignOut={() => void handleSignOut()} />
       ) : (
         <SignIn onAuthenticated={handleAuthenticated} />
+      )}
+
+      {me && token && (
+        <MintPanel
+          token={token}
+          events={events.filter((e) => e.organizer.username === me.username)}
+          onMinted={handleMinted}
+        />
       )}
 
       <HandleLookup />

@@ -77,6 +77,16 @@ No test runner is set up yet.
 - Postgres: Homebrew `postgresql@15` on `:5432`, database `hubworld_dev`.
   `postgresql@14` is also installed but stopped — both wanted `:5432` and `@14`
   crash-looped. Don't start it without moving it to another port first.
+- A **third** Postgres exists: an EnterpriseDB `.pkg` install at
+  `/Library/PostgreSQL/16`, running as user `postgres` on **:5434**. It does not
+  conflict, but `pgrep postgres` showing live processes does *not* mean `@15` is
+  up — check `:5432` specifically.
+- If `@15` starts "successfully" but nothing listens on `:5432`, look for
+  `lock file "postmaster.pid" already exists` in
+  `/opt/homebrew/var/log/postgresql@15.log`. After an unclean shutdown the PID
+  in that file gets recycled onto an unrelated process, so the hint names a live
+  PID that is not Postgres. **Verify with `ps -p <pid>` before deleting it** —
+  removing a live cluster's `postmaster.pid` corrupts data.
 - `backend/.env` is gitignored; `backend/.env.example` is the template.
 - Vite proxies `/api` to `localhost:4000` in dev, so the browser stays
   same-origin and CORS never fires. The `cors` middleware exists for deployed
@@ -119,6 +129,8 @@ Hubworld out of the funds-custody path. Changing this changes who mints.
 | `GET /api/users/:username` | @handle → XRPL address (accepts a leading `@`) |
 | `GET /api/events?status=&limit=` | event list |
 | `GET /api/events/:slug` | event detail |
+| `POST /api/events/:slug/mint` | organizer-only; build an NFTokenMint → Xaman payload |
+| `GET /api/mint/:uuid` | poll → `pending` / `minted` / `rejected` / `expired` / `failed` |
 
 Errors are `{ error, details? }` with 400 for validation and 404 for missing.
 
@@ -151,6 +163,31 @@ httpOnly SameSite cookie before production.**
 
 Not built: the Xaman webhook (polling is used instead, so no public tunnel is
 needed in dev), and any real XRPL transaction — no xrpl.js yet.
+
+## Minting
+
+The organizer is the issuer, so the organizer signs the `NFTokenMint` in Xaman —
+Hubworld only builds the transaction. `src/ledger.ts` constructs and reads;
+it signs nothing.
+
+Minting is **two-phase, and the split is not optional**: a signature is not a
+mint. The `NFTokenID` is derived by the ledger, so it does not exist until the
+transaction is in a validated ledger. `MintRequest` is what survives that gap —
+without it a signed mint whose poll never returned would be an NFT on-ledger
+with no Hubworld record. The poll reports `pending` with `signed: true` during
+that window.
+
+`Ticket` + the `MINT` `Transfer` are written in one `$transaction`, keyed on the
+unique `nfTokenId`, so a duplicate poll is a no-op rather than a second ticket.
+
+Payloads set `force_network` from `XRPL_NETWORK`. Without it a wallet set to
+mainnet would sign a testnet-intended mint against real funds.
+
+There is no event-creation API yet; organizers are onboarded by hand:
+
+```sh
+npm run event:create -- --organizer <handle> --title "<title>" [--tickets 50]
+```
 
 ## Health check
 

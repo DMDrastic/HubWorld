@@ -33,6 +33,7 @@ model User {
   bids            Bid[]
   sessions        Session[]
   signInRequests  SignInRequest[]
+  mintRequests    MintRequest[]
 
   @@index([xrplAddress])
 }
@@ -120,9 +121,60 @@ model Event {
   ticketCount Int         @default(0)
   status      EventStatus @default(DRAFT)
 
-  tickets Ticket[]
+  tickets      Ticket[]
+  mintRequests MintRequest[]
 
   @@index([status, startsAt])
+}
+
+/**
+ * One in-flight NFTokenMint awaiting the organizer's signature in Xaman.
+ *
+ * Minting is asynchronous and Hubworld never signs: we build the transaction,
+ * hand it to Xaman, and only learn the NFTokenID after the organizer signs and
+ * the ledger validates. This row is what survives that gap — without it a
+ * signed mint whose poll never came back would be an NFT on-ledger that
+ * Hubworld has no record of.
+ */
+model MintRequest {
+  id          String     @id @default(uuid())
+  payloadUuid String     @unique // Xaman payload UUID
+  status      MintStatus @default(PENDING)
+
+  eventId String
+  event   Event  @relation(fields: [eventId], references: [id])
+
+  // The organizer, who is also the NFT issuer under brokered mode.
+  requestedById String
+  requestedBy   User   @relation(fields: [requestedById], references: [id])
+
+  // Off-ledger ticket metadata, applied to the Ticket once the mint lands.
+  seat String?
+  tier String?
+
+  // Populated only after the ledger validates the transaction.
+  txHash     String?
+  nfTokenId  String?
+  ticketId   String? @unique
+  resolvedAt DateTime?
+
+  // Why a mint failed, for the organizer to act on.
+  failureReason String?
+
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+
+  @@index([status, expiresAt])
+  @@index([eventId, createdAt])
+}
+
+enum MintStatus {
+  PENDING
+  SIGNED // signed in Xaman, ledger result not yet confirmed
+  MINTED // validated on-ledger, Ticket row written
+  REJECTED
+  EXPIRED
+  FAILED // signed but the ledger rejected it
 }
 
 enum EventStatus {

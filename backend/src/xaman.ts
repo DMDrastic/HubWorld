@@ -39,10 +39,28 @@ export type PayloadStatus = {
   expired: boolean
   /** The r-address that signed, present only once signed. */
   account: string | null
+  /**
+   * Ledger transaction hash. Null for SignIn (a pseudo-transaction that is
+   * never submitted) and null until a real transaction has been dispatched.
+   */
+  txid: string | null
+}
+
+export type PayloadOptions = {
+  /** Minutes until Xaman expires the payload. */
+  expireMinutes?: number
+  /**
+   * Pins which network the payload may be signed on. Without it a user whose
+   * Xaman is set to mainnet would sign a testnet-intended mint against real
+   * funds. Always set this for anything that touches the ledger.
+   */
+  forceNetwork?: 'TESTNET' | 'DEVNET' | 'MAINNET'
 }
 
 export interface XamanClient {
   readonly mode: 'live' | 'stub'
+  /** Generic payload creation — any txjson, signed on the user's device. */
+  createPayload(txjson: Record<string, unknown>, opts?: PayloadOptions): Promise<CreatedPayload>
   createSignInPayload(): Promise<CreatedPayload>
   getPayload(uuid: string): Promise<PayloadStatus | null>
 }
@@ -60,13 +78,19 @@ class LiveXamanClient implements XamanClient {
     }
   }
 
-  async createSignInPayload(): Promise<CreatedPayload> {
+  async createPayload(
+    txjson: Record<string, unknown>,
+    opts: PayloadOptions = {},
+  ): Promise<CreatedPayload> {
     const res = await fetch(`${XAMAN_API}/payload`, {
       method: 'POST',
       headers: this.headers(),
       body: JSON.stringify({
-        txjson: { TransactionType: 'SignIn' },
-        options: { expire: SIGNIN_TTL_MINUTES },
+        txjson,
+        options: {
+          expire: opts.expireMinutes ?? SIGNIN_TTL_MINUTES,
+          ...(opts.forceNetwork ? { force_network: opts.forceNetwork } : {}),
+        },
       }),
     })
 
@@ -87,6 +111,12 @@ class LiveXamanClient implements XamanClient {
     return { uuid: body.uuid, next: body.next.always, qrPng: body.refs.qr_png }
   }
 
+  createSignInPayload(): Promise<CreatedPayload> {
+    // No force_network: SignIn is a pseudo-transaction, never submitted to any
+    // ledger, so pinning a network would only reject valid signers.
+    return this.createPayload({ TransactionType: 'SignIn' })
+  }
+
   async getPayload(uuid: string): Promise<PayloadStatus | null> {
     const res = await fetch(`${XAMAN_API}/payload/${uuid}`, { headers: this.headers() })
 
@@ -97,7 +127,7 @@ class LiveXamanClient implements XamanClient {
 
     const body = (await res.json()) as {
       meta?: { signed?: boolean; cancelled?: boolean; expired?: boolean }
-      response?: { account?: string | null }
+      response?: { account?: string | null; txid?: string | null }
     }
 
     return {
@@ -105,6 +135,7 @@ class LiveXamanClient implements XamanClient {
       cancelled: body.meta?.cancelled === true,
       expired: body.meta?.expired === true,
       account: body.response?.account ?? null,
+      txid: body.response?.txid ?? null,
     }
   }
 }
@@ -120,13 +151,14 @@ class StubXamanClient implements XamanClient {
   readonly mode = 'stub' as const
   private readonly payloads = new Map<string, PayloadStatus>()
 
-  async createSignInPayload(): Promise<CreatedPayload> {
+  async createPayload(): Promise<CreatedPayload> {
     const uuid = crypto.randomUUID()
     this.payloads.set(uuid, {
       signed: false,
       cancelled: false,
       expired: false,
       account: null,
+      txid: null,
     })
     return {
       uuid,
@@ -136,18 +168,33 @@ class StubXamanClient implements XamanClient {
     }
   }
 
+  createSignInPayload(): Promise<CreatedPayload> {
+    return this.createPayload()
+  }
+
   async getPayload(uuid: string): Promise<PayloadStatus | null> {
     return this.payloads.get(uuid) ?? null
   }
 
-  /** Dev-only: pretend the user signed (or rejected) in the Xaman app. */
-  simulate(uuid: string, account: string, outcome: 'sign' | 'reject'): boolean {
+  /**
+   * Dev-only: pretend the user signed (or rejected) in the Xaman app.
+   *
+   * `txid` is supplied by the caller because a stub cannot mint on a real
+   * ledger. Stub mints therefore never produce a genuine NFTokenID — the
+   * mint route treats a stub signature as un-verifiable and says so.
+   */
+  simulate(
+    uuid: string,
+    account: string,
+    outcome: 'sign' | 'reject',
+    txid: string | null = null,
+  ): boolean {
     const p = this.payloads.get(uuid)
     if (!p) return false
     if (outcome === 'reject') {
       this.payloads.set(uuid, { ...p, cancelled: true })
     } else {
-      this.payloads.set(uuid, { ...p, signed: true, account })
+      this.payloads.set(uuid, { ...p, signed: true, account, txid })
     }
     return true
   }
