@@ -10,6 +10,7 @@ import { mintRouter } from './routes/mint.js'
 import { giftsRouter } from './routes/gifts.js'
 import { ticketsRouter } from './routes/tickets.js'
 import { listingsRouter } from './routes/listings.js'
+import { auctionsRouter } from './routes/auctions.js'
 
 /** Codes that mean "the network was unreachable", not "the request was wrong". */
 const TRANSIENT_CODES = new Set([
@@ -68,6 +69,7 @@ export function createApp() {
   app.use('/api', giftsRouter)
   app.use('/api', ticketsRouter)
   app.use('/api', listingsRouter)
+  app.use('/api', auctionsRouter)
 
   app.use((_req, res) => {
     res.status(404).json({ error: 'Not found' })

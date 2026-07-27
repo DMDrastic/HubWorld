@@ -13,7 +13,7 @@
 import { describe, expect, it } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { BidChart } from '@/components/BidChart'
-import type { Auction, Bid } from '@/lib/mock-bids'
+import type { Auction, Bid } from '@/lib/api'
 
 const NOW = Date.UTC(2026, 6, 26, 12, 0, 0)
 const XRP = 1_000_000
@@ -31,9 +31,12 @@ function auction(bids: Bid[], reserveXrp = 12): Auction {
   return {
     id: 'a1',
     eventTitle: 'Neon Rooftop Session',
+    eventSlug: 'neon-rooftop-session',
+    state: 'live',
     startsAt: new Date(NOW - 60 * 60_000).toISOString(),
     endsAt: new Date(NOW + 20 * 60_000).toISOString(),
     reserveDrops: String(reserveXrp * XRP),
+    ticket: { nfTokenId: 'A'.repeat(64), seat: null, tier: 'deluxe' },
     bids,
   }
 }

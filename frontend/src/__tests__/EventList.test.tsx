@@ -11,7 +11,10 @@ import { render, screen } from '@testing-library/react'
 import { EventList } from '@/App'
 import type { EventSummary } from '@/lib/api'
 
-// 'peachs-castle-afterparty' is the slug wired up in lib/mock-bids.
+// Which slugs have a live auction now comes from GET /api/auctions, so the test
+// states it explicitly rather than depending on fixture data.
+const LIVE = new Set(['peachs-castle-afterparty'])
+
 function event(slug: string, title: string, status: EventSummary['status'] = 'PUBLISHED'): EventSummary {
   return {
     slug,
@@ -31,7 +34,7 @@ const WITHOUT = event('neon-district-launch', 'Neon District Launch')
 describe('EventList auction gating', () => {
   it('makes an event with a live auction activatable', () => {
     const onOpen = vi.fn()
-    render(<EventList events={[WITH_AUCTION]} onOpenAuction={onOpen} />)
+    render(<EventList events={[WITH_AUCTION]} auctionSlugs={LIVE} onOpenAuction={onOpen} />)
 
     const button = screen.getByRole('button', { name: /view live bidding for peach/i })
     button.click()
@@ -40,7 +43,7 @@ describe('EventList auction gating', () => {
 
   it('renders an event without an auction as a non-interactive row', () => {
     const onOpen = vi.fn()
-    render(<EventList events={[WITHOUT]} onOpenAuction={onOpen} />)
+    render(<EventList events={[WITHOUT]} auctionSlugs={LIVE} onOpenAuction={onOpen} />)
 
     // No button at all — nothing to click that would open an empty window.
     expect(screen.queryByRole('button')).toBeNull()
@@ -49,14 +52,24 @@ describe('EventList auction gating', () => {
   })
 
   it('marks only the auction event as live', () => {
-    render(<EventList events={[WITH_AUCTION, WITHOUT]} onOpenAuction={vi.fn()} />)
+    render(<EventList events={[WITH_AUCTION, WITHOUT]} auctionSlugs={LIVE} onOpenAuction={vi.fn()} />)
 
     expect(screen.getAllByText('auction live')).toHaveLength(1)
     expect(screen.getAllByRole('button')).toHaveLength(1)
   })
 
+  it('treats an empty auction set as no auctions anywhere', () => {
+    // Guards the failure mode where the auctions request fails and every event
+    // silently becomes clickable.
+    render(
+      <EventList events={[WITH_AUCTION, WITHOUT]} auctionSlugs={new Set()} onOpenAuction={vi.fn()} />,
+    )
+    expect(screen.queryByRole('button')).toBeNull()
+    expect(screen.queryByText('auction live')).toBeNull()
+  })
+
   it('still tells you to seed when there are no events', () => {
-    render(<EventList events={[]} onOpenAuction={vi.fn()} />)
+    render(<EventList events={[]} auctionSlugs={LIVE} onOpenAuction={vi.fn()} />)
     expect(screen.getByText(/db:seed/)).toBeTruthy()
   })
 })

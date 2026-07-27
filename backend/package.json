@@ -19,7 +19,8 @@
     "event:create": "tsx scripts/create-event.ts",
     "test": "vitest run",
     "test:watch": "vitest",
-    "platform:setup": "tsx scripts/setup-platform-account.ts"
+    "platform:setup": "tsx scripts/setup-platform-account.ts",
+    "auction:create": "tsx scripts/create-auction.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

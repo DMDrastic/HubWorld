@@ -37,8 +37,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import { dropsToXrp } from '@/lib/api'
-import type { Auction, Bid } from '@/lib/mock-bids'
+import { dropsToXrp, type Auction, type Bid } from '@/lib/api'
 
 /** A bid only counts toward price once its escrow exists on-ledger. */
 const FUNDED: ReadonlySet<Bid['status']> = new Set(['ESCROWED', 'OUTBID', 'WON'])

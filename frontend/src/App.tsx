@@ -1,6 +1,7 @@
 import { Suspense, lazy, useCallback, useEffect, useState } from 'react'
 import {
   ApiError,
+  fetchAuctions,
   fetchEvents,
   fetchHealth,
   fetchMe,
@@ -8,6 +9,7 @@ import {
   purgeLegacyToken,
   signOut,
   type AuthUser,
+  type AuctionSummary,
   type EventSummary,
   type Health,
   type User,
@@ -16,7 +18,6 @@ import { SignIn } from '@/components/SignIn'
 import { MintPanel } from '@/components/MintPanel'
 import { GiftPanel } from '@/components/GiftPanel'
 import { SellPanel } from '@/components/SellPanel'
-import { hasLiveAuction } from '@/lib/mock-bids'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -118,9 +119,12 @@ function HandleLookup() {
 
 export function EventList({
   events,
+  auctionSlugs,
   onOpenAuction,
 }: {
   events: EventSummary[]
+  /** Slugs with a live auction, from GET /api/auctions. */
+  auctionSlugs: ReadonlySet<string>
   onOpenAuction: (event: EventSummary) => void
 }) {
   if (events.length === 0) {
@@ -136,7 +140,7 @@ export function EventList({
       {events.map((e) => {
         // Only an event with a live auction is interactive. Everything else is
         // a plain row, so clicking never opens an empty window.
-        const live = hasLiveAuction(e.slug)
+        const live = auctionSlugs.has(e.slug)
 
         const body = (
           <div className="flex items-start justify-between gap-3">
@@ -224,12 +228,14 @@ export default function App() {
   const [error, setError] = useState<string | null>(null)
   // Which event's auction window is open, or null for none.
   const [auctionEvent, setAuctionEvent] = useState<EventSummary | null>(null)
+  const [auctions, setAuctions] = useState<AuctionSummary[]>([])
 
   const load = useCallback(async () => {
     try {
-      const [h, e] = await Promise.all([fetchHealth(), fetchEvents()])
+      const [h, e, a] = await Promise.all([fetchHealth(), fetchEvents(), fetchAuctions()])
       setHealth(h)
       setEvents(e)
+      setAuctions(a)
       setError(null)
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Unknown error')
@@ -308,7 +314,11 @@ export default function App() {
 
       <section className="space-y-3">
         <h2 className="text-lg font-medium">Events</h2>
-        <EventList events={events} onOpenAuction={setAuctionEvent} />
+        <EventList
+          events={events}
+          auctionSlugs={new Set(auctions.map((a) => a.eventSlug))}
+          onOpenAuction={setAuctionEvent}
+        />
       </section>
 
       {auctionEvent && (

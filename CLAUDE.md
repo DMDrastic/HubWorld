@@ -14,7 +14,11 @@ TypeScript end-to-end.
 
 **Ledger** — xrpl.js for XRPL interaction, Xaman for wallet signing.
 
-**Live bidding (later)** — Socket.IO for realtime transport, Recharts for bid visualizations. The auction backend is not built; do not scaffold ahead of it. The price tracker UI exists as a **preview only** (`BidChart` + `AuctionDialog`, driven by `lib/mock-bids.ts`) so the visual could be reviewed before escrow logic. `BidChart` takes real `Bid`-shaped data and should not change when the API lands; `mock-bids.ts` gets deleted then and `AuctionDialog` switches to fetch + subscribe.
+**Live bidding (partial)** — Recharts for bid visualisations; Socket.IO for realtime transport is **not** wired yet.
+
+The **read** half is built and runs on real data: `GET /api/events/:slug/auction` and `GET /api/auctions`, consumed by `BidChart` inside `AuctionDialog`. The dialog currently polls our own API every 5s, which is acceptable (the 429 that bit us was Xaman's limit, not ours) but should become a Socket.IO subscription — pushing a bid the instant it lands is the entire appeal.
+
+The **write** half — how a bid is committed on-ledger — is an open decision. See "Bidding: the escrow problem" below. `npm run auction:create` fabricates an auction with bid history for development; those Bid rows are display fixtures with nothing escrowed, and the script refuses to run in production.
 
 The auction lives in a dialog opened from an event row, **not** on the main page,
 and only events with a live auction are clickable — a control that opens an empty
@@ -119,6 +123,28 @@ It survived manual testing because the backend was driven with curl, which never
 ran the React loop. The double-invocation *is* the thing under test — these tests
 were confirmed to fail when that bug is reintroduced. Any new polling loop
 belongs under the same discipline.
+
+## Bidding: the escrow problem
+
+**Unresolved, and it needs deciding before the write half is built.**
+
+The model says bids are escrow-locked. The difficulty is that an XRPL `Escrow`
+releases XRP on a **time or crypto-condition trigger, with no knowledge of the
+NFT**. There is no way to make "pay the seller" and "transfer the ticket" one
+atomic operation via escrow, so a naive design can pay a seller whose ticket
+never moves, or move a ticket that never gets paid for. Tying release to a
+condition Hubworld holds the preimage for would work mechanically, but it makes
+us the arbiter of releasing funds — reintroducing exactly the custody role
+brokered mode was designed to avoid.
+
+`NFTokenCreateOffer` **is** atomic: `NFTokenAcceptOffer` moves the NFT and the XRP
+together, all-or-nothing, and it is already proven twice on testnet by gifting
+and resale. Its weakness is that a buy offer does not *lock* funds — a bidder can
+spend the money and acceptance then fails with `tecINSUFFICIENT_FUNDS`.
+
+So the real trade is **atomic settlement vs guaranteed funds**, and it cannot be
+had both ways without a hybrid (bid as a buy offer for atomicity, plus a small
+escrowed good-faith deposit forfeited if the winner fails to settle).
 
 ## Price tracker
 

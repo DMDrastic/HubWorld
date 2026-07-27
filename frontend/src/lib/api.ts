@@ -457,6 +457,69 @@ export function fetchMyListings(): Promise<Listing[]> {
   )
 }
 
+// --------------------------------------------------------------- auctions --
+
+/** Mirrors Prisma's BidStatus. Only funded statuses may set the price. */
+export const BidStatusSchema = z.enum([
+  'PENDING',
+  'ESCROWED',
+  'OUTBID',
+  'WON',
+  'REFUNDED',
+  'CANCELLED',
+])
+
+export const BidSchema = z.object({
+  id: z.string(),
+  /** Drops as a string — never parse into a JS number. */
+  amountDrops: z.string(),
+  placedAt: z.string(),
+  bidder: z.string(),
+  status: BidStatusSchema,
+})
+
+export const AuctionSchema = z.object({
+  id: z.string(),
+  eventTitle: z.string(),
+  eventSlug: z.string(),
+  state: z.string(),
+  startsAt: z.string(),
+  endsAt: z.string(),
+  reserveDrops: z.string(),
+  ticket: z.object({
+    nfTokenId: z.string(),
+    seat: z.string().nullable(),
+    tier: z.string().nullable(),
+  }),
+  bids: z.array(BidSchema),
+})
+
+export const AuctionSummarySchema = z.object({
+  id: z.string(),
+  eventSlug: z.string(),
+  eventTitle: z.string(),
+  state: z.string(),
+  endsAt: z.string(),
+  reserveDrops: z.string(),
+  topBidDrops: z.string(),
+  bidCount: z.number(),
+})
+
+export type Bid = z.infer<typeof BidSchema>
+export type Auction = z.infer<typeof AuctionSchema>
+export type AuctionSummary = z.infer<typeof AuctionSummarySchema>
+
+export function fetchAuction(slug: string): Promise<Auction> {
+  return request(`/events/${encodeURIComponent(slug)}/auction`, AuctionSchema)
+}
+
+/** Which events have a live auction, so a list can mark them in one request. */
+export function fetchAuctions(): Promise<AuctionSummary[]> {
+  return request('/auctions', z.object({ auctions: z.array(AuctionSummarySchema) })).then(
+    (r) => r.auctions,
+  )
+}
+
 // There is deliberately no token storage here.
 //
 // The session lives in an httpOnly SameSite=Lax cookie set by the backend, so
