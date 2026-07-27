@@ -21,8 +21,13 @@ const XAMAN_API = 'https://xumm.app/api/v1/platform'
  * `expiresAt`, so the two clocks agree. When they disagree, a signature that
  * Xaman still considers valid gets rejected locally — which is exactly the bug
  * that made the first live sign-in look like it had failed.
+ *
+ * Kept SHORT because an unresolved payload holds a slot against the account's
+ * open-payload cap until it expires. A QR is either scanned within a minute or
+ * abandoned, so ten minutes bought nothing and reclaimed slots three times more
+ * slowly than necessary.
  */
-export const SIGNIN_TTL_MINUTES = 10
+export const SIGNIN_TTL_MINUTES = 3
 
 export type CreatedPayload = {
   uuid: string
@@ -62,13 +67,17 @@ export class XamanRateLimited extends Error {
 }
 
 /**
- * The Xaman application has too many UNRESOLVED payloads open.
+ * The Xaman application has exhausted its payload quota.
  *
- * Every payload a user abandons — never scanned, or scanned and never signed —
- * stays open until it expires or is cancelled. Left alone they accumulate until
- * the account cannot create any more, which takes down sign-in for everyone.
- * Distinct from a rate limit: waiting does not help, something has to be
- * cancelled.
+ * Measured, after an initially wrong guess: the number in Xaman's message RISES
+ * as more payloads are created (67 -> 77), so it is a count of payloads created,
+ * not a cap on how many are open. Cancelling does NOT reclaim quota — DELETE on a
+ * resolved payload returns 404 and Xaman has already discarded it, yet it still
+ * counts.
+ *
+ * So this is not recoverable in code. It needs a higher application limit, or
+ * fresh credentials. What code CAN do is consume the quota more slowly, which is
+ * why sign-in reuses an outstanding payload instead of minting one per click.
  */
 export class XamanPayloadLimit extends Error {
   constructor(detail: string) {
@@ -112,6 +121,26 @@ class LiveXamanClient implements XamanClient {
   }
 
   async createPayload(
+    txjson: Record<string, unknown>,
+    opts: PayloadOptions = {},
+  ): Promise<CreatedPayload> {
+    try {
+      return await this.createOnce(txjson, opts)
+    } catch (err) {
+      if (!(err instanceof XamanPayloadLimit)) throw err
+
+      // Try reclaiming once. This is known NOT to help against a quota — the
+      // count only grows — but it costs one call and covers the case where the
+      // limit really is about open payloads on a differently-configured
+      // application. If nothing was freed, the error stands.
+      const { cancelAbandonedPayloads } = await import('./payload-store.js')
+      const freed = await cancelAbandonedPayloads(100, true)
+      if (freed === 0) throw err
+      return this.createOnce(txjson, opts)
+    }
+  }
+
+  private async createOnce(
     txjson: Record<string, unknown>,
     opts: PayloadOptions = {},
   ): Promise<CreatedPayload> {

@@ -474,17 +474,30 @@ sweep also reconciles any payload left non-terminal for over a minute.
 Configure in the Xaman console as
 `https://<host>/api/webhooks/xaman/<XAMAN_WEBHOOK_SECRET>`.
 
-**Xaman caps how many UNRESOLVED payloads an application may have open.** Every
-abandoned one — never scanned, or scanned and left — holds a slot until it
-expires or is cancelled. They accumulate, and once the cap is hit the account
-cannot create *any* payload: sign-in breaks for everyone, not just the person who
-abandoned one. This is not hypothetical; it happened here at 67 open payloads and
-presented as "internal server error" on the sign-in button.
+### The Xaman payload quota
 
-`cancelAbandonedPayloads` runs on the sweep and cancels payloads past their own
-local deadline, so nothing a user might still sign is taken away. Run it by hand
-with `npm run payloads:cancel`. A full account now answers 503 with a specific
-message rather than a 500 — it is an operational limit with a remedy, not a bug.
+**The developer application has a quota on payloads CREATED, and it cannot be
+reclaimed.** Measured after an initially wrong guess: the number in Xaman's
+error rises as more payloads are made (67 → 77), so it counts creations rather
+than open payloads. `DELETE` on a resolved payload returns 404 — Xaman has
+already discarded it — and it still counts against the total.
+
+So cancelling does not help, and no code change fixes an exhausted quota. It
+needs a higher application limit or fresh credentials. **This is the same
+application whose credentials still need rotating, so doing that solves both.**
+
+What code can do is spend the quota more slowly, which is now done:
+
+- `POST /auth/signin` **reuses an outstanding unsigned sign-in** rather than
+  minting one per click, tracked by a short-lived `hubworld_signin` cookie. Six
+  clicks used to cost six payloads.
+- `SIGNIN_TTL_MINUTES` is **3**, not 10. A QR is scanned within a minute or
+  abandoned, so a long TTL bought nothing.
+- `cancelAbandonedPayloads` still runs on the sweep as hygiene — an abandoned
+  payload scanned much later produces a signature for something the user has
+  moved on from — but it is NOT quota recovery.
+
+A quota error answers 503 with a specific message rather than a 500.
 
 ## Minting
 

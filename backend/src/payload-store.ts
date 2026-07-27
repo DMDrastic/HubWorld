@@ -169,18 +169,19 @@ export async function trackPayload(uuid: string): Promise<void> {
 /**
  * Cancel payloads nobody is going to sign.
  *
- * Xaman caps how many UNRESOLVED payloads an application may have open. Every
- * abandoned one — never scanned, or scanned and left — holds a slot until it
- * expires. They accumulate, and once the cap is hit the account cannot create
- * ANY payload, so sign-in breaks for everyone. That is not hypothetical: it
- * happened on this account at 67 open payloads.
+ * Hygiene, not quota recovery. Measured: Xaman's limit counts payloads CREATED,
+ * and cancelling does not give any of it back — see XamanPayloadLimit.
  *
- * Cancelling is therefore routine hygiene, not cleanup. Only payloads past their
- * own local deadline are touched, so nothing a user might still sign is taken
- * away from them.
+ * It is still worth doing. An abandoned payload that a user later scans produces
+ * a confusing signature for something they have moved on from, and cancelling
+ * closes that. Only payloads past their own local deadline are touched, so
+ * nothing anyone might still legitimately sign is taken away.
  */
-export async function cancelAbandonedPayloads(limit = 50): Promise<number> {
-  const now = new Date()
+export async function cancelAbandonedPayloads(limit = 50, force = false): Promise<number> {
+  // `force` ignores deadlines and reclaims everything unresolved. Reserved for
+  // the moment the account is actually full, where a stale QR someone might
+  // still scan is a far smaller cost than nobody being able to sign in at all.
+  const now = force ? new Date(Date.now() + 10 * 365 * 24 * 60 * 60_000) : new Date()
 
   // Every table that creates a payload knows when it stops being useful. A
   // payload is abandoned when its owner has already given up on it.

@@ -26,7 +26,32 @@ const UuidParams = z.object({ uuid: z.string().uuid() })
  * Creates a Xaman SignIn payload. The client renders `qrPng` and then polls
  * GET /api/auth/signin/:uuid until it resolves.
  */
-authRouter.post('/auth/signin', async (_req, res) => {
+/** Names the sign-in a client already has open, so clicking twice costs one slot. */
+const SIGNIN_COOKIE = 'hubworld_signin'
+
+authRouter.post('/auth/signin', async (req, res) => {
+  // Clicking "Sign in" repeatedly used to mint a payload each time, and every
+  // unresolved one holds a slot against Xaman's per-application cap until it
+  // expires. Six clicks was six slots. If this client already has one open and
+  // unsigned, hand back the same one.
+  const priorUuid = (req as typeof req & { cookies?: Record<string, string> }).cookies?.[
+    SIGNIN_COOKIE
+  ]
+  if (typeof priorUuid === 'string' && priorUuid.length > 0) {
+    const prior = await prisma.signInRequest.findUnique({ where: { payloadUuid: priorUuid } })
+    if (prior && prior.status === 'PENDING' && !prior.consumedAt && prior.expiresAt > new Date()) {
+      res.status(200).json({
+        uuid: prior.payloadUuid,
+        next: `https://xumm.app/sign/${prior.payloadUuid}`,
+        qrPng: `https://xumm.app/sign/${prior.payloadUuid}_q.png`,
+        expiresAt: prior.expiresAt.toISOString(),
+        mode: xamanMode,
+        reused: true,
+      })
+      return
+    }
+  }
+
   const payload = await xaman.createSignInPayload()
   // Registered before it can resolve, so a webhook callback finds it and
   // reconciliation can spot one whose callback never arrived.
@@ -35,6 +60,16 @@ authRouter.post('/auth/signin', async (_req, res) => {
 
   await prisma.signInRequest.create({
     data: { payloadUuid: payload.uuid, expiresAt },
+  })
+
+  // Remembered only so a repeat click can reuse it. Short-lived and harmless:
+  // it names a payload, and knowing a payload id grants nothing.
+  res.cookie(SIGNIN_COOKIE, payload.uuid, {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: env.NODE_ENV === 'production',
+    path: '/',
+    expires: expiresAt,
   })
 
   res.status(201).json({
