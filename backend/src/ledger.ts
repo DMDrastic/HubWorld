@@ -163,6 +163,27 @@ export function platformFeeDrops(priceDrops: bigint, platformBps: number): bigin
 }
 
 /**
+ * What a seller's sell offer must be set to when auctioning at `reserveDrops`.
+ *
+ * Measured on testnet: in brokered mode the seller receives
+ * `buyAmount - brokerFee`, **not** their asking amount — a sell offer of 5 XRP
+ * against a 20 XRP bid paid the seller 19.875. The sell offer is therefore a
+ * FLOOR, and the surplus reaches the seller, which is why an auction needs only
+ * one seller signature up front rather than one at close.
+ *
+ * The catch is that the ledger enforces `buy >= sell + brokerFee`. A sell offer
+ * placed at the reserve leaves no headroom for the fee, so a bid barely above the
+ * reserve fails with `tecINSUFFICIENT_FUNDS`. Dropping the offer by the fee-at-
+ * reserve makes every bid at or above the reserve settleable.
+ */
+export function auctionSellAmountDrops(reserveDrops: bigint, platformBps: number): bigint {
+  if (reserveDrops <= 0n) throw new Error('a reserve must be greater than zero')
+  const amount = reserveDrops - platformFeeDrops(reserveDrops, platformBps)
+  // Never below one drop: a zero-amount sell offer would be a gift.
+  return amount > 0n ? amount : 1n
+}
+
+/**
  * Build the seller's side: a sell offer for real money.
  *
  * `Destination` is set to the broker deliberately. Without it, any buyer could

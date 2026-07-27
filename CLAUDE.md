@@ -156,10 +156,27 @@ The compensating benefit is real: losing costs nothing, needs no refund, and
 requires no transaction from the loser. The originally planned "cancellation
 reaper" is not needed.
 
-**Still to build:** settlement at close. It needs the ticket holder's sell offer,
-and there is an unresolved question — when a winning bid exceeds the seller's
-sell-offer amount, who receives the surplus? That must be **measured on testnet**,
-not assumed, before settlement is written.
+### The surplus question, measured
+
+**The surplus goes to the seller.** Measured on testnet: a sell offer of 5 XRP
+matched against a 20 XRP bid with a 0.125 broker fee paid the seller **19.875** —
+that is `buyAmount - brokerFee`, not the asking amount. A sell offer is a
+**floor**, not a price.
+
+This is what makes the auction design workable: the seller commits **one** sell
+offer when the auction opens and never signs again. Settlement does not need the
+seller present at close.
+
+**But `buy >= sell + brokerFee` bites.** A sell offer placed *at* the reserve
+leaves no headroom for the fee, so a bid barely above the reserve dies with
+`tecINSUFFICIENT_FUNDS` — there is one such failure in the broker's history. The
+sell offer must therefore sit below the reserve by the fee-at-reserve, which is
+what `auctionSellAmountDrops` computes and `auction-settlement.test.ts` pins
+across the bid range and up to a 99.99% fee.
+
+**Still to build:** the settlement job itself — close the auction, pick the
+highest committed bid, re-check the winner's spendable balance, broker the match,
+mark the rest LOST, and write a `Transfer` of kind `AUCTION_SETTLE`.
 
 ## Price tracker
 
