@@ -12,7 +12,7 @@
  */
 import { prisma } from '../src/prisma.js'
 import { env } from '../src/env.js'
-import { brokerSale, ledger, platformAddress } from '../src/ledger.js'
+import { brokerSale, disconnectLedger, ledger, platformAddress } from '../src/ledger.js'
 
 function arg(name: string): string | undefined {
   const i = process.argv.indexOf(`--${name}`)
@@ -110,4 +110,9 @@ main()
     console.error(err)
     process.exit(1)
   })
-  .finally(() => prisma.$disconnect())
+  .finally(async () => {
+    // The XRPL websocket keeps the event loop alive; without closing it the
+    // script never exits and its output is never flushed.
+    await disconnectLedger()
+    await prisma.$disconnect()
+  })

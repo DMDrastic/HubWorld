@@ -174,9 +174,33 @@ sell offer must therefore sit below the reserve by the fee-at-reserve, which is
 what `auctionSellAmountDrops` computes and `auction-settlement.test.ts` pins
 across the bid range and up to a 99.99% fee.
 
+**`tecINSUFFICIENT_FUNDS` is NOT terminal, and treating it as such loses money.**
+Observed for real: a 100 XRP sale failed because the buyer was broke, was marked
+`FAILED`, and both offers stayed live on-ledger. The buyer was later paid by
+another sale and now has ample balance — so a settleable sale sits written off in
+our database while remaining matchable on the ledger. Settlement must retry or
+re-open rather than close the listing, and `ledger:sync` reports this case as
+`failed-but-retryable`.
+
 **Still to build:** the settlement job itself — close the auction, pick the
 highest committed bid, re-check the winner's spendable balance, broker the match,
 mark the rest LOST, and write a `Transfer` of kind `AUCTION_SETTLE`.
+
+## Reconciling with the ledger
+
+`npm run ledger:sync` walks the ledger and reports every disagreement with
+Postgres; `-- --apply` fixes them. **Dry run by default** — a reconciler that
+silently rewrites ownership is worse than the drift it corrects.
+
+It catches ticket-owner drift (including settlements done out-of-band), NFTs held
+with no `Ticket` row, tickets that left every known account, listings whose offer
+has been consumed while our status still says otherwise, and the
+`failed-but-retryable` case above.
+
+Any script that touches the ledger must `await disconnectLedger()` before exiting.
+The websocket keeps the event loop alive, so without it the script hangs forever
+and its output is never flushed — which looked exactly like a crash until it was
+traced.
 
 ## Price tracker
 

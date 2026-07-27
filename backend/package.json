@@ -21,7 +21,8 @@
     "test:watch": "vitest",
     "platform:setup": "tsx scripts/setup-platform-account.ts",
     "auction:create": "tsx scripts/create-auction.ts",
-    "broker:match": "tsx scripts/broker-match.ts"
+    "broker:match": "tsx scripts/broker-match.ts",
+    "ledger:sync": "tsx scripts/ledger-sync.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
