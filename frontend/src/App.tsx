@@ -327,6 +327,7 @@ export default function App() {
             slug={auctionEvent.slug}
             title={auctionEvent.title}
             open={true}
+            signedIn={me !== null}
             onOpenChange={(open) => {
               if (!open) setAuctionEvent(null)
             }}

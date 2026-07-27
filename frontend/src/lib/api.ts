@@ -521,6 +521,46 @@ export function fetchAuctions(): Promise<AuctionSummary[]> {
   )
 }
 
+export const BidCreatedSchema = z.object({
+  bidId: z.string(),
+  uuid: z.string(),
+  next: z.string(),
+  qrPng: z.string(),
+  mode: z.enum(['live', 'stub']),
+  amountDrops: z.string(),
+})
+
+export const BidStateSchema = z.object({
+  bidId: z.string(),
+  state: z.enum([
+    'pending',
+    'committed',
+    'outbid',
+    'won',
+    'lost',
+    'cancelled',
+    'failed',
+  ]),
+  amountDrops: z.string(),
+  bidder: z.string(),
+  signed: z.boolean().optional(),
+  reason: z.string().optional(),
+})
+
+export type BidCreated = z.infer<typeof BidCreatedSchema>
+export type BidState = z.infer<typeof BidStateSchema>
+
+export function placeBid(auctionId: string, amountDrops: string): Promise<BidCreated> {
+  return request(`/auctions/${encodeURIComponent(auctionId)}/bid`, BidCreatedSchema, {
+    method: 'POST',
+    body: { amountDrops },
+  })
+}
+
+export function pollBid(bidId: string): Promise<BidState> {
+  return request(`/bids/${encodeURIComponent(bidId)}`, BidStateSchema)
+}
+
 // There is deliberately no token storage here.
 //
 // The session lives in an httpOnly SameSite=Lax cookie set by the backend, so

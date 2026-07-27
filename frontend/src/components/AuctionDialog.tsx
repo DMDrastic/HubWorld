@@ -12,6 +12,7 @@
  */
 import { useCallback, useEffect, useState } from 'react'
 import { BidChart } from '@/components/BidChart'
+import { BidForm } from '@/components/BidForm'
 import { ApiError, fetchAuction, type Auction } from '@/lib/api'
 import { Badge } from '@/components/ui/badge'
 import {
@@ -28,11 +29,13 @@ export function AuctionDialog({
   slug,
   title,
   open,
+  signedIn,
   onOpenChange,
 }: {
   slug: string
   title: string
   open: boolean
+  signedIn: boolean
   onOpenChange: (open: boolean) => void
 }) {
   const [auction, setAuction] = useState<Auction | null>(null)
@@ -98,7 +101,12 @@ export function AuctionDialog({
         {error ? (
           <p className="text-destructive text-sm">{error}</p>
         ) : auction ? (
-          <BidChart auction={auction} now={now} />
+          <div className="space-y-4">
+            <BidChart auction={auction} now={now} />
+            {/* Bidding is only offered when signed in; the backend enforces it
+                regardless, this just avoids a pointless 401. */}
+            {signedIn && <BidForm auction={auction} onPlaced={load} />}
+          </div>
         ) : (
           <p className="text-muted-foreground text-sm">Loading…</p>
         )}
