@@ -591,6 +591,61 @@ export function pollBid(bidId: string): Promise<BidState> {
   return request(`/bids/${encodeURIComponent(bidId)}`, BidStateSchema)
 }
 
+// -------------------------------------------------------------- check-in --
+
+export const CheckInCreatedSchema = z.object({
+  checkInId: z.string(),
+  uuid: z.string(),
+  next: z.string(),
+  qrPng: z.string(),
+  expiresAt: z.string(),
+  mode: z.enum(['live', 'stub']),
+  event: z.object({ slug: z.string(), title: z.string() }),
+})
+
+export const CheckInStateSchema = z.object({
+  checkInId: z.string(),
+  state: z.enum(['pending', 'redeemed', 'rejected', 'expired', 'no_ticket', 'already_used']),
+  holder: z.string().nullable(),
+  ticket: z
+    .object({ seat: z.string().nullable(), tier: z.string().nullable(), nfTokenId: z.string() })
+    .nullable(),
+  reason: z.string().optional(),
+  redeemedAt: z.string().optional(),
+})
+
+export const DoorSchema = z.object({
+  event: z.object({ slug: z.string(), title: z.string() }),
+  admitted: z.number(),
+  issued: z.number(),
+  recent: z.array(
+    z.object({
+      holder: z.string().nullable(),
+      seat: z.string().nullable(),
+      tier: z.string().nullable(),
+      redeemedAt: z.string().nullable(),
+    }),
+  ),
+})
+
+export type CheckInCreated = z.infer<typeof CheckInCreatedSchema>
+export type CheckInState = z.infer<typeof CheckInStateSchema>
+export type Door = z.infer<typeof DoorSchema>
+
+export function startCheckIn(slug: string): Promise<CheckInCreated> {
+  return request(`/events/${encodeURIComponent(slug)}/checkin`, CheckInCreatedSchema, {
+    method: 'POST',
+  })
+}
+
+export function pollCheckIn(uuid: string): Promise<CheckInState> {
+  return request(`/checkin/${encodeURIComponent(uuid)}`, CheckInStateSchema)
+}
+
+export function fetchDoor(slug: string): Promise<Door> {
+  return request(`/events/${encodeURIComponent(slug)}/door`, DoorSchema)
+}
+
 // There is deliberately no token storage here.
 //
 // The session lives in an httpOnly SameSite=Lax cookie set by the backend, so

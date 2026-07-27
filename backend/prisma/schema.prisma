@@ -37,6 +37,8 @@ model User {
   mintRequests    MintRequest[]
   giftsSent       Gift[]          @relation("GiftSender")
   giftsReceived   Gift[]          @relation("GiftRecipient")
+  redemptions     Redemption[]    @relation("RedeemedHolder")
+  checkInsRun     Redemption[]    @relation("RedeemedByStaff")
 
   @@index([xrplAddress])
 }
@@ -126,6 +128,7 @@ model Event {
 
   tickets      Ticket[]
   mintRequests MintRequest[]
+  redemptions  Redemption[]
 
   @@index([status, startsAt])
 }
@@ -211,10 +214,11 @@ model Ticket {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  listings  Listing[]
-  auctions  Auction[]
-  transfers Transfer[]
-  gifts     Gift[]
+  listings    Listing[]
+  auctions    Auction[]
+  transfers   Transfer[]
+  gifts       Gift[]
+  redemptions Redemption[]
 
   @@index([eventId, status])
   @@index([ownerId])
@@ -295,6 +299,60 @@ enum TicketStatus {
   IN_AUCTION
   REDEEMED
   BURNED
+}
+
+/**
+ * One check-in at the door.
+ *
+ * A ticket is proved by a SIGNATURE, not by showing something. A displayed QR can
+ * be screenshotted and passed to a friend; a Xaman signature cannot, because it
+ * requires the holder's device and key at that moment.
+ *
+ * Check-in is therefore organizer-initiated: the door device creates the payload
+ * and the RESULT APPEARS THERE. If the attendee's phone showed the verdict, a
+ * screenshot of a green tick would be enough to get in.
+ *
+ * Signing alone is not sufficient either — it proves who they are, not what they
+ * hold. The ledger is re-read to confirm that address still holds a ticket for
+ * this event, because they may have sold or gifted it since.
+ */
+model Redemption {
+  id          String           @id @default(uuid())
+  payloadUuid String           @unique
+  status      RedemptionStatus @default(PENDING)
+
+  eventId String
+  event   Event  @relation(fields: [eventId], references: [id])
+
+  // Populated once a signature resolves to a holder with a valid ticket.
+  ticketId String?
+  ticket   Ticket? @relation(fields: [ticketId], references: [id])
+
+  resolvedAddress String?
+  holderId        String?
+  holder          User?   @relation("RedeemedHolder", fields: [holderId], references: [id])
+
+  /// Which staff account ran this check-in — an audit trail for door disputes.
+  staffId String
+  staff   User   @relation("RedeemedByStaff", fields: [staffId], references: [id])
+
+  failureReason String?
+
+  createdAt  DateTime  @default(now())
+  expiresAt  DateTime
+  redeemedAt DateTime?
+
+  @@index([eventId, status])
+  @@index([ticketId])
+}
+
+enum RedemptionStatus {
+  PENDING // waiting for the holder to sign at the door
+  REDEEMED // admitted
+  REJECTED // holder declined in Xaman
+  EXPIRED
+  NO_TICKET // signed, but holds no valid ticket for this event
+  ALREADY_USED // the ticket had already been redeemed
 }
 
 // ------------------------------------------------------- fixed-price sales --

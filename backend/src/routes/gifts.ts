@@ -109,6 +109,12 @@ giftsRouter.post('/tickets/:nfTokenId/gift', requireAuth, async (req, res) => {
     return
   }
 
+  if (ticket.status === 'REDEEMED') {
+    // Admission has already been used. The NFT still exists and can be moved in
+    // Xaman as a collectible, but Hubworld will not present it as a ticket.
+    res.status(409).json({ error: 'That ticket has already been checked in' })
+    return
+  }
   if (ticket.status === 'LISTED' || ticket.status === 'IN_AUCTION') {
     res.status(409).json({ error: `Cannot gift a ticket that is ${ticket.status.toLowerCase()}` })
     return

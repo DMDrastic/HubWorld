@@ -334,6 +334,14 @@ Hubworld out of the funds-custody path. Changing this changes who mints.
 | `POST /api/listings/:id/buy` | buyer bids price + platform fee |
 | `POST /api/listings/:id/cancel` | seller-only; withdraw |
 | `GET /api/listings/:id` | poll the three-phase sale |
+| `POST /api/tickets/:nfTokenId/auction` | holder-only; open an auction (one signature) |
+| `POST /api/auctions/:id/bid` | place a bid (a buy offer) |
+| `GET /api/bids/:id` | poll a bid to `committed` |
+| `GET /api/events/:slug/auction` | the live auction + bid history |
+| `GET /api/auctions` | events with a live auction |
+| `POST /api/events/:slug/checkin` | organizer-only; start a door check-in |
+| `GET /api/checkin/:uuid` | the verdict, on the staff device |
+| `GET /api/events/:slug/door` | admitted/issued counts + recent entries |
 
 Errors are `{ error, details? }` with 400 for validation and 404 for missing.
 
@@ -488,6 +496,34 @@ broker account must stay funded or sales stop settling.
 `platformFeeDrops` is frozen on the Listing at creation, so changing an event's
 `platformBps` later cannot alter terms a buyer has already been shown. Fee
 arithmetic floors, so rounding never favours the platform.
+
+## Check-in at the door
+
+`src/routes/redemption.ts`. This is what makes an NFT a ticket rather than a
+collectible.
+
+**Proof is a signature, not a display.** A QR on an attendee's phone can be
+screenshotted and forwarded; a Xaman signature cannot, because it needs their key
+at that moment. Check-in reuses the `SignIn` pseudo-transaction — no fee, no
+reserve, so an unfunded wallet can still be admitted.
+
+**Check-in is organizer-initiated and the verdict appears on the STAFF device.**
+If the attendee's screen showed "admitted", a screenshot of a green tick would be
+a ticket.
+
+**A signature proves who, not what.** The ledger is re-read (`holdsNft`) to
+confirm that address still holds a ticket for this event — the ownership column is
+a cache and they may have sold it since. If the ledger is unreachable the cached
+claim is accepted rather than turning away a real attendee on a network blip;
+the audit trail carries it.
+
+`already_used` and `no_ticket` are distinct verdicts on purpose. At a door those
+are different conversations — a duplicate versus a stranger — and collapsing them
+would make real double-entry invisible.
+
+**A `REDEEMED` ticket cannot be gifted, listed or auctioned.** Admission has been
+used, so passing it on would be passing on nothing. The NFT still exists and can
+be moved in Xaman as a collectible; Hubworld just stops presenting it as a ticket.
 
 ## Health check
 

@@ -103,6 +103,13 @@ openAuctionRouter.post('/tickets/:nfTokenId/auction', requireAuth, async (req, r
     return
   }
 
+  if (ticket.status === 'REDEEMED') {
+    res.status(409).json({
+      error: 'That ticket has already been checked in and cannot be auctioned',
+    })
+    return
+  }
+
   const [liveAuction, liveListing, liveGift] = await prisma.$transaction([
     prisma.auction.findFirst({
       where: { ticketId: ticket.id, status: { in: ['SCHEDULED', 'LIVE', 'SETTLING'] } },

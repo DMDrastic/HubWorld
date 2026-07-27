@@ -153,6 +153,13 @@ listingsRouter.post('/tickets/:nfTokenId/list', requireAuth, async (req, res) =>
     return
   }
 
+  if (ticket.status === 'REDEEMED') {
+    res.status(409).json({
+      error: 'That ticket has already been checked in and cannot be sold',
+    })
+    return
+  }
+
   const clash = await prisma.$transaction([
     prisma.listing.findFirst({
       where: { ticketId: ticket.id, status: { in: [...ON_LEDGER_STATES] } },
