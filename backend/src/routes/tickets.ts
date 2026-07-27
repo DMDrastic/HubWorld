@@ -12,6 +12,7 @@ import { prisma } from '../prisma.js'
 import { issuesOf } from '../schemas.js'
 import { requireAuth } from '../session.js'
 import { accountNfts } from '../ledger.js'
+import { canAuction } from '../auction-policy.js'
 
 export const ticketsRouter = Router()
 
@@ -37,10 +38,27 @@ ticketsRouter.get('/tickets/mine', requireAuth, async (req, res) => {
 
   const tickets = await prisma.ticket.findMany({
     where: { ownerId: me.id },
-    include: { event: { select: { slug: true, title: true, startsAt: true } } },
+    include: {
+      event: { select: { id: true, slug: true, title: true, startsAt: true, organizerId: true } },
+    },
     orderBy: { createdAt: 'desc' },
     take: 200,
   })
+
+  // Auction eligibility per event, so the UI can explain WHY rather than
+  // offering a control that 409s. Computed once per event, not per ticket.
+  const eligibility = new Map<string, Awaited<ReturnType<typeof canAuction>>>()
+  for (const t of tickets) {
+    if (eligibility.has(t.event.id)) continue
+    eligibility.set(
+      t.event.id,
+      await canAuction({
+        eventId: t.event.id,
+        organizerId: t.event.organizerId,
+        holderId: me.id,
+      }),
+    )
+  }
 
   let heldOnLedger: Set<string> | null = null
   if (parsed.data.verify === 'true') {
@@ -71,6 +89,11 @@ ticketsRouter.get('/tickets/mine', requireAuth, async (req, res) => {
         title: t.event.title,
         startsAt: t.event.startsAt.toISOString(),
       },
+      canAuction: eligibility.get(t.event.id)?.allowed ?? false,
+      auctionBlockedReason:
+        eligibility.get(t.event.id)?.allowed === false
+          ? (eligibility.get(t.event.id) as { reason: string }).reason
+          : null,
     })),
   })
 })

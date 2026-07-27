@@ -17,6 +17,10 @@
  * purchase: its amount is the auction FLOOR, so buying it outright would take the
  * ticket for the reserve and bypass the bidding entirely. `Listing.auctionId` is
  * what marks it, and both `GET /listings` and `POST /listings/:id/buy` exclude it.
+ *
+ * Auctions are gated on scarcity — a sold-out event, and a holder who is not the
+ * organizer. See `auction-policy.ts` for why that is derived rather than read
+ * from `Event.status`.
  */
 import { Router } from 'express'
 import { z } from 'zod'
@@ -26,6 +30,7 @@ import { xaman } from '../xaman.js'
 import { trackPayload } from '../payload-store.js'
 import { issuesOf } from '../schemas.js'
 import { requireAuth } from '../session.js'
+import { canAuction } from '../auction-policy.js'
 import {
   auctionSellAmountDrops,
   buildSellOfferTx,
@@ -108,6 +113,19 @@ openAuctionRouter.post('/tickets/:nfTokenId/auction', requireAuth, async (req, r
     res.status(409).json({
       error: 'That ticket has already been checked in and cannot be auctioned',
     })
+    return
+  }
+
+  // Auctions are the secondary market for a sold-out event. Before that, the
+  // organizer still has inventory at face value and an auction would just be
+  // bidding against a price anyone can pay.
+  const eligible = await canAuction({
+    eventId: ticket.eventId,
+    organizerId: ticket.event.organizerId,
+    holderId: me.id,
+  })
+  if (!eligible.allowed) {
+    res.status(409).json({ error: eligible.reason, ...(eligible.detail ?? {}) })
     return
   }
 

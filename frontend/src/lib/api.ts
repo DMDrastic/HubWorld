@@ -249,6 +249,9 @@ export const OwnedTicketSchema = z.object({
   // null when unverified; false means the ledger disagrees with our cache.
   onLedger: z.boolean().nullable(),
   event: z.object({ slug: z.string(), title: z.string(), startsAt: z.string() }),
+  /** Auctions are secondary-market only: sold-out events, non-organizer holders. */
+  canAuction: z.boolean(),
+  auctionBlockedReason: z.string().nullable(),
 })
 
 export const InventorySchema = z.object({

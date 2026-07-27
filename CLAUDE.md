@@ -183,6 +183,29 @@ our database while remaining matchable on the ledger. Settlement must retry or
 re-open rather than close the listing, and `ledger:sync` reports this case as
 `failed-but-retryable`.
 
+### When an auction is allowed
+
+Auctions are the **secondary market for scarcity**, so `src/auction-policy.ts`
+gates them on two rules:
+
+1. **The event must be sold out** — every promised ticket issued AND none still
+   held by the organizer. Both halves matter: 10 minted with 4 unsold is not sold
+   out, because buyers can still pay face value and there is nothing scarce to
+   bid over.
+2. **The organizer cannot auction their own allocation.** That is the primary
+   sale at the price they set; an organizer auctioning their own stock is an
+   organizer bidding up their own event.
+
+**Sold out is derived, never read from `Event.status`.** That field is settable
+and was demonstrably wrong — seeded `peachs-castle-afterparty` claimed SOLD_OUT
+with zero tickets minted. Gating a market on a field anyone can set would let an
+organizer open auctions on an event that never sold anything. `evaluateSoldOut`
+counts the facts and corrects the status to match, so the enum stays honest
+rather than becoming a second source of truth.
+
+`GET /tickets/mine` returns `canAuction` and `auctionBlockedReason` per ticket, so
+the UI explains *why* instead of offering a control that 409s.
+
 ### Opening an auction
 
 `POST /api/tickets/:nfTokenId/auction` — holder-only, **one signature**. It

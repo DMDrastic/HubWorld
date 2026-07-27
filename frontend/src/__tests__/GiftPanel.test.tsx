@@ -36,6 +36,8 @@ const INVENTORY = {
         title: 'Neon Rooftop Session',
         startsAt: new Date(Date.now() + 86_400_000).toISOString(),
       },
+      canAuction: false,
+      auctionBlockedReason: 'This event is not sold out yet — 3 of 10 tickets issued.',
     },
   ],
 }

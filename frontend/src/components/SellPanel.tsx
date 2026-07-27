@@ -90,6 +90,17 @@ export function SellPanel({ onChanged }: { onChanged: () => void }) {
     void refresh()
   }, [refresh])
 
+  // Eligibility belongs to the SELECTED ticket, since it depends on that
+  // ticket's event and holder.
+  const selected = tickets.find((t) => t.nfTokenId === nfTokenId) ?? null
+  const auctionAllowed = selected?.canAuction ?? false
+
+  // Selecting a ticket that cannot be auctioned must not strand the form in
+  // auction mode, or the user submits something the server will refuse.
+  useEffect(() => {
+    if (mode === 'auction' && selected && !auctionAllowed) setMode('sell')
+  }, [mode, selected, auctionAllowed])
+
   const activeId = phase.kind === 'active' ? phase.listingId : null
 
   // Keyed on a primitive, and the polled state lives outside `phase` — putting
@@ -289,13 +300,15 @@ export function SellPanel({ onChanged }: { onChanged: () => void }) {
                 <div className="text-sm font-medium">
                   {mode === 'sell' ? 'Sell a ticket' : 'Auction a ticket'}
                 </div>
-                <button
-                  type="button"
-                  className="text-muted-foreground hover:text-foreground text-xs underline"
-                  onClick={() => setMode(mode === 'sell' ? 'auction' : 'sell')}
-                >
-                  {mode === 'sell' ? 'auction instead' : 'sell at a fixed price instead'}
-                </button>
+                {(auctionAllowed || mode === 'auction') && (
+                  <button
+                    type="button"
+                    className="text-muted-foreground hover:text-foreground text-xs underline"
+                    onClick={() => setMode(mode === 'sell' ? 'auction' : 'sell')}
+                  >
+                    {mode === 'sell' ? 'auction instead' : 'sell at a fixed price instead'}
+                  </button>
+                )}
               </div>
               {tickets.length === 0 ? (
                 <p className="text-muted-foreground text-sm">
@@ -340,6 +353,11 @@ export function SellPanel({ onChanged }: { onChanged: () => void }) {
                       {busy ? '…' : mode === 'sell' ? 'List' : 'Open'}
                     </Button>
                   </div>
+                  {mode === 'sell' && selected?.auctionBlockedReason && (
+                    <p className="text-muted-foreground text-xs">
+                      {selected.auctionBlockedReason}
+                    </p>
+                  )}
                   {mode === 'auction' && (
                     <p className="text-muted-foreground text-xs">
                       One signature opens the auction and places your sell offer. The reserve is
