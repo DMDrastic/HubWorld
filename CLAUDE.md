@@ -403,6 +403,10 @@ Hubworld out of the funds-custody path. Changing this changes who mints.
 | `POST /api/events/:slug/checkin` | organizer-only; start a door check-in |
 | `GET /api/checkin/:uuid` | the verdict, on the staff device |
 | `GET /api/events/:slug/door` | admitted/issued counts + recent entries |
+| `GET /api/door/events` | events I may work the door for |
+| `GET /api/events/:slug/staff` | organizer-only; who is on the door |
+| `POST /api/events/:slug/staff` | organizer-only; add door staff |
+| `POST /api/events/:slug/staff/remove` | organizer-only; revoke door staff |
 
 Errors are `{ error, details? }` with 400 for validation and 404 for missing.
 
@@ -621,7 +625,23 @@ screenshotted and forwarded; a Xaman signature cannot, because it needs their ke
 at that moment. Check-in reuses the `SignIn` pseudo-transaction — no fee, no
 reserve, so an unfunded wallet can still be admitted.
 
-**Check-in is organizer-initiated and the verdict appears on the STAFF device.**
+**Door access is per event, not the organizer role** (`src/door-access.ts`).
+Checking people in and issuing tickets are very different powers, and they used
+to be the same one. A door needs volunteers, and granting each of them ORGANIZER
+would hand over minting, event creation and auctions so somebody can scan QRs for
+an evening.
+
+`EventStaff` grants one person the door of one event, revocable, with an audit
+trail — revoked rather than deleted, because a disputed check-in is exactly when
+you need to know who had access and when it ended. Only the organizer manages the
+list: letting staff add staff means one compromised volunteer account can widen
+access indefinitely. Admins can work any door, since they arbitrate disputes and
+cannot depend on the organizer's cooperation.
+
+`GET /door/events` exists because a volunteer is a plain `USER`, so the UI cannot
+tell from the role alone whether to show them a door.
+
+**Check-in is staff-initiated and the verdict appears on the STAFF device.**
 If the attendee's screen showed "admitted", a screenshot of a green tick would be
 a ticket.
 

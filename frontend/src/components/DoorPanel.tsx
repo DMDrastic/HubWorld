@@ -11,17 +11,22 @@
  */
 import { useCallback, useEffect, useState } from 'react'
 import {
+  addStaff,
   ApiError,
   fetchDoor,
+  fetchDoorEvents,
+  fetchStaff,
+  removeStaff,
   pollCheckIn,
   startCheckIn,
   type CheckInCreated,
   type CheckInState,
   type Door,
-  type EventSummary,
+  type DoorEvent,
 } from '@/lib/api'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import {
   Card,
   CardContent,
@@ -58,16 +63,28 @@ const VERDICT: Record<
   expired: { label: 'Expired', detail: 'Took too long — start another.', tone: 'bad' },
 }
 
-export function DoorPanel({ events }: { events: EventSummary[] }) {
-  const [slug, setSlug] = useState(events[0]?.slug ?? '')
+export function DoorPanel() {
+  // Fetched here rather than passed in: door access is per event and a
+  // volunteer is a plain USER, so the caller cannot know from the role alone.
+  const [events, setEvents] = useState<DoorEvent[]>([])
+  const [slug, setSlug] = useState('')
   const [phase, setPhase] = useState<Phase>({ kind: 'idle' })
   const [result, setResult] = useState<CheckInState | null>(null)
   const [door, setDoor] = useState<Door | null>(null)
   const [busy, setBusy] = useState(false)
+  // Staff management is organizer-only; the request simply 403s for staff, and
+  // the section stays hidden.
+  const [staff, setStaff] = useState<Array<{ username: string }> | null>(null)
+  const [newStaff, setNewStaff] = useState('')
 
   useEffect(() => {
-    if (events.length > 0 && !events.some((e) => e.slug === slug)) setSlug(events[0]!.slug)
-  }, [events, slug])
+    void fetchDoorEvents()
+      .then((list) => {
+        setEvents(list)
+        setSlug((cur) => (cur && list.some((e) => e.slug === cur) ? cur : (list[0]?.slug ?? '')))
+      })
+      .catch(() => setEvents([]))
+  }, [])
 
   const loadDoor = useCallback(async () => {
     if (!slug) return
@@ -78,9 +95,20 @@ export function DoorPanel({ events }: { events: EventSummary[] }) {
     }
   }, [slug])
 
+  const loadStaff = useCallback(async () => {
+    if (!slug) return
+    try {
+      setStaff(await fetchStaff(slug))
+    } catch {
+      // 403 for a staff member rather than the organizer — hide the section.
+      setStaff(null)
+    }
+  }, [slug])
+
   useEffect(() => {
     void loadDoor()
-  }, [loadDoor])
+    void loadStaff()
+  }, [loadDoor, loadStaff])
 
   // Keyed on the payload uuid, not the polled result — the dependency mistake
   // that turned GiftPanel's poll into a request loop.
@@ -139,7 +167,7 @@ export function DoorPanel({ events }: { events: EventSummary[] }) {
         <CardHeader>
           <CardTitle>Door</CardTitle>
           <CardDescription>
-            You don't organize any events, so there's no door to run.
+            You're not on the door for any event.
           </CardDescription>
         </CardHeader>
       </Card>
@@ -189,6 +217,57 @@ export function DoorPanel({ events }: { events: EventSummary[] }) {
             <Button onClick={() => void scan()} disabled={busy || !slug} className="w-full">
               {busy ? 'Preparing…' : 'Check someone in'}
             </Button>
+
+            {staff !== null && (
+              <div className="space-y-2 border-t pt-3">
+                <div className="text-muted-foreground text-xs">
+                  Door staff — can check people in, nothing else
+                </div>
+                {staff.map((m) => (
+                  <div key={m.username} className="flex items-center justify-between text-xs">
+                    <span>{m.username}</span>
+                    <button
+                      type="button"
+                      className="text-muted-foreground hover:text-destructive underline"
+                      onClick={async () => {
+                        await removeStaff(slug, m.username)
+                        void loadStaff()
+                      }}
+                    >
+                      remove
+                    </button>
+                  </div>
+                ))}
+                <div className="flex gap-2">
+                  <Input
+                    value={newStaff}
+                    onChange={(e) => setNewStaff(e.target.value)}
+                    placeholder="@handle"
+                    aria-label="add door staff"
+                    className="h-8 text-xs"
+                  />
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    disabled={busy || !newStaff.trim()}
+                    onClick={async () => {
+                      setBusy(true)
+                      try {
+                        await addStaff(slug, newStaff)
+                        setNewStaff('')
+                        void loadStaff()
+                      } catch {
+                        // Surfaced by the list not changing.
+                      } finally {
+                        setBusy(false)
+                      }
+                    }}
+                  >
+                    Add
+                  </Button>
+                </div>
+              </div>
+            )}
 
             {door && door.recent.length > 0 && (
               <div className="space-y-1 pt-2">

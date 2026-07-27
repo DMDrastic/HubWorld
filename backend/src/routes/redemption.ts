@@ -28,8 +28,11 @@ import { xamanMode } from '../env.js'
 import { tryGetPayload, xaman, SIGNIN_TTL_MINUTES } from '../xaman.js'
 import { trackPayload } from '../payload-store.js'
 import { issuesOf, slugSchema } from '../schemas.js'
-import { requireAuth, requireOrganizer } from '../session.js'
+import { requireAuth } from '../session.js'
+import { checkDoorAccess } from '../door-access.js'
 import { holdsNft } from '../ledger.js'
+import { addStaff, revokeStaff } from '../door-access.js'
+import { usernameSchema } from '../schemas.js'
 
 export const redemptionRouter = Router()
 
@@ -44,7 +47,7 @@ const UuidParams = z.object({ uuid: z.string().uuid() })
  * POST /api/events/:slug/checkin
  * Organizer-only. Creates the payload the attendee signs.
  */
-redemptionRouter.post('/events/:slug/checkin', requireAuth, requireOrganizer, async (req, res) => {
+redemptionRouter.post('/events/:slug/checkin', requireAuth, async (req, res) => {
   const parsed = SlugParams.safeParse(req.params)
   if (!parsed.success) {
     res.status(400).json({ error: 'Invalid event slug', details: issuesOf(parsed.error) })
@@ -56,10 +59,16 @@ redemptionRouter.post('/events/:slug/checkin', requireAuth, requireOrganizer, as
     res.status(404).json({ error: 'Event not found' })
     return
   }
-  // Only the organizer runs their own door. Anyone else could otherwise burn
-  // through attendees' tickets.
-  if (event.organizerId !== req.userId) {
-    res.status(403).json({ error: 'Only the event organizer can check people in' })
+  // Per-event door access rather than the organizer role: a volunteer scanning
+  // QRs for one night should not also be able to mint tickets.
+  const access = await checkDoorAccess({
+    eventId: event.id,
+    organizerId: event.organizerId,
+    userId: req.userId!,
+    role: req.userRole,
+  })
+  if (!access.allowed) {
+    res.status(403).json({ error: access.reason })
     return
   }
   if (event.status === 'CANCELLED') {
@@ -118,6 +127,8 @@ redemptionRouter.get('/checkin/:uuid', requireAuth, async (req, res) => {
     res.status(404).json({ error: 'Unknown check-in' })
     return
   }
+  // The verdict belongs to whoever started that check-in. Another staff member
+  // polling someone else's scan would show a verdict on the wrong screen.
   if (redemption.staffId !== req.userId) {
     res.status(403).json({ error: 'Not your check-in' })
     return
@@ -280,7 +291,7 @@ redemptionRouter.get('/checkin/:uuid', requireAuth, async (req, res) => {
 /**
  * GET /api/events/:slug/door — how the door is going.
  */
-redemptionRouter.get('/events/:slug/door', requireAuth, requireOrganizer, async (req, res) => {
+redemptionRouter.get('/events/:slug/door', requireAuth, async (req, res) => {
   const parsed = SlugParams.safeParse(req.params)
   if (!parsed.success) {
     res.status(400).json({ error: 'Invalid event slug', details: issuesOf(parsed.error) })
@@ -295,8 +306,14 @@ redemptionRouter.get('/events/:slug/door', requireAuth, requireOrganizer, async 
     res.status(404).json({ error: 'Event not found' })
     return
   }
-  if (event.organizerId !== req.userId) {
-    res.status(403).json({ error: 'Only the event organizer can see the door' })
+  const access = await checkDoorAccess({
+    eventId: event.id,
+    organizerId: event.organizerId,
+    userId: req.userId!,
+    role: req.userRole,
+  })
+  if (!access.allowed) {
+    res.status(403).json({ error: access.reason })
     return
   }
 
@@ -324,4 +341,132 @@ redemptionRouter.get('/events/:slug/door', requireAuth, requireOrganizer, async 
       redeemedAt: r.redeemedAt?.toISOString() ?? null,
     })),
   })
+})
+
+// ------------------------------------------------------------- door staff --
+
+const StaffBody = z.object({ username: usernameSchema })
+
+/**
+ * POST /api/events/:slug/staff — organizer-only.
+ *
+ * Deliberately NOT open to existing staff: letting door staff add more door
+ * staff means one compromised volunteer account can quietly widen access to an
+ * event indefinitely.
+ */
+redemptionRouter.post('/events/:slug/staff', requireAuth, async (req, res) => {
+  const parsed = SlugParams.safeParse(req.params)
+  const body = StaffBody.safeParse(req.body ?? {})
+  if (!parsed.success || !body.success) {
+    res.status(400).json({ error: 'Invalid request' })
+    return
+  }
+
+  const event = await prisma.event.findUnique({ where: { slug: parsed.data.slug } })
+  if (!event) {
+    res.status(404).json({ error: 'Event not found' })
+    return
+  }
+  if (event.organizerId !== req.userId) {
+    res.status(403).json({ error: 'Only the organizer can manage door staff' })
+    return
+  }
+
+  const user = await prisma.user.findUnique({ where: { username: body.data.username } })
+  if (!user) {
+    res.status(404).json({ error: `No Hubworld account for @${body.data.username}` })
+    return
+  }
+  if (user.id === event.organizerId) {
+    res.status(400).json({ error: 'You already run this door' })
+    return
+  }
+
+  await addStaff({ eventId: event.id, userId: user.id, addedById: req.userId! })
+  res.status(201).json({ staff: `@${user.username}`, event: event.slug })
+})
+
+/** DELETE-by-POST so the browser form path stays simple. Organizer-only. */
+redemptionRouter.post('/events/:slug/staff/remove', requireAuth, async (req, res) => {
+  const parsed = SlugParams.safeParse(req.params)
+  const body = StaffBody.safeParse(req.body ?? {})
+  if (!parsed.success || !body.success) {
+    res.status(400).json({ error: 'Invalid request' })
+    return
+  }
+
+  const event = await prisma.event.findUnique({ where: { slug: parsed.data.slug } })
+  if (!event) {
+    res.status(404).json({ error: 'Event not found' })
+    return
+  }
+  if (event.organizerId !== req.userId) {
+    res.status(403).json({ error: 'Only the organizer can manage door staff' })
+    return
+  }
+
+  const user = await prisma.user.findUnique({ where: { username: body.data.username } })
+  if (!user) {
+    res.status(404).json({ error: 'No such account' })
+    return
+  }
+
+  await revokeStaff(event.id, user.id)
+  res.json({ removed: `@${user.username}` })
+})
+
+/** GET /api/events/:slug/staff — who is on the door. Organizer-only. */
+redemptionRouter.get('/events/:slug/staff', requireAuth, async (req, res) => {
+  const parsed = SlugParams.safeParse(req.params)
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Invalid event slug' })
+    return
+  }
+
+  const event = await prisma.event.findUnique({ where: { slug: parsed.data.slug } })
+  if (!event) {
+    res.status(404).json({ error: 'Event not found' })
+    return
+  }
+  if (event.organizerId !== req.userId) {
+    res.status(403).json({ error: 'Only the organizer can see door staff' })
+    return
+  }
+
+  const staff = await prisma.eventStaff.findMany({
+    where: { eventId: event.id, revokedAt: null },
+    include: { user: { select: { username: true } } },
+    orderBy: { createdAt: 'asc' },
+  })
+
+  res.json({ staff: staff.map((s) => ({ username: `@${s.user.username}` })) })
+})
+
+/**
+ * GET /api/door/events — events this account may work the door for.
+ *
+ * Needed because door access is per event now: a volunteer is a plain USER, so
+ * the UI cannot decide from the role alone whether to show them a door.
+ */
+redemptionRouter.get('/door/events', requireAuth, async (req, res) => {
+  const [organized, staffing] = await Promise.all([
+    prisma.event.findMany({
+      where: { organizerId: req.userId!, status: { notIn: ['CANCELLED', 'COMPLETED'] } },
+      select: { slug: true, title: true },
+      orderBy: { startsAt: 'asc' },
+    }),
+    prisma.eventStaff.findMany({
+      where: { userId: req.userId!, revokedAt: null },
+      include: { event: { select: { slug: true, title: true, status: true } } },
+    }),
+  ])
+
+  const events = [
+    ...organized.map((e) => ({ slug: e.slug, title: e.title, via: 'organizer' as const })),
+    ...staffing
+      .filter((s) => s.event.status !== 'CANCELLED' && s.event.status !== 'COMPLETED')
+      .map((s) => ({ slug: s.event.slug, title: s.event.title, via: 'staff' as const })),
+  ]
+
+  res.json({ events })
 })

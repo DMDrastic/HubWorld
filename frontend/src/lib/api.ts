@@ -655,6 +655,43 @@ export function pollCheckIn(uuid: string): Promise<CheckInState> {
   return request(`/checkin/${encodeURIComponent(uuid)}`, CheckInStateSchema)
 }
 
+export const StaffListSchema = z.object({
+  staff: z.array(z.object({ username: z.string() })),
+})
+
+export const DoorEventsSchema = z.object({
+  events: z.array(
+    z.object({ slug: z.string(), title: z.string(), via: z.enum(['organizer', 'staff']) }),
+  ),
+})
+
+export type DoorEvent = z.infer<typeof DoorEventsSchema>['events'][number]
+
+/** Events this account may work the door for — organizer OR added staff. */
+export function fetchDoorEvents(): Promise<DoorEvent[]> {
+  return request('/door/events', DoorEventsSchema).then((r) => r.events)
+}
+
+export function fetchStaff(slug: string): Promise<Array<{ username: string }>> {
+  return request(`/events/${encodeURIComponent(slug)}/staff`, StaffListSchema).then((r) => r.staff)
+}
+
+export function addStaff(slug: string, username: string) {
+  return request(
+    `/events/${encodeURIComponent(slug)}/staff`,
+    z.object({ staff: z.string(), event: z.string() }),
+    { method: 'POST', body: { username: username.replace(/^@/, '') } },
+  )
+}
+
+export function removeStaff(slug: string, username: string) {
+  return request(
+    `/events/${encodeURIComponent(slug)}/staff/remove`,
+    z.object({ removed: z.string() }),
+    { method: 'POST', body: { username: username.replace(/^@/, '') } },
+  )
+}
+
 export function fetchDoor(slug: string): Promise<Door> {
   return request(`/events/${encodeURIComponent(slug)}/door`, DoorSchema)
 }

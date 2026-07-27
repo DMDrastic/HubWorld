@@ -308,14 +308,16 @@ export default function App() {
               disabled control still advertises a capability and invites someone
               to go looking for the endpoint. */}
           {isOrganizer(me.role) && (
-            <>
-              <MintPanel
-                events={events.filter((e) => e.organizer.username === me.username)}
-                onMinted={handleMinted}
-              />
-              <DoorPanel events={events.filter((e) => e.organizer.username === me.username)} />
-            </>
+            <MintPanel
+              events={events.filter((e) => e.organizer.username === me.username)}
+              onMinted={handleMinted}
+            />
           )}
+
+          {/* Shown to everyone: door access is per event, so a volunteer with no
+              organizer role may still have a door to work. The panel renders
+              nothing when they have none. */}
+          <DoorPanel />
 
           {/* Everyone gets the wallet features. */}
           <GiftPanel onChanged={handleMinted} />
