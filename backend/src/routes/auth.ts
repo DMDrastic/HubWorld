@@ -253,6 +253,7 @@ authRouter.get('/auth/me', requireAuth, async (req, res) => {
       displayName: true,
       xrplAddress: true,
       createdAt: true,
+      role: true,
       _count: { select: { ticketsOwned: true } },
     },
   })

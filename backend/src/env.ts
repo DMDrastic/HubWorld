@@ -28,6 +28,17 @@ const EnvSchema = z.object({
   // reach the frontend bundle. Optional: without it, listings can still be
   // created and browsed, but sales cannot settle.
   PLATFORM_SEED: z.string().min(1).optional(),
+
+  // Hubworld's cut of every resale, in basis points. This is PLATFORM POLICY and
+  // must never be organizer-supplied: an organizer choosing their own platform
+  // fee would choose zero. Capped so a misconfigured deploy cannot quietly take
+  // a punitive share of someone's sale.
+  PLATFORM_FEE_BPS: z.coerce.number().int().min(0).max(1000).default(250),
+
+  // Ceiling on the royalty an organizer may set for themselves. The royalty is
+  // theirs to choose, but an unbounded one makes resale pointless and the ticket
+  // effectively non-transferable — which defeats the product.
+  MAX_ROYALTY_BPS: z.coerce.number().int().min(0).max(5000).default(2000),
 })
 
 const parsed = EnvSchema.safeParse(process.env)

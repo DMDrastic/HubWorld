@@ -24,6 +24,11 @@ model User {
   username    String   @unique // @handle, stored lowercase
   xrplAddress String   @unique // r-address. Never a seed — Xaman holds the keys.
   displayName String?
+
+  /// What this account may do. Organizers issue tickets and run doors, which is
+  /// a materially different trust level from attending, so it is an account
+  /// property rather than something inferred from owning an Event row.
+  role UserRole @default(USER)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -39,6 +44,8 @@ model User {
   giftsReceived   Gift[]          @relation("GiftRecipient")
   redemptions     Redemption[]    @relation("RedeemedHolder")
   checkInsRun     Redemption[]    @relation("RedeemedByStaff")
+  organizerApplication OrganizerApplication? @relation("Applicant")
+  applicationsReviewed OrganizerApplication[] @relation("Reviewer")
 
   @@index([xrplAddress])
 }
@@ -71,6 +78,50 @@ model SignInRequest {
   consumedAt DateTime?
 
   @@index([status, expiresAt])
+}
+
+enum UserRole {
+  USER // attends events: buys, holds, gifts, sells, bids
+  ORGANIZER // additionally creates events, mints tickets, runs the door
+  ADMIN // additionally reviews organizer applications
+}
+
+/**
+ * A request to become an organizer.
+ *
+ * Organizers issue real admission and take real money, so becoming one is
+ * reviewed rather than self-declared. One application per user: re-applying
+ * updates the existing row so a rejected applicant cannot spam the queue.
+ */
+model OrganizerApplication {
+  id String @id @default(uuid())
+
+  userId String @unique
+  user   User   @relation("Applicant", fields: [userId], references: [id])
+
+  orgName String
+  contact String
+  /// What they intend to run. The reviewer's main signal.
+  pitch   String
+
+  status ApplicationStatus @default(PENDING)
+
+  reviewedById String?
+  reviewedBy   User?     @relation("Reviewer", fields: [reviewedById], references: [id])
+  reviewedAt   DateTime?
+  /// Why it was rejected, shown to the applicant.
+  reviewNote   String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status, createdAt])
+}
+
+enum ApplicationStatus {
+  PENDING
+  APPROVED
+  REJECTED
 }
 
 enum SignInStatus {

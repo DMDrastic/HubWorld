@@ -278,6 +278,38 @@ Decisions that are load-bearing, not stylistic:
   same-origin and CORS never fires. The `cors` middleware exists for deployed
   environments where the two are on different hosts.
 
+## Roles and platform policy
+
+Three roles on `User`: `USER`, `ORGANIZER`, `ADMIN`.
+
+**Organizers are a separate account type, not a user who happens to own an
+Event row.** Issuing admission and taking money is a different trust level from
+attending, so it is an account property gated by `requireOrganizer`. Before this,
+"organizer" was implied by an `Event.organizerId` foreign key — which meant
+self-serve event creation would have made every signed-in user an issuer.
+
+Becoming one is **reviewed, not self-declared**: a user applies, an admin
+approves. Nothing a client sends can promote an account. The first `ADMIN` is
+granted with `npm run role:grant -- @handle ADMIN`, deliberately a script rather
+than a route — a self-serve "make me an admin" endpoint is an obvious escalation.
+
+**Regular users do not see organizer features at all.** Minting, the door and
+event creation are absent from their UI rather than disabled: a greyed-out
+control still advertises a capability and invites someone to probe the endpoint.
+The server enforces this independently — hiding is presentation, not security.
+
+### `platformBps` is policy; `royaltyBps` is the organizer's
+
+`PLATFORM_FEE_BPS` (env, default 250, capped at 1000) is set **by the server** on
+every event. It is deliberately absent from `CreateEventBody`: an organizer
+choosing Hubworld's cut would choose zero, and because the fee is frozen onto each
+Listing at creation it would not be retroactively recoverable — the revenue is
+simply never earned.
+
+`royaltyBps` IS the organizer's to choose, since it is their revenue, but it is
+capped by `MAX_ROYALTY_BPS` (default 2000). An unbounded royalty makes resale
+pointless and the ticket effectively non-transferable, which defeats the product.
+
 ## Domain model
 
 HubWorld is NFT event ticketing on the XRP Ledger, themed on video-game hub
@@ -318,6 +350,12 @@ Hubworld out of the funds-custody path. Changing this changes who mints.
 | `GET /api/auth/me` | current user (bearer token) |
 | `POST /api/auth/signout` | revoke session |
 | `GET /api/users/:username` | @handle → XRPL address (accepts a leading `@`) |
+| `POST /api/organizers/apply` | apply to become an organizer |
+| `GET /api/organizers/me` | my role + application status |
+| `GET /api/admin/organizer-applications` | admin: the review queue |
+| `POST /api/admin/organizer-applications/:id/review` | admin: approve / reject |
+| `GET /api/policy` | platform fee + royalty cap (public) |
+| `POST /api/events` | organizer-only; create an event |
 | `GET /api/events?status=&limit=` | event list |
 | `GET /api/events/:slug` | event detail |
 | `POST /api/events/:slug/mint` | organizer-only; build an NFTokenMint → Xaman payload |

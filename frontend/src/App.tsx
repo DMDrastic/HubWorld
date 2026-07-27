@@ -6,6 +6,7 @@ import {
   fetchHealth,
   fetchMe,
   lookupUser,
+  isOrganizer,
   purgeLegacyToken,
   signOut,
   type AuthUser,
@@ -19,6 +20,7 @@ import { MintPanel } from '@/components/MintPanel'
 import { GiftPanel } from '@/components/GiftPanel'
 import { SellPanel } from '@/components/SellPanel'
 import { DoorPanel } from '@/components/DoorPanel'
+import { OrganizerPanel } from '@/components/OrganizerPanel'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -302,13 +304,24 @@ export default function App() {
 
       {me && (
         <>
-          <MintPanel
-            events={events.filter((e) => e.organizer.username === me.username)}
-            onMinted={handleMinted}
-          />
-          <DoorPanel events={events.filter((e) => e.organizer.username === me.username)} />
+          {/* Organizer surfaces are omitted entirely for regular users. A
+              disabled control still advertises a capability and invites someone
+              to go looking for the endpoint. */}
+          {isOrganizer(me.role) && (
+            <>
+              <MintPanel
+                events={events.filter((e) => e.organizer.username === me.username)}
+                onMinted={handleMinted}
+              />
+              <DoorPanel events={events.filter((e) => e.organizer.username === me.username)} />
+            </>
+          )}
+
+          {/* Everyone gets the wallet features. */}
           <GiftPanel onChanged={handleMinted} />
           <SellPanel onChanged={handleMinted} />
+
+          <OrganizerPanel role={me.role} onChanged={handleMinted} />
         </>
       )}
 

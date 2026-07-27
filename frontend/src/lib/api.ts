@@ -28,13 +28,23 @@ export const EventSummarySchema = z.object({
 
 export const EventListSchema = z.object({ events: z.array(EventSummarySchema) })
 
+export const RoleSchema = z.enum(['USER', 'ORGANIZER', 'ADMIN'])
+
 export const UserSchema = z.object({
   username: z.string(),
   displayName: z.string().nullable(),
   xrplAddress: z.string(),
   createdAt: z.string(),
+  role: RoleSchema,
   ticketsOwned: z.number(),
 })
+
+export type Role = z.infer<typeof RoleSchema>
+
+/** Organizer features are hidden, not merely disabled, for regular users. */
+export function isOrganizer(role: Role): boolean {
+  return role === 'ORGANIZER' || role === 'ADMIN'
+}
 
 export type Health = z.infer<typeof HealthSchema>
 export type EventSummary = z.infer<typeof EventSummarySchema>
@@ -644,6 +654,101 @@ export function pollCheckIn(uuid: string): Promise<CheckInState> {
 
 export function fetchDoor(slug: string): Promise<Door> {
   return request(`/events/${encodeURIComponent(slug)}/door`, DoorSchema)
+}
+
+// ------------------------------------------------------------ organizers --
+
+export const PolicySchema = z.object({
+  platformBps: z.number(),
+  maxRoyaltyBps: z.number(),
+})
+
+export const OrganizerStatusSchema = z.object({
+  role: RoleSchema,
+  application: z
+    .object({
+      state: z.enum(['pending', 'approved', 'rejected']),
+      orgName: z.string(),
+      submittedAt: z.string(),
+      reviewNote: z.string().nullable(),
+    })
+    .nullable(),
+})
+
+export const ApplicationListSchema = z.object({
+  applications: z.array(
+    z.object({
+      id: z.string(),
+      applicant: z.string(),
+      orgName: z.string(),
+      contact: z.string(),
+      pitch: z.string(),
+      state: z.string(),
+      submittedAt: z.string(),
+    }),
+  ),
+})
+
+export const CreatedEventSchema = z.object({
+  slug: z.string(),
+  title: z.string(),
+  startsAt: z.string(),
+  ticketCount: z.number(),
+  royaltyBps: z.number(),
+  platformBps: z.number(),
+  nftTaxon: z.number(),
+})
+
+export type Policy = z.infer<typeof PolicySchema>
+export type OrganizerStatus = z.infer<typeof OrganizerStatusSchema>
+export type PendingApplication = z.infer<typeof ApplicationListSchema>['applications'][number]
+
+export function fetchPolicy(): Promise<Policy> {
+  return request('/policy', PolicySchema)
+}
+
+export function fetchOrganizerStatus(): Promise<OrganizerStatus> {
+  return request('/organizers/me', OrganizerStatusSchema)
+}
+
+export function applyToOrganize(body: {
+  orgName: string
+  contact: string
+  pitch: string
+}): Promise<{ state: string }> {
+  return request('/organizers/apply', z.object({ state: z.string() }), {
+    method: 'POST',
+    body,
+  })
+}
+
+export function fetchApplications(): Promise<PendingApplication[]> {
+  return request('/admin/organizer-applications?state=pending', ApplicationListSchema).then(
+    (r) => r.applications,
+  )
+}
+
+export function reviewApplication(
+  id: string,
+  decision: 'approve' | 'reject',
+  note?: string,
+): Promise<{ state: string }> {
+  return request(
+    `/admin/organizer-applications/${encodeURIComponent(id)}/review`,
+    z.object({ state: z.string() }),
+    { method: 'POST', body: { decision, note } },
+  )
+}
+
+/** Note the absence of platformBps: it is policy, so the form cannot set it. */
+export function createEvent(body: {
+  title: string
+  venue?: string
+  startsAt: string
+  ticketCount: number
+  royaltyBps: number
+}): Promise<z.infer<typeof CreatedEventSchema>> {
+  return request('/events', CreatedEventSchema, { method: 'POST', body })
 }
 
 // There is deliberately no token storage here.

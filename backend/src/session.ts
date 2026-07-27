@@ -2,6 +2,7 @@ import { createHash, randomBytes, timingSafeEqual } from 'node:crypto'
 import type { NextFunction, Request, Response } from 'express'
 import { prisma } from './prisma.js'
 import { env } from './env.js'
+import type { UserRole } from '@prisma/client'
 
 const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000 // 7 days
 
@@ -110,6 +111,7 @@ declare global {
   namespace Express {
     interface Request {
       userId?: string
+      userRole?: UserRole
     }
   }
 }
@@ -130,5 +132,32 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
   }
 
   req.userId = session.userId
+  req.userRole = session.user.role
+  next()
+}
+
+/**
+ * Require an organizer (admins included).
+ *
+ * Deliberately a ROLE check, not "do you own this event". Ownership answers
+ * which event you may act on; the role answers whether you may issue admission
+ * at all. Conflating them means anyone handed an event row becomes an issuer,
+ * and there would be nothing to gate self-serve event creation on.
+ */
+export function requireOrganizer(req: Request, res: Response, next: NextFunction) {
+  if (req.userRole !== 'ORGANIZER' && req.userRole !== 'ADMIN') {
+    // 403 rather than 404: they are authenticated, just not permitted.
+    res.status(403).json({ error: 'This action is for event organizers' })
+    return
+  }
+  next()
+}
+
+/** Require an admin. Reviewing organizer applications is the only such power. */
+export function requireAdmin(req: Request, res: Response, next: NextFunction) {
+  if (req.userRole !== 'ADMIN') {
+    res.status(403).json({ error: 'Admins only' })
+    return
+  }
   next()
 }

@@ -19,7 +19,7 @@ import { prisma } from '../prisma.js'
 import { xamanMode } from '../env.js'
 import { tryGetPayload, xaman, SIGNIN_TTL_MINUTES } from '../xaman.js'
 import { issuesOf, slugSchema } from '../schemas.js'
-import { requireAuth } from '../session.js'
+import { requireAuth, requireOrganizer } from '../session.js'
 import { buildMintTx, nftokenIdFromTx, XAMAN_NETWORK } from '../ledger.js'
 
 export const mintRouter = Router()
@@ -39,7 +39,7 @@ const MintBody = z.object({
  * POST /api/events/:slug/mint
  * Organizer-only. Returns a Xaman payload for the organizer to sign.
  */
-mintRouter.post('/events/:slug/mint', requireAuth, async (req, res) => {
+mintRouter.post('/events/:slug/mint', requireAuth, requireOrganizer, async (req, res) => {
   const params = SlugParams.safeParse(req.params)
   if (!params.success) {
     res.status(400).json({ error: 'Invalid event slug', details: issuesOf(params.error) })

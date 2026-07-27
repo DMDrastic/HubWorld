@@ -27,7 +27,7 @@ import { prisma } from '../prisma.js'
 import { xamanMode } from '../env.js'
 import { tryGetPayload, xaman, SIGNIN_TTL_MINUTES } from '../xaman.js'
 import { issuesOf, slugSchema } from '../schemas.js'
-import { requireAuth } from '../session.js'
+import { requireAuth, requireOrganizer } from '../session.js'
 import { holdsNft } from '../ledger.js'
 
 export const redemptionRouter = Router()
@@ -43,7 +43,7 @@ const UuidParams = z.object({ uuid: z.string().uuid() })
  * POST /api/events/:slug/checkin
  * Organizer-only. Creates the payload the attendee signs.
  */
-redemptionRouter.post('/events/:slug/checkin', requireAuth, async (req, res) => {
+redemptionRouter.post('/events/:slug/checkin', requireAuth, requireOrganizer, async (req, res) => {
   const parsed = SlugParams.safeParse(req.params)
   if (!parsed.success) {
     res.status(400).json({ error: 'Invalid event slug', details: issuesOf(parsed.error) })
@@ -276,7 +276,7 @@ redemptionRouter.get('/checkin/:uuid', requireAuth, async (req, res) => {
 /**
  * GET /api/events/:slug/door — how the door is going.
  */
-redemptionRouter.get('/events/:slug/door', requireAuth, async (req, res) => {
+redemptionRouter.get('/events/:slug/door', requireAuth, requireOrganizer, async (req, res) => {
   const parsed = SlugParams.safeParse(req.params)
   if (!parsed.success) {
     res.status(400).json({ error: 'Invalid event slug', details: issuesOf(parsed.error) })

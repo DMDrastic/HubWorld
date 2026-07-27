@@ -23,7 +23,8 @@
     "auction:create": "tsx scripts/create-auction.ts",
     "broker:match": "tsx scripts/broker-match.ts",
     "ledger:sync": "tsx scripts/ledger-sync.ts",
-    "auction:settle": "tsx scripts/settle-auctions.ts"
+    "auction:settle": "tsx scripts/settle-auctions.ts",
+    "role:grant": "tsx scripts/grant-role.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
