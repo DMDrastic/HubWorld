@@ -22,7 +22,8 @@
     "platform:setup": "tsx scripts/setup-platform-account.ts",
     "auction:create": "tsx scripts/create-auction.ts",
     "broker:match": "tsx scripts/broker-match.ts",
-    "ledger:sync": "tsx scripts/ledger-sync.ts"
+    "ledger:sync": "tsx scripts/ledger-sync.ts",
+    "auction:settle": "tsx scripts/settle-auctions.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

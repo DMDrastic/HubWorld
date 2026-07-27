@@ -182,9 +182,25 @@ our database while remaining matchable on the ledger. Settlement must retry or
 re-open rather than close the listing, and `ledger:sync` reports this case as
 `failed-but-retryable`.
 
-**Still to build:** the settlement job itself — close the auction, pick the
-highest committed bid, re-check the winner's spendable balance, broker the match,
-mark the rest LOST, and write a `Transfer` of kind `AUCTION_SETTLE`.
+### Settlement
+
+`src/settlement.ts`. An auction ends at a wall-clock time, not when someone opens
+the page, so settlement is a **sweep** (every 15s in `server.ts`), not a
+request-driven action. `npm run auction:settle` runs it on demand.
+
+It walks committed bids from highest down and **falls through to the runner-up**
+when a bidder cannot pay, rather than failing the auction — funds are not locked,
+so the top bidder is not guaranteed good for it. Spendable balance is read before
+submitting, since that is cheaper than burning a transaction fee to find out.
+Nothing is refunded to losers because nothing was ever locked.
+
+Settlement needs the holder's **ACTIVE listing** to broker against; without one
+the auction parks in `SETTLING` rather than failing, since that is a setup gap
+rather than an auction outcome.
+
+**The sweep is single-process.** Two instances would try to broker the same
+auction twice. Before scaling out this needs an advisory lock or a real job
+runner — stated rather than pretended otherwise.
 
 ## Reconciling with the ledger
 

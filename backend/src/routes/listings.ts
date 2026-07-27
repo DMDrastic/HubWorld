@@ -32,6 +32,7 @@ import {
   offerIndexFromTx,
   platformAddress,
   platformFeeDrops,
+  spendableDrops,
   txSucceeded,
   XAMAN_NETWORK,
 } from '../ledger.js'
@@ -570,6 +571,33 @@ listingsRouter.get('/listings/:id', requireAuth, async (req, res) => {
 
   // ---- phase 3: Hubworld brokers the match -------------------------------
   if (listing.status === 'SETTLING' && listing.offerIndex && listing.buyOfferIndex) {
+    const owed = listing.priceDrops + listing.platformFeeDrops
+
+    // Pre-flight the buyer's balance. A buy offer does not lock funds, so the
+    // buyer can spend the money between committing and settling. Submitting
+    // anyway would burn a transaction fee to learn what we can read for free.
+    if (listing.buyerAddress) {
+      try {
+        const spendable = await spendableDrops(listing.buyerAddress)
+        if (spendable < owed) {
+          await prisma.listing.update({
+            where: { id: listing.id },
+            data: {
+              failureReason: `Waiting for the buyer's balance: ${spendable.toString()} of ${owed.toString()} drops`,
+            },
+          })
+          res.json({
+            ...view(),
+            state: 'settling',
+            reason: "Waiting for the buyer's balance to cover the sale",
+          })
+          return
+        }
+      } catch {
+        // Ledger unreachable — fall through and let the submission decide.
+      }
+    }
+
     const result = await brokerSale({
       sellOfferIndex: listing.offerIndex,
       buyOfferIndex: listing.buyOfferIndex,
@@ -577,15 +605,29 @@ listingsRouter.get('/listings/:id', requireAuth, async (req, res) => {
     })
 
     if (!result.succeeded) {
+      // A funding failure is NOT terminal, and treating it as such loses a real
+      // sale: both offers stay live on-ledger, so the moment the buyer is paid
+      // this settles. Observed for real — a listing closed as FAILED became
+      // settleable when its buyer was paid by an unrelated sale. Stay in
+      // SETTLING and let the next poll try again.
+      const retryable = result.result === 'tecINSUFFICIENT_FUNDS'
       await prisma.listing.update({
         where: { id: listing.id },
         data: {
-          status: 'FAILED',
+          status: retryable ? 'SETTLING' : 'FAILED',
           brokerTxHash: result.hash,
-          failureReason: `Brokered settlement failed: ${result.result}`,
+          failureReason: retryable
+            ? `Buyer could not pay (${result.result}); will retry while the offers stand`
+            : `Brokered settlement failed: ${result.result}`,
         },
       })
-      res.json({ ...view(), state: 'failed', reason: `Brokered settlement failed: ${result.result}` })
+      res.json({
+        ...view(),
+        state: retryable ? 'settling' : 'failed',
+        reason: retryable
+          ? 'The buyer could not pay. This will settle if they fund the bid.'
+          : `Brokered settlement failed: ${result.result}`,
+      })
       return
     }
 
