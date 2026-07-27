@@ -15,6 +15,7 @@ import { bidsRouter } from './routes/bids.js'
 import { openAuctionRouter } from './routes/open-auction.js'
 import { redemptionRouter } from './routes/redemption.js'
 import { organizersRouter } from './routes/organizers.js'
+import { webhooksRouter } from './routes/webhooks.js'
 
 /** Codes that mean "the network was unreachable", not "the request was wrong". */
 const TRANSIENT_CODES = new Set([
@@ -78,6 +79,7 @@ export function createApp() {
   app.use('/api', openAuctionRouter)
   app.use('/api', redemptionRouter)
   app.use('/api', organizersRouter)
+  app.use('/api', webhooksRouter)
 
   app.use((_req, res) => {
     res.status(404).json({ error: 'Not found' })

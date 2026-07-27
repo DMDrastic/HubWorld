@@ -96,19 +96,33 @@ describe('withLock', () => {
 
   it('serialises overlapping runs rather than interleaving them', async () => {
     const order: string[] = []
+
+    // Both calls race to acquire, so "which one wins" is not deterministic.
+    // Waiting until the first has demonstrably STARTED before firing the second
+    // tests the property that matters — no interleaving — instead of testing
+    // which coroutine the scheduler happened to run first.
+    let started: () => void
+    const hasStarted = new Promise<void>((resolve) => {
+      started = resolve
+    })
+
     const slow = withLock(LOCK, 60_000, async () => {
       order.push('start')
+      started()
       await new Promise((r) => setTimeout(r, 60))
       order.push('end')
     })
-    // Fires while the first is mid-flight.
+
+    await hasStarted
     const blocked = withLock(LOCK, 60_000, async () => {
       order.push('second')
     })
+
     await Promise.all([slow, blocked])
 
-    // The second never ran, so the first is uninterrupted.
+    // The second never ran, so the first was uninterrupted.
     expect(order).toEqual(['start', 'end'])
+    expect(await blocked).toBeNull()
   })
 
   it('records which process holds it', async () => {

@@ -3,6 +3,7 @@ import { env, brokerMode } from './env.js'
 import { prisma } from './prisma.js'
 import { disconnectLedger } from './ledger.js'
 import { settleDueAuctions } from './settlement.js'
+import { reconcileStalePayloads } from './payload-store.js'
 import { withLock } from './job-lock.js'
 import { attachRealtime, closeRealtime } from './realtime.js'
 
@@ -40,7 +41,14 @@ const sweep = async () => {
   if (sweeping) return
   sweeping = true
   try {
-    const results = await withLock(SWEEP_LOCK, SWEEP_LOCK_TTL_MS, () => settleDueAuctions())
+    const results = await withLock(SWEEP_LOCK, SWEEP_LOCK_TTL_MS, async () => {
+      // Webhooks get lost — a deploy mid-flight, a blip, a bad URL. Without this
+      // a real signature would sit unrecognised until it expired, which for a
+      // mint or a bid means money stuck.
+      const recovered = await reconcileStalePayloads()
+      if (recovered > 0) console.log(`reconciled ${recovered} payload(s) with no webhook`)
+      return settleDueAuctions()
+    })
     // null means another process holds the lease — a skipped run, not a failure.
     for (const { auctionId, outcome } of results ?? []) {
       if (outcome.kind === 'not-due') continue

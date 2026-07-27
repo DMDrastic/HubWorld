@@ -429,8 +429,27 @@ CSRF and require token defences.
 `Authorization: Bearer` is still accepted, for curl and scripts. That is not the
 risk being managed; the exposure was only ever JavaScript-readable storage.
 
-Not built: the Xaman webhook (polling is used instead, so no public tunnel is
-needed in dev), and any real XRPL transaction — no xrpl.js yet.
+**The Xaman webhook** is built (`src/routes/webhooks.ts`, `src/payload-store.ts`)
+but only active when `XAMAN_WEBHOOK_SECRET` is set, so dev still works with no
+public tunnel.
+
+**The webhook body is never trusted — only the uuid is read from it.** The state
+always comes from an authenticated fetch with our API secret. A callback that
+believed itself would accept `{ signed: true, account: "rAttacker" }` from anyone
+on the internet: a forged sign-in as any address, a forged mint, a forged door
+check-in. Treating it as a nudge rather than a source removes that whole class of
+attack, and means we do not depend on reproducing Xaman's signing scheme
+correctly. The secret in the path is a doorbell, not the boundary.
+
+All 16 poll sites go through `tryGetPayload`, so caching there fixed every flow
+without touching a single route. Terminal states (signed/cancelled/expired) are
+cached permanently — they cannot change again. While pending, webhook mode
+refreshes at most once per 10s per payload rather than once per poll per viewer,
+because a pure-webhook design loses signatures when a callback is dropped. The
+sweep also reconciles any payload left non-terminal for over a minute.
+
+Configure in the Xaman console as
+`https://<host>/api/webhooks/xaman/<XAMAN_WEBHOOK_SECRET>`.
 
 ## Minting
 

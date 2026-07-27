@@ -629,3 +629,38 @@ model JobLock {
   owner       String
   updatedAt   DateTime @updatedAt
 }
+
+/**
+ * Last known state of a Xaman payload.
+ *
+ * Exists so payload resolution can be PUSHED rather than polled. Every signature
+ * flow — sign-in, mint, gift, listing, bid, check-in — used to ask Xaman on every
+ * poll, which is one request per 2.5s per waiting user and is what produced a 429
+ * during the first live gift.
+ *
+ * With a webhook configured, Xaman tells us once and this row is the answer from
+ * then on. Without one, this is a cache in front of the same polling as before.
+ *
+ * `terminal` matters: signed, cancelled and expired are final, so a terminal row
+ * can be served forever without asking again.
+ */
+model XamanPayload {
+  uuid String @id
+
+  signed    Boolean @default(false)
+  cancelled Boolean @default(false)
+  expired   Boolean @default(false)
+  /// The r-address that signed. Only ever written from an authenticated fetch,
+  /// never from a webhook body.
+  account   String?
+  txid      String?
+
+  terminal Boolean @default(false)
+  /// Where the current values came from, for debugging a stuck payload.
+  source   String  @default("poll")
+
+  createdAt DateTime @default(now())
+  fetchedAt DateTime @default(now())
+
+  @@index([terminal, fetchedAt])
+}

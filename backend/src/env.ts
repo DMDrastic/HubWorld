@@ -39,6 +39,12 @@ const EnvSchema = z.object({
   // theirs to choose, but an unbounded one makes resale pointless and the ticket
   // effectively non-transferable — which defeats the product.
   MAX_ROYALTY_BPS: z.coerce.number().int().min(0).max(5000).default(2000),
+
+  // Shared secret in the Xaman webhook URL. Its presence switches payload
+  // resolution from polling Xaman to waiting for their callback, which is the
+  // difference between one Xaman request per payload and one every 2.5s per
+  // waiting user. Unset in dev, where there is no public URL to call back to.
+  XAMAN_WEBHOOK_SECRET: z.string().min(16).optional(),
 })
 
 const parsed = EnvSchema.safeParse(process.env)
@@ -78,6 +84,15 @@ if (xamanMode === 'stub' && env.NODE_ENV === 'production') {
  * not, because settlement requires our signature.
  */
 export const brokerMode: 'live' | 'disabled' = env.PLATFORM_SEED ? 'live' : 'disabled'
+
+/**
+ * Whether Xaman calls us back when a payload resolves.
+ *
+ * Off means every poll asks Xaman directly — correct, but the shape that earned
+ * us a 429. On means we wait to be told, and only ask Xaman when there is a
+ * concrete reason to.
+ */
+export const webhookMode: 'live' | 'disabled' = env.XAMAN_WEBHOOK_SECRET ? 'live' : 'disabled'
 
 if (brokerMode === 'disabled') {
   console.warn(

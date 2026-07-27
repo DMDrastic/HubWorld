@@ -18,6 +18,7 @@ import { z } from 'zod'
 import { prisma } from '../prisma.js'
 import { xamanMode } from '../env.js'
 import { tryGetPayload, xaman, SIGNIN_TTL_MINUTES } from '../xaman.js'
+import { trackPayload } from '../payload-store.js'
 import { issuesOf, slugSchema } from '../schemas.js'
 import { requireAuth, requireOrganizer } from '../session.js'
 import { buildMintTx, nftokenIdFromTx, XAMAN_NETWORK } from '../ledger.js'
@@ -104,6 +105,9 @@ mintRouter.post('/events/:slug/mint', requireAuth, requireOrganizer, async (req,
     // testnet-intended mint against real funds.
     forceNetwork: XAMAN_NETWORK,
   })
+  // Registered before it can resolve, so a webhook callback finds it and
+  // reconciliation can spot one whose callback never arrived.
+  await trackPayload(payload.uuid)
 
   const expiresAt = new Date(Date.now() + MINT_TTL_MS)
   await prisma.mintRequest.create({

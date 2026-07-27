@@ -248,12 +248,10 @@ export const xaman: XamanClient =
 export async function tryGetPayload(
   uuid: string,
 ): Promise<PayloadStatus | null | 'unavailable'> {
-  try {
-    return await xaman.getPayload(uuid)
-  } catch (err) {
-    if (err instanceof XamanRateLimited) return 'unavailable'
-    throw err
-  }
+  // Delegated so every poll site benefits from the webhook without being
+  // rewritten. Imported lazily because payload-store imports this module.
+  const { resolvePayload } = await import('./payload-store.js')
+  return resolvePayload(uuid)
 }
 
 /** Narrowing helper so routes can reach `simulate` only in stub mode. */

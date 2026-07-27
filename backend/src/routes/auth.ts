@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { prisma } from '../prisma.js'
 import { env, xamanMode } from '../env.js'
 import { asStub, tryGetPayload, xaman, SIGNIN_TTL_MINUTES } from '../xaman.js'
+import { trackPayload } from '../payload-store.js'
 import { issuesOf, usernameSchema, xrplAddressSchema } from '../schemas.js'
 import {
   clearSessionCookie,
@@ -27,6 +28,9 @@ const UuidParams = z.object({ uuid: z.string().uuid() })
  */
 authRouter.post('/auth/signin', async (_req, res) => {
   const payload = await xaman.createSignInPayload()
+  // Registered before it can resolve, so a webhook callback finds it and
+  // reconciliation can spot one whose callback never arrived.
+  await trackPayload(payload.uuid)
   const expiresAt = new Date(Date.now() + SIGNIN_TTL_MS)
 
   await prisma.signInRequest.create({

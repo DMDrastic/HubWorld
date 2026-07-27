@@ -18,6 +18,7 @@ import { z } from 'zod'
 import { prisma } from '../prisma.js'
 import { brokerMode, xamanMode } from '../env.js'
 import { tryGetPayload, xaman } from '../xaman.js'
+import { trackPayload } from '../payload-store.js'
 import { issuesOf } from '../schemas.js'
 import { requireAuth } from '../session.js'
 import { publishAuctionEvent } from '../realtime.js'
@@ -164,6 +165,9 @@ bidsRouter.post('/auctions/:id/bid', requireAuth, async (req, res) => {
     expireMinutes: BID_TTL_MINUTES,
     forceNetwork: XAMAN_NETWORK,
   })
+  // Registered before it can resolve, so a webhook callback finds it and
+  // reconciliation can spot one whose callback never arrived.
+  await trackPayload(payload.uuid)
 
   const bid = await prisma.bid.create({
     data: {
