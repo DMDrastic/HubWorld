@@ -2,6 +2,7 @@ import { Suspense, lazy, useCallback, useEffect, useState } from 'react'
 import {
   ApiError,
   fetchAuctions,
+  fetchDoorEvents,
   fetchEvents,
   fetchHealth,
   fetchMe,
@@ -11,15 +12,19 @@ import {
   signOut,
   type AuthUser,
   type AuctionSummary,
+  type DoorEvent,
   type EventSummary,
   type Health,
   type User,
 } from '@/lib/api'
-import { SignIn } from '@/components/SignIn'
 import { MintPanel } from '@/components/MintPanel'
 import { GiftPanel } from '@/components/GiftPanel'
 import { SellPanel } from '@/components/SellPanel'
 import { DoorPanel } from '@/components/DoorPanel'
+import { NavBar } from '@/components/NavBar'
+import { Landing } from '@/components/Landing'
+import { Hub } from '@/components/Hub'
+import { useRoute } from '@/lib/router'
 import { OrganizerPanel } from '@/components/OrganizerPanel'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -43,19 +48,6 @@ const dateFmt = new Intl.DateTimeFormat(undefined, {
   dateStyle: 'medium',
   timeStyle: 'short',
 })
-
-function HealthDot({ health }: { health: Health | null }) {
-  const ok = health?.status === 'ok'
-  return (
-    <span className="text-muted-foreground flex items-center gap-1.5 text-xs">
-      <span
-        className={`size-2 rounded-full ${ok ? 'bg-emerald-500' : 'bg-destructive'}`}
-        aria-hidden
-      />
-      {health ? `api ${health.status} · db ${health.db}` : 'connecting…'}
-    </span>
-  )
-}
 
 function HandleLookup() {
   const [handle, setHandle] = useState('')
@@ -198,32 +190,6 @@ export function EventList({
   )
 }
 
-function Inventory({ me, onSignOut }: { me: User; onSignOut: () => void }) {
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>
-          {me.displayName ?? me.username}{' '}
-          <span className="text-muted-foreground font-normal">@{me.username}</span>
-        </CardTitle>
-        <CardDescription className="font-mono text-xs break-all">
-          {me.xrplAddress}
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        <p className="text-sm">
-          {me.ticketsOwned === 0
-            ? 'No tickets in your inventory yet.'
-            : `${me.ticketsOwned} ticket${me.ticketsOwned === 1 ? '' : 's'} in your inventory.`}
-        </p>
-        <Button variant="secondary" size="sm" onClick={onSignOut}>
-          Sign out
-        </Button>
-      </CardContent>
-    </Card>
-  )
-}
-
 export default function App() {
   const [health, setHealth] = useState<Health | null>(null)
   const [events, setEvents] = useState<EventSummary[]>([])
@@ -284,59 +250,132 @@ export default function App() {
     void restore()
   }, [load, restore])
 
+  const [doorEvents, setDoorEvents] = useState<DoorEvent[]>([])
+  const route = useRoute()
+
+  // Door access is per event, so whether to show that destination cannot be
+  // decided from the role — a volunteer is a plain USER.
+  useEffect(() => {
+    if (!me) {
+      setDoorEvents([])
+      return
+    }
+    void fetchDoorEvents()
+      .then(setDoorEvents)
+      .catch(() => setDoorEvents([]))
+  }, [me])
+
+  const openAuctionBySlug = useCallback(
+    (slug: string) => {
+      const found = events.find((e) => e.slug === slug)
+      if (found) setAuctionEvent(found)
+    },
+    [events],
+  )
+
+  const auctionSlugs = new Set(auctions.map((a) => a.eventSlug))
+  const organizing = me ? events.filter((e) => e.organizer.username === me.username) : []
+
   return (
-    <main className="mx-auto min-h-svh max-w-2xl space-y-6 p-6">
-      <header className="flex items-baseline justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">HubWorld</h1>
-          <p className="text-muted-foreground text-sm">Your events, in one place</p>
-        </div>
-        <HealthDot health={health} />
-      </header>
+    <div className="min-h-svh">
+      <NavBar
+        me={me}
+        health={health}
+        route={route}
+        hasDoor={doorEvents.length > 0}
+        onSignOut={() => void handleSignOut()}
+      />
 
-      {error && <p className="text-destructive text-sm">{error}</p>}
+      <main className="mx-auto max-w-5xl px-4 pb-20">
+        {error && (
+          <p className="text-destructive mt-4 rounded-md border border-current/20 p-3 text-sm">
+            {error}
+          </p>
+        )}
 
-      {me ? (
-        <Inventory me={me} onSignOut={() => void handleSignOut()} />
-      ) : (
-        <SignIn onAuthenticated={handleAuthenticated} />
-      )}
+        {!me ? (
+          <Landing onAuthenticated={handleAuthenticated} />
+        ) : (
+          <>
+            {route === '/' && <Hub me={me} onOpenAuction={openAuctionBySlug} />}
 
-      {me && (
-        <>
-          {/* Organizer surfaces are omitted entirely for regular users. A
-              disabled control still advertises a capability and invites someone
-              to go looking for the endpoint. */}
-          {isOrganizer(me.role) && (
-            <MintPanel
-              events={events.filter((e) => e.organizer.username === me.username)}
-              onMinted={handleMinted}
-            />
-          )}
+            {route === '/events' && (
+              <section className="space-y-4 py-8">
+                <div>
+                  <h1 className="text-2xl font-semibold tracking-tight">Events</h1>
+                  <p className="text-muted-foreground text-sm">
+                    Sold-out nights open for bidding are marked live.
+                  </p>
+                </div>
+                <EventList
+                  events={events}
+                  auctionSlugs={auctionSlugs}
+                  onOpenAuction={setAuctionEvent}
+                />
+              </section>
+            )}
 
-          {/* Shown to everyone: door access is per event, so a volunteer with no
-              organizer role may still have a door to work. The panel renders
-              nothing when they have none. */}
-          <DoorPanel />
+            {route === '/tickets' && (
+              <section className="space-y-4 py-8">
+                <div>
+                  <h1 className="text-2xl font-semibold tracking-tight">Your tickets</h1>
+                  <p className="text-muted-foreground text-sm">
+                    Held in your wallet. Gift one to any @handle — it moves on-ledger.
+                  </p>
+                </div>
+                <GiftPanel onChanged={handleMinted} />
+                <HandleLookup />
+              </section>
+            )}
 
-          {/* Everyone gets the wallet features. */}
-          <GiftPanel onChanged={handleMinted} />
-          <SellPanel onChanged={handleMinted} />
+            {route === '/market' && (
+              <section className="space-y-4 py-8">
+                <div>
+                  <h1 className="text-2xl font-semibold tracking-tight">Marketplace</h1>
+                  <p className="text-muted-foreground text-sm">
+                    Resales settle on-ledger. The organizer earns a royalty on every one.
+                  </p>
+                </div>
+                <SellPanel onChanged={handleMinted} />
+              </section>
+            )}
 
-          <OrganizerPanel role={me.role} onChanged={handleMinted} />
-        </>
-      )}
+            {route === '/door' && (
+              <section className="space-y-4 py-8">
+                <div>
+                  <h1 className="text-2xl font-semibold tracking-tight">Door</h1>
+                  <p className="text-muted-foreground text-sm">
+                    Attendees sign to prove the ticket is theirs. The verdict shows here.
+                  </p>
+                </div>
+                <DoorPanel />
+              </section>
+            )}
 
-      <HandleLookup />
+            {route === '/organize' && isOrganizer(me.role) && (
+              <section className="space-y-4 py-8">
+                <div>
+                  <h1 className="text-2xl font-semibold tracking-tight">Organize</h1>
+                  <p className="text-muted-foreground text-sm">
+                    Create events and issue tickets. Your royalty follows every resale.
+                  </p>
+                </div>
+                <OrganizerPanel role={me.role} onChanged={handleMinted} />
+                <MintPanel events={organizing} onMinted={handleMinted} />
+              </section>
+            )}
 
-      <section className="space-y-3">
-        <h2 className="text-lg font-medium">Events</h2>
-        <EventList
-          events={events}
-          auctionSlugs={new Set(auctions.map((a) => a.eventSlug))}
-          onOpenAuction={setAuctionEvent}
-        />
-      </section>
+            {/* A regular user who types /organize gets the application form
+                rather than a blank page or a 403. */}
+            {route === '/organize' && !isOrganizer(me.role) && (
+              <section className="space-y-4 py-8">
+                <h1 className="text-2xl font-semibold tracking-tight">Run your own events</h1>
+                <OrganizerPanel role={me.role} onChanged={handleMinted} />
+              </section>
+            )}
+          </>
+        )}
+      </main>
 
       {auctionEvent && (
         <Suspense fallback={null}>
@@ -351,6 +390,6 @@ export default function App() {
           />
         </Suspense>
       )}
-    </main>
+    </div>
   )
 }

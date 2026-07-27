@@ -29,6 +29,31 @@ Recharts is ~410kB, which more than doubled the main bundle, so `AuctionDialog`
 is loaded with `React.lazy` and is now not fetched at all until someone opens an
 auction. Keep it code-split, and keep it the only importer of `BidChart`.
 
+## Frontend structure
+
+Signed out you get `Landing` — the product explained before anyone is asked to
+connect a wallet. Signed in, `/` is `Hub`: what you hold, what is happening now,
+and where to go next. Everything requiring a decision lives on its own page
+(`/events`, `/tickets`, `/market`, `/door`, `/organize`) rather than stacked in
+one column.
+
+**Routing is `src/lib/router.ts`, not react-router.** Six flat destinations, no
+nesting, no params — a router would be a dependency and an architectural
+commitment bought for very little. It uses `useSyncExternalStore` because the URL
+is genuinely external state; the `useState` + effect version renders once with a
+stale path, which shows as a flash of the wrong view. Links are real `<a href>`
+so middle-click and open-in-new-tab keep working, and only plain left clicks are
+intercepted.
+
+**Deep links need an SPA fallback in production.** Vite serves `index.html` for
+unknown paths in dev, so `/tickets` works; a deploy without the same rewrite will
+404 on refresh.
+
+Nav destinations are filtered by capability, matching the rest of the app:
+organizer surfaces are absent for regular users rather than disabled. The Door
+link is driven by `GET /door/events`, not the role, because a volunteer is a
+plain `USER`.
+
 ## Structure
 
 Modular monolith, two top-level folders:
