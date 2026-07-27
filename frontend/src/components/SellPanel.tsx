@@ -4,6 +4,7 @@ import {
   buyListing,
   cancelListing,
   createListing,
+  openAuction,
   dropsToXrp,
   fetchInventory,
   fetchMarket,
@@ -61,6 +62,8 @@ export function SellPanel({ onChanged }: { onChanged: () => void }) {
   const [mine, setMine] = useState<Listing[]>([])
   const [nfTokenId, setNfTokenId] = useState('')
   const [priceXrp, setPriceXrp] = useState('')
+  const [mode, setMode] = useState<'sell' | 'auction'>('sell')
+  const [minutes, setMinutes] = useState('60')
   const [phase, setPhase] = useState<Phase>({ kind: 'idle' })
   const [listing, setListing] = useState<Listing | null>(null)
   const [busy, setBusy] = useState(false)
@@ -72,8 +75,9 @@ export function SellPanel({ onChanged }: { onChanged: () => void }) {
         fetchMarket(),
         fetchMyListings(),
       ])
-      // Only unlisted tickets can be sold; a LISTED one already has an offer.
-      setTickets(inv.tickets.filter((t) => t.status !== 'LISTED'))
+      // A ticket already committed elsewhere cannot be sold or auctioned: LISTED
+      // has a live sell offer and IN_AUCTION is mid-auction.
+      setTickets(inv.tickets.filter((t) => t.status !== 'LISTED' && t.status !== 'IN_AUCTION'))
       setMarket(m)
       setMine(own)
       setNfTokenId((cur) => cur || (inv.tickets[0]?.nfTokenId ?? ''))
@@ -147,6 +151,28 @@ export function SellPanel({ onChanged }: { onChanged: () => void }) {
     }
   }
 
+  /**
+   * Opening an auction is one signature that creates both the bidding rules and
+   * the holder's sell offer. We poll the LISTING, because the auction only goes
+   * live once that offer reaches the ledger.
+   */
+  async function startAuction() {
+    setBusy(true)
+    try {
+      const drops = xrpToDrops(priceXrp)
+      if (BigInt(drops) <= 0n) throw new ApiError('Enter a reserve above zero')
+      const result = await openAuction(nfTokenId, drops, Number(minutes))
+      track(result.listingId, { ...result, priceDrops: drops }, `Auction at ${priceXrp} XRP reserve`)
+    } catch (err) {
+      setPhase({
+        kind: 'failed',
+        reason: err instanceof ApiError ? err.message : 'Could not open the auction',
+      })
+    } finally {
+      setBusy(false)
+    }
+  }
+
   async function buy(l: Listing) {
     setBusy(true)
     try {
@@ -188,8 +214,8 @@ export function SellPanel({ onChanged }: { onChanged: () => void }) {
       <CardHeader>
         <CardTitle>Marketplace</CardTitle>
         <CardDescription>
-          Fixed-price resale. The organizer's royalty is taken by the ledger itself, and
-          Hubworld brokers the match — the money never passes through us.
+          Sell at a fixed price or open an auction. The organizer's royalty is taken by the
+          ledger itself, and Hubworld brokers the match — the money never passes through us.
         </CardDescription>
       </CardHeader>
 
@@ -259,7 +285,18 @@ export function SellPanel({ onChanged }: { onChanged: () => void }) {
             )}
 
             <div className="space-y-3 border-t pt-4">
-              <div className="text-sm font-medium">Sell a ticket</div>
+              <div className="flex items-center gap-2">
+                <div className="text-sm font-medium">
+                  {mode === 'sell' ? 'Sell a ticket' : 'Auction a ticket'}
+                </div>
+                <button
+                  type="button"
+                  className="text-muted-foreground hover:text-foreground text-xs underline"
+                  onClick={() => setMode(mode === 'sell' ? 'auction' : 'sell')}
+                >
+                  {mode === 'sell' ? 'auction instead' : 'sell at a fixed price instead'}
+                </button>
+              </div>
               {tickets.length === 0 ? (
                 <p className="text-muted-foreground text-sm">
                   No unlisted tickets to sell.
@@ -282,17 +319,34 @@ export function SellPanel({ onChanged }: { onChanged: () => void }) {
                     <Input
                       value={priceXrp}
                       onChange={(e) => setPriceXrp(e.target.value)}
-                      placeholder="Price in XRP"
+                      placeholder={mode === 'sell' ? 'Price in XRP' : 'Reserve in XRP'}
                       inputMode="decimal"
-                      aria-label="price in XRP"
+                      aria-label={mode === 'sell' ? 'price in XRP' : 'reserve in XRP'}
                     />
+                    {mode === 'auction' && (
+                      <Input
+                        value={minutes}
+                        onChange={(e) => setMinutes(e.target.value)}
+                        placeholder="Minutes"
+                        inputMode="numeric"
+                        aria-label="auction length in minutes"
+                        className="w-28"
+                      />
+                    )}
                     <Button
                       disabled={busy || !nfTokenId || !priceXrp.trim()}
-                      onClick={() => void list()}
+                      onClick={() => void (mode === 'sell' ? list() : startAuction())}
                     >
-                      {busy ? '…' : 'List'}
+                      {busy ? '…' : mode === 'sell' ? 'List' : 'Open'}
                     </Button>
                   </div>
+                  {mode === 'auction' && (
+                    <p className="text-muted-foreground text-xs">
+                      One signature opens the auction and places your sell offer. The reserve is
+                      the minimum — bids above it pay you more, and the ticket cannot be bought
+                      outright while the auction runs.
+                    </p>
+                  )}
                 </>
               )}
             </div>

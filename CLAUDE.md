@@ -182,6 +182,20 @@ our database while remaining matchable on the ledger. Settlement must retry or
 re-open rather than close the listing, and `ledger:sync` reports this case as
 `failed-but-retryable`.
 
+### Opening an auction
+
+`POST /api/tickets/:nfTokenId/auction` — holder-only, **one signature**. It
+creates the `Auction` (reserve, close time) and a `Listing` that is the on-ledger
+sell offer settlement will broker against, at `auctionSellAmountDrops(reserve)`.
+
+The auction stays `SCHEDULED` until that offer is confirmed on-ledger, then goes
+`LIVE`. Accepting bids earlier would be taking commitments we could not settle.
+
+**An auction's sell offer must never be publicly buyable.** It is priced at the
+auction FLOOR, so a direct purchase would take the ticket for the reserve and skip
+the bidding entirely. `Listing.auctionId` marks it, and both `GET /listings` and
+`POST /listings/:id/buy` exclude it — `auction-open.test.ts` pins that.
+
 ### Settlement
 
 `src/settlement.ts`. An auction ends at a wall-clock time, not when someone opens

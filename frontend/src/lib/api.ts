@@ -557,6 +557,36 @@ export function placeBid(auctionId: string, amountDrops: string): Promise<BidCre
   })
 }
 
+export const AuctionOpenedSchema = z.object({
+  auctionId: z.string(),
+  listingId: z.string(),
+  uuid: z.string(),
+  next: z.string(),
+  qrPng: z.string(),
+  mode: z.enum(['live', 'stub']),
+  reserveDrops: z.string(),
+  sellOfferDrops: z.string(),
+  endsAt: z.string(),
+})
+
+export type AuctionOpened = z.infer<typeof AuctionOpenedSchema>
+
+/**
+ * Opening an auction creates the bidding rules AND the holder's sell offer in
+ * one signature. The returned listingId is what to poll — the auction goes LIVE
+ * when that offer reaches the ledger.
+ */
+export function openAuction(
+  nfTokenId: string,
+  reserveDrops: string,
+  minutes: number,
+): Promise<AuctionOpened> {
+  return request(`/tickets/${encodeURIComponent(nfTokenId)}/auction`, AuctionOpenedSchema, {
+    method: 'POST',
+    body: { reserveDrops, minutes },
+  })
+}
+
 export function pollBid(bidId: string): Promise<BidState> {
   return request(`/bids/${encodeURIComponent(bidId)}`, BidStateSchema)
 }

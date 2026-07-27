@@ -349,6 +349,13 @@ model Listing {
   cancelPayloadUuid String? @unique
   cancelTxHash      String?
 
+  /// Set when this sell offer exists to back an AUCTION rather than a
+  /// fixed-price sale. Such a listing must NEVER appear in the marketplace or be
+  /// directly buyable — its price is the auction floor, so buying it outright
+  /// would take the ticket for the reserve and bypass the bidding entirely.
+  auctionId String?  @unique
+  auction   Auction? @relation(fields: [auctionId], references: [id])
+
   status        ListingStatus @default(PENDING_OFFER)
   failureReason String?
 
@@ -390,6 +397,8 @@ model Auction {
   createdAt DateTime      @default(now())
 
   bids Bid[]
+  /// The holder's sell offer, which settlement brokers the winning bid against.
+  listing Listing?
 
   @@index([status, endsAt])
 }

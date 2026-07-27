@@ -226,7 +226,10 @@ listingsRouter.post('/tickets/:nfTokenId/list', requireAuth, async (req, res) =>
  */
 listingsRouter.get('/listings', async (_req, res) => {
   const listings = await prisma.listing.findMany({
-    where: { status: 'ACTIVE' },
+    // auctionId null: an auction's sell offer is priced at the FLOOR, so showing
+    // it here would advertise a ticket for its reserve and let a buyer take it
+    // without bidding.
+    where: { status: 'ACTIVE', auctionId: null },
     include: listingInclude,
     orderBy: { listedAt: 'desc' },
     take: 100,
@@ -279,6 +282,14 @@ listingsRouter.post('/listings/:id/buy', requireAuth, async (req, res) => {
   }
   if (!me) {
     res.status(404).json({ error: 'User no longer exists' })
+    return
+  }
+  if (listing.auctionId) {
+    // The bypass this guard exists for: buying at the floor instead of bidding.
+    res.status(409).json({
+      error: 'This ticket is being auctioned — place a bid instead of buying it outright',
+      auctionId: listing.auctionId,
+    })
     return
   }
   if (listing.status !== 'ACTIVE' || !listing.offerIndex) {
@@ -474,7 +485,21 @@ listingsRouter.get('/listings/:id', requireAuth, async (req, res) => {
         where: { id: listing.id },
         data: { status: 'ACTIVE', listTxHash: status.txid, offerIndex, listedAt: new Date() },
       }),
-      prisma.ticket.update({ where: { id: listing.ticketId }, data: { status: 'LISTED' } }),
+      prisma.ticket.update({
+        where: { id: listing.ticketId },
+        data: { status: listing.auctionId ? 'IN_AUCTION' : 'LISTED' },
+      }),
+      // Bidding opens only now: until the sell offer exists there is nothing for
+      // a winning bid to be matched against, so accepting bids earlier would be
+      // taking commitments we could not settle.
+      ...(listing.auctionId
+        ? [
+            prisma.auction.update({
+              where: { id: listing.auctionId },
+              data: { status: 'LIVE' },
+            }),
+          ]
+        : []),
     ])
     res.json({ ...view(), state: 'active' })
     return
