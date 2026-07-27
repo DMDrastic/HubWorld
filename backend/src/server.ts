@@ -3,7 +3,7 @@ import { env, brokerMode } from './env.js'
 import { prisma } from './prisma.js'
 import { disconnectLedger } from './ledger.js'
 import { settleDueAuctions } from './settlement.js'
-import { reconcileStalePayloads } from './payload-store.js'
+import { cancelAbandonedPayloads, reconcileStalePayloads } from './payload-store.js'
 import { withLock } from './job-lock.js'
 import { attachRealtime, closeRealtime } from './realtime.js'
 
@@ -47,6 +47,12 @@ const sweep = async () => {
       // mint or a bid means money stuck.
       const recovered = await reconcileStalePayloads()
       if (recovered > 0) console.log(`reconciled ${recovered} payload(s) with no webhook`)
+
+      // Xaman caps OPEN payloads per application. Abandoned ones hold a slot
+      // until cancelled, and once the cap is hit the account cannot create any
+      // payload at all — sign-in breaks for everyone. Observed at 67.
+      const freed = await cancelAbandonedPayloads()
+      if (freed > 0) console.log(`cancelled ${freed} abandoned Xaman payload(s)`)
       return settleDueAuctions()
     })
     // null means another process holds the lease — a skipped run, not a failure.

@@ -24,7 +24,8 @@
     "broker:match": "tsx scripts/broker-match.ts",
     "ledger:sync": "tsx scripts/ledger-sync.ts",
     "auction:settle": "tsx scripts/settle-auctions.ts",
-    "role:grant": "tsx scripts/grant-role.ts"
+    "role:grant": "tsx scripts/grant-role.ts",
+    "payloads:cancel": "tsx scripts/cancel-abandoned.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

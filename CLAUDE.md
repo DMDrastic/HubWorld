@@ -451,6 +451,18 @@ sweep also reconciles any payload left non-terminal for over a minute.
 Configure in the Xaman console as
 `https://<host>/api/webhooks/xaman/<XAMAN_WEBHOOK_SECRET>`.
 
+**Xaman caps how many UNRESOLVED payloads an application may have open.** Every
+abandoned one — never scanned, or scanned and left — holds a slot until it
+expires or is cancelled. They accumulate, and once the cap is hit the account
+cannot create *any* payload: sign-in breaks for everyone, not just the person who
+abandoned one. This is not hypothetical; it happened here at 67 open payloads and
+presented as "internal server error" on the sign-in button.
+
+`cancelAbandonedPayloads` runs on the sweep and cancels payloads past their own
+local deadline, so nothing a user might still sign is taken away. Run it by hand
+with `npm run payloads:cancel`. A full account now answers 503 with a specific
+message rather than a 500 — it is an operational limit with a remedy, not a bug.
+
 ## Minting
 
 The organizer is the issuer, so the organizer signs the `NFTokenMint` in Xaman —

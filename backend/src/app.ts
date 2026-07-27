@@ -94,6 +94,17 @@ export function createApp() {
     // permanent, so it must not read as "Internal server error": the user's
     // transaction may well have gone through, and the honest answer is "try
     // again shortly" rather than something that looks like data loss.
+    // Xaman's open-payload cap. Distinct from a network blip: waiting does not
+    // help by itself, and "internal server error" hides an operational limit
+    // that has a specific remedy.
+    if (err instanceof Error && err.name === 'XamanPayloadLimit') {
+      res.status(503).json({
+        error:
+          'Too many sign-in requests are open at once. Old ones are cleared automatically — try again shortly.',
+      })
+      return
+    }
+
     if (isTransientNetworkError(err)) {
       res.status(503).json({
         error: 'Could not reach the ledger or Xaman just now. Nothing was lost — try again.',

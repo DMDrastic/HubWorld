@@ -165,3 +165,90 @@ export async function trackPayload(uuid: string): Promise<void> {
     update: {},
   })
 }
+
+/**
+ * Cancel payloads nobody is going to sign.
+ *
+ * Xaman caps how many UNRESOLVED payloads an application may have open. Every
+ * abandoned one — never scanned, or scanned and left — holds a slot until it
+ * expires. They accumulate, and once the cap is hit the account cannot create
+ * ANY payload, so sign-in breaks for everyone. That is not hypothetical: it
+ * happened on this account at 67 open payloads.
+ *
+ * Cancelling is therefore routine hygiene, not cleanup. Only payloads past their
+ * own local deadline are touched, so nothing a user might still sign is taken
+ * away from them.
+ */
+export async function cancelAbandonedPayloads(limit = 50): Promise<number> {
+  const now = new Date()
+
+  // Every table that creates a payload knows when it stops being useful. A
+  // payload is abandoned when its owner has already given up on it.
+  const [signIns, mints, gifts, listings, bids, checkIns] = await Promise.all([
+    prisma.signInRequest.findMany({
+      where: { status: 'PENDING', expiresAt: { lt: now } },
+      select: { payloadUuid: true },
+      take: limit,
+    }),
+    prisma.mintRequest.findMany({
+      where: { status: 'PENDING', expiresAt: { lt: now } },
+      select: { payloadUuid: true },
+      take: limit,
+    }),
+    prisma.gift.findMany({
+      where: { status: 'PENDING_OFFER', expiresAt: { lt: now } },
+      select: { offerPayloadUuid: true },
+      take: limit,
+    }),
+    prisma.listing.findMany({
+      where: { status: 'PENDING_OFFER', expiresAt: { lt: now } },
+      select: { listPayloadUuid: true },
+      take: limit,
+    }),
+    prisma.bid.findMany({
+      where: { status: 'PENDING', expiresAt: { lt: now } },
+      select: { bidPayloadUuid: true },
+      take: limit,
+    }),
+    prisma.redemption.findMany({
+      where: { status: 'PENDING', expiresAt: { lt: now } },
+      select: { payloadUuid: true },
+      take: limit,
+    }),
+  ])
+
+  const uuids = [
+    ...signIns.map((r) => r.payloadUuid),
+    ...mints.map((r) => r.payloadUuid),
+    ...gifts.map((r) => r.offerPayloadUuid),
+    ...listings.map((r) => r.listPayloadUuid),
+    ...bids.map((r) => r.bidPayloadUuid),
+    ...checkIns.map((r) => r.payloadUuid),
+  ].filter((u): u is string => typeof u === 'string')
+
+  // Skip anything already known to be resolved — cancelling it would fail and
+  // it is not holding a slot anyway.
+  const known = await prisma.xamanPayload.findMany({
+    where: { uuid: { in: uuids }, terminal: true },
+    select: { uuid: true },
+  })
+  const resolved = new Set(known.map((k) => k.uuid))
+
+  let cancelled = 0
+  for (const uuid of uuids) {
+    if (resolved.has(uuid)) continue
+    try {
+      if (await xaman.cancelPayload(uuid)) cancelled += 1
+      // Record it as terminal either way: it is over, and a future poll should
+      // not go asking Xaman about it.
+      await prisma.xamanPayload.upsert({
+        where: { uuid },
+        create: { uuid, expired: true, terminal: true, source: 'cancel' },
+        update: { expired: true, terminal: true, source: 'cancel' },
+      })
+    } catch {
+      // One stubborn payload must not stop the rest being freed.
+    }
+  }
+  return cancelled
+}

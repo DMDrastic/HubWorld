@@ -61,6 +61,22 @@ export class XamanRateLimited extends Error {
   }
 }
 
+/**
+ * The Xaman application has too many UNRESOLVED payloads open.
+ *
+ * Every payload a user abandons — never scanned, or scanned and never signed —
+ * stays open until it expires or is cancelled. Left alone they accumulate until
+ * the account cannot create any more, which takes down sign-in for everyone.
+ * Distinct from a rate limit: waiting does not help, something has to be
+ * cancelled.
+ */
+export class XamanPayloadLimit extends Error {
+  constructor(detail: string) {
+    super(`Xaman payload limit reached: ${detail}`)
+    this.name = 'XamanPayloadLimit'
+  }
+}
+
 export type PayloadOptions = {
   /** Minutes until Xaman expires the payload. */
   expireMinutes?: number
@@ -78,6 +94,8 @@ export interface XamanClient {
   createPayload(txjson: Record<string, unknown>, opts?: PayloadOptions): Promise<CreatedPayload>
   createSignInPayload(): Promise<CreatedPayload>
   getPayload(uuid: string): Promise<PayloadStatus | null>
+  /** Free a slot against the account's unresolved-payload limit. */
+  cancelPayload(uuid: string): Promise<boolean>
 }
 
 // ------------------------------------------------------------------- live --
@@ -110,7 +128,15 @@ class LiveXamanClient implements XamanClient {
     })
 
     if (!res.ok) {
-      throw new Error(`Xaman payload create failed: ${res.status} ${await res.text()}`)
+      const text = await res.text()
+      // Xaman answers 400 with the real code nested in the body, so the HTTP
+      // status alone is misleading. "Max payloads exceeded" means the account is
+      // full of UNRESOLVED payloads — a capacity problem, not a bad request, and
+      // it must not read as an internal error.
+      if (/max payloads/i.test(text) || /"code":\s*429/.test(text)) {
+        throw new XamanPayloadLimit(text)
+      }
+      throw new Error(`Xaman payload create failed: ${res.status} ${text}`)
     }
 
     const body = (await res.json()) as {
@@ -130,6 +156,18 @@ class LiveXamanClient implements XamanClient {
     // No force_network: SignIn is a pseudo-transaction, never submitted to any
     // ledger, so pinning a network would only reject valid signers.
     return this.createPayload({ TransactionType: 'SignIn' })
+  }
+
+  /**
+   * Cancel an unresolved payload, freeing a slot against the account limit.
+   * Already-resolved payloads cannot be cancelled, which is harmless.
+   */
+  async cancelPayload(uuid: string): Promise<boolean> {
+    const res = await fetch(`${XAMAN_API}/payload/${uuid}`, {
+      method: 'DELETE',
+      headers: this.headers(),
+    })
+    return res.ok
   }
 
   async getPayload(uuid: string): Promise<PayloadStatus | null> {
@@ -191,6 +229,10 @@ class StubXamanClient implements XamanClient {
 
   createSignInPayload(): Promise<CreatedPayload> {
     return this.createPayload()
+  }
+
+  async cancelPayload(uuid: string): Promise<boolean> {
+    return this.payloads.delete(uuid)
   }
 
   async getPayload(uuid: string): Promise<PayloadStatus | null> {
