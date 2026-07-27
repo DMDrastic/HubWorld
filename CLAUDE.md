@@ -142,9 +142,10 @@ path gifting and resale already proved on testnet.
 a losing bid is **inert** on-ledger rather than a live order someone could take
 later. It also means cleanup is cosmetic, not safety-critical — an uncancelled
 losing offer holds the bidder's owner reserve (0.2 XRP) but cannot be executed.
-Whether the broker can cancel a bidder's offer as its `Destination` is **not yet
-verified on testnet**; if it cannot, bidders cancel their own and nothing is
-unsafe.
+**Verified on testnet: the `Destination` of an offer may cancel it, not only its
+creator**, so settlement cancels the losing bids centrally (`brokerCancelOffers`)
+and no loser has to sign anything to reclaim their reserve. Best-effort — a
+failure there must never undo a completed sale.
 
 The trade-off, stated plainly: **funds are not locked.** A bidder can spend the
 money after bidding and settlement then fails with `tecINSUFFICIENT_FUNDS`. So

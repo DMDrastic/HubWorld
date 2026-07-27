@@ -17,7 +17,7 @@
  *    demoted and the next-highest bid is tried, rather than the auction failing.
  */
 import { prisma } from './prisma.js'
-import { brokerSale, platformFeeDrops, spendableDrops } from './ledger.js'
+import { brokerCancelOffers, brokerSale, platformFeeDrops, spendableDrops } from './ledger.js'
 
 /** Bid statuses backed by a live buy offer on-ledger. */
 export const COMMITTED_BID_STATUSES = ['COMMITTED', 'OUTBID'] as const
@@ -184,6 +184,19 @@ export async function settleAuction(auctionId: string): Promise<SettlementOutcom
       })
       await tx.auction.update({ where: { id: auction.id }, data: { status: 'SETTLED' } })
     })
+
+    // Tidy up the losers' offers. Each holds 0.2 XRP of its bidder's reserve and
+    // is inert after settlement, and the broker can cancel them because it is
+    // their Destination — verified on testnet. Best-effort: a failure here must
+    // not undo a completed sale.
+    try {
+      const losing = auction.bids
+        .filter((b) => b.id !== bid.id && b.buyOfferIndex)
+        .map((b) => b.buyOfferIndex!)
+      await brokerCancelOffers(losing)
+    } catch {
+      // Reserves stay held until someone cancels; nothing is unsafe.
+    }
 
     return {
       kind: 'settled',

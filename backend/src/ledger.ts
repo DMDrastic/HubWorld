@@ -385,6 +385,42 @@ export function buildAcceptOfferTx(params: {
   }
 }
 
+/**
+ * Cancel offers as the broker.
+ *
+ * Verified on testnet: the `Destination` of an NFTokenOffer may cancel it, not
+ * only its creator. That is what lets losing bids be cleaned up centrally —
+ * otherwise every loser would have to sign a cancellation to reclaim the 0.2 XRP
+ * owner reserve their offer holds.
+ *
+ * Cosmetic rather than safety-critical: a losing offer is inert because only the
+ * broker can accept it, and after settlement it names an owner who no longer
+ * holds the ticket.
+ */
+export async function brokerCancelOffers(
+  offerIndexes: string[],
+): Promise<{ hash: string; succeeded: boolean; result: string } | null> {
+  if (offerIndexes.length === 0) return null
+  const wallet = platformWallet()
+  const c = await ledger()
+
+  const tx: NFTokenCancelOffer = {
+    TransactionType: 'NFTokenCancelOffer',
+    Account: wallet.classicAddress,
+    // The ledger caps this list; batching keeps one loser's bad index from
+    // blocking the rest.
+    NFTokenOffers: offerIndexes.slice(0, 500),
+  }
+
+  const prepared = await c.autofill(tx)
+  const signed = wallet.sign(prepared)
+  const submitted = await c.submitAndWait(signed.tx_blob)
+  const meta = submitted.result.meta
+  const result = meta && typeof meta !== 'string' ? meta.TransactionResult : 'unknown'
+
+  return { hash: submitted.result.hash, succeeded: result === 'tesSUCCESS', result }
+}
+
 /** Withdraw an unaccepted gift offer. Only the offer's creator may do this. */
 export function buildCancelOfferTx(params: {
   ownerAddress: string
