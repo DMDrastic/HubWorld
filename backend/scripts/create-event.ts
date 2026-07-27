@@ -8,6 +8,7 @@
  *   npm run event:create -- --organizer dm_drastic --title "Neon Rooftop"
  */
 import { prisma } from '../src/prisma.js'
+import { env } from '../src/env.js'
 
 function arg(name: string): string | undefined {
   const i = process.argv.indexOf(`--${name}`)
@@ -27,7 +28,7 @@ async function main() {
   const title = arg('title')
 
   if (!organizer || !title) {
-    console.error('Usage: --organizer <handle> --title "<title>" [--slug s] [--royalty-bps 500]')
+    console.error('Usage: --organizer <handle> --title "<title>" [--slug s] [--royalty-bps 500] [--tickets 50]')
     process.exit(1)
   }
 
@@ -39,7 +40,15 @@ async function main() {
 
   const slug = arg('slug') ?? slugify(title)
   const royaltyBps = Number(arg('royalty-bps') ?? 500)
-  const platformBps = Number(arg('platform-bps') ?? 250)
+  // Policy, not an argument. The API refuses organizer-supplied platform fees;
+  // a script that quietly accepted one would be the same hole with a different
+  // door — and scripts are exactly where such things get forgotten.
+  const platformBps = env.PLATFORM_FEE_BPS
+
+  if (royaltyBps > env.MAX_ROYALTY_BPS) {
+    console.error(`Royalty ${royaltyBps}bps exceeds the ${env.MAX_ROYALTY_BPS}bps cap.`)
+    process.exit(1)
+  }
   const ticketCount = Number(arg('tickets') ?? 50)
 
   // Taxon groups every ticket for one event on-ledger. Keep it unique per
