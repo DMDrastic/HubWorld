@@ -402,6 +402,24 @@ enum AuctionStatus {
   CANCELLED
 }
 
+/**
+ * One bid: an XRPL buy offer, not an escrow.
+ *
+ * The original design escrowed each bid, but an XRPL `Escrow` releases on a time
+ * or crypto-condition trigger and knows nothing about the NFT, so it cannot
+ * settle a ticket sale atomically — it can pay a seller whose ticket never moves.
+ * `NFTokenAcceptOffer` moves the NFT and the XRP together, all-or-nothing, so a
+ * bid is an `NFTokenCreateOffer` with `Destination` = the broker.
+ *
+ * The trade-off, stated plainly: **funds are not locked.** A bidder can spend the
+ * money after bidding, and settlement then fails with `tecINSUFFICIENT_FUNDS`.
+ * Balance is therefore checked when the bid is placed and again at settlement,
+ * falling back to the next-highest bid.
+ *
+ * The compensating benefit is that losing costs nothing: there is no refund to
+ * process and no cancellation transaction a loser must sign. A losing offer is
+ * inert on-ledger because only the broker can accept it.
+ */
 model Bid {
   id String @id @default(uuid())
 
@@ -410,28 +428,39 @@ model Bid {
 
   bidderId String
   bidder   User   @relation(fields: [bidderId], references: [id])
+  // Snapshotted: re-resolving the handle later could retarget a live offer.
+  bidderAddress String?
 
+  /// What the bidder pays if they win. The platform fee and the issuer's
+  /// royalty come out of this, so the seller nets less. Always drops.
   amountDrops BigInt
 
-  // XRPL Escrow locking the bid. escrowSeq is required to later
-  // EscrowFinish (winner) or EscrowCancel (losers).
-  escrowSeq    Int?
-  escrowTxHash String?
+  // The Xaman payload the bidder signs, and the resulting on-ledger buy offer.
+  // buyOfferIndex is assigned by the ledger and is what settlement matches.
+  bidPayloadUuid String? @unique
+  buyTxHash      String?
+  buyOfferIndex  String?
 
-  status   BidStatus @default(PENDING)
-  placedAt DateTime  @default(now())
+  status        BidStatus @default(PENDING)
+  failureReason String?
+
+  placedAt   DateTime  @default(now())
+  expiresAt  DateTime?
+  committedAt DateTime?
 
   // Drives the real-time price tracker: bids for one auction, in time order.
   @@index([auctionId, placedAt])
+  @@index([auctionId, status])
 }
 
 enum BidStatus {
-  PENDING
-  ESCROWED
-  OUTBID
+  PENDING // payload created, not yet signed — must NOT count as price
+  COMMITTED // buy offer live on-ledger; this is a real bid
+  OUTBID // superseded by a higher committed bid
   WON
-  REFUNDED
-  CANCELLED
+  LOST // auction ended without winning; nothing to refund
+  CANCELLED // withdrawn by the bidder
+  FAILED // signed but the ledger rejected it
 }
 
 // -------------------------------------------------- provenance / transfers --

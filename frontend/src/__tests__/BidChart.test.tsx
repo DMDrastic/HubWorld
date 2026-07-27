@@ -1,8 +1,8 @@
 /**
  * Price-tracker integrity.
  *
- * The rule under test is not cosmetic: a bid is not real until its XRPL escrow
- * validates, so an unfunded bid must never move the displayed price. If it could,
+ * The rule under test is not cosmetic: a bid is a buy offer and is not real until
+ * that offer is on-ledger, so an uncommitted bid must never move the price. If it could,
  * anyone could pump the visible price with money they never committed and the
  * chart would become a manipulation surface rather than a price signal.
  *
@@ -48,7 +48,7 @@ describe('BidChart price integrity', () => {
     render(
       <BidChart
         auction={auction([
-          bid({ amountDrops: String(10 * XRP), status: 'ESCROWED' }),
+          bid({ amountDrops: String(10 * XRP), status: 'COMMITTED' }),
           bid({ amountDrops: String(999 * XRP), status: 'PENDING' }),
         ])}
         now={NOW}
@@ -58,13 +58,13 @@ describe('BidChart price integrity', () => {
     expect(screen.queryByText('999.00')).toBeNull()
   })
 
-  it('counts ESCROWED, OUTBID and WON as funded', () => {
+  it('counts COMMITTED, OUTBID and WON as funded', () => {
     // OUTBID and WON were escrowed at some point, so they are real history.
     render(
       <BidChart
         auction={auction([
           bid({ amountDrops: String(10 * XRP), status: 'OUTBID' }),
-          bid({ amountDrops: String(14 * XRP), status: 'ESCROWED' }),
+          bid({ amountDrops: String(14 * XRP), status: 'COMMITTED' }),
         ])}
         now={NOW}
       />,
@@ -72,13 +72,13 @@ describe('BidChart price integrity', () => {
     expect(screen.getByText('14.00')).toBeTruthy()
   })
 
-  it('excludes refunded and cancelled bids from the price', () => {
-    // A refunded bid's money is gone from escrow; it cannot be the price.
+  it('excludes lost and cancelled bids from the price', () => {
+    // A lost or withdrawn bid has no live offer; it cannot be the price.
     render(
       <BidChart
         auction={auction([
-          bid({ amountDrops: String(10 * XRP), status: 'ESCROWED' }),
-          bid({ amountDrops: String(50 * XRP), status: 'REFUNDED' }),
+          bid({ amountDrops: String(10 * XRP), status: 'COMMITTED' }),
+          bid({ amountDrops: String(50 * XRP), status: 'LOST' }),
           bid({ amountDrops: String(60 * XRP), status: 'CANCELLED' }),
         ])}
         now={NOW}
@@ -99,7 +99,7 @@ describe('BidChart price integrity', () => {
           }),
           bid({
             amountDrops: String(15 * XRP),
-            status: 'ESCROWED',
+            status: 'COMMITTED',
             placedAt: new Date(NOW - 5 * 60_000).toISOString(),
           }),
         ])}
@@ -111,14 +111,14 @@ describe('BidChart price integrity', () => {
 
   it('says when the reserve has not been met', () => {
     render(
-      <BidChart auction={auction([bid({ amountDrops: String(9 * XRP), status: 'ESCROWED' })], 12)} now={NOW} />,
+      <BidChart auction={auction([bid({ amountDrops: String(9 * XRP), status: 'COMMITTED' })], 12)} now={NOW} />,
     )
     expect(screen.getByText(/reserve 12\.00/)).toBeTruthy()
   })
 
   it('says when the reserve has been met', () => {
     render(
-      <BidChart auction={auction([bid({ amountDrops: String(15 * XRP), status: 'ESCROWED' })], 12)} now={NOW} />,
+      <BidChart auction={auction([bid({ amountDrops: String(15 * XRP), status: 'COMMITTED' })], 12)} now={NOW} />,
     )
     expect(screen.getByText('above reserve')).toBeTruthy()
   })
@@ -131,7 +131,7 @@ describe('BidChart price integrity', () => {
         auction={auction([
           bid({ amountDrops: String(10 * XRP), status: 'OUTBID', bidder: '@a' }),
           bid({ amountDrops: String(11 * XRP), status: 'OUTBID', bidder: '@a' }),
-          bid({ amountDrops: String(12 * XRP), status: 'ESCROWED', bidder: '@a' }),
+          bid({ amountDrops: String(12 * XRP), status: 'COMMITTED', bidder: '@a' }),
         ])}
         now={NOW}
       />,
@@ -147,7 +147,7 @@ describe('BidChart price integrity', () => {
   it('shows the auction as closed once past the end', () => {
     render(
       <BidChart
-        auction={auction([bid({ amountDrops: String(10 * XRP), status: 'ESCROWED' })])}
+        auction={auction([bid({ amountDrops: String(10 * XRP), status: 'COMMITTED' })])}
         now={NOW + 60 * 60_000}
       />,
     )

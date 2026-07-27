@@ -20,7 +20,7 @@ export const auctionsRouter = Router()
 const SlugParams = z.object({ slug: slugSchema })
 
 /** Statuses whose money is actually committed on-ledger. */
-const FUNDED_BID_STATUSES = ['ESCROWED', 'OUTBID', 'WON'] as const
+const COMMITTED_BID_STATUSES = ['COMMITTED', 'OUTBID', 'WON'] as const
 
 /**
  * GET /api/events/:slug/auction
@@ -97,7 +97,7 @@ auctionsRouter.get('/auctions', async (_req, res) => {
     include: {
       ticket: { include: { event: { select: { slug: true, title: true } } } },
       bids: {
-        where: { status: { in: [...FUNDED_BID_STATUSES] } },
+        where: { status: { in: [...COMMITTED_BID_STATUSES] } },
         orderBy: { amountDrops: 'desc' },
         take: 1,
       },

@@ -124,27 +124,42 @@ ran the React loop. The double-invocation *is* the thing under test — these te
 were confirmed to fail when that bug is reintroduced. Any new polling loop
 belongs under the same discipline.
 
-## Bidding: the escrow problem
+## Bidding: a bid is a buy offer, not an escrow
 
-**Unresolved, and it needs deciding before the write half is built.**
+**Decided.** Despite the name the model started with, bids are **not** escrowed.
 
-The model says bids are escrow-locked. The difficulty is that an XRPL `Escrow`
-releases XRP on a **time or crypto-condition trigger, with no knowledge of the
-NFT**. There is no way to make "pay the seller" and "transfer the ticket" one
-atomic operation via escrow, so a naive design can pay a seller whose ticket
-never moves, or move a ticket that never gets paid for. Tying release to a
-condition Hubworld holds the preimage for would work mechanically, but it makes
-us the arbiter of releasing funds — reintroducing exactly the custody role
-brokered mode was designed to avoid.
+An XRPL `Escrow` releases XRP on a time or crypto-condition trigger and knows
+nothing about the NFT, so it cannot settle a ticket sale atomically — it can pay
+a seller whose ticket never moves. Gating release on a condition Hubworld holds
+the preimage for would work mechanically but makes us the arbiter of releasing
+funds, reintroducing the custody role brokered mode exists to avoid.
 
-`NFTokenCreateOffer` **is** atomic: `NFTokenAcceptOffer` moves the NFT and the XRP
-together, all-or-nothing, and it is already proven twice on testnet by gifting
-and resale. Its weakness is that a buy offer does not *lock* funds — a bidder can
-spend the money and acceptance then fails with `tecINSUFFICIENT_FUNDS`.
+So a bid is an `NFTokenCreateOffer` (buy offer) with `Destination` = the broker.
+`NFTokenAcceptOffer` moves the NFT and the XRP together, all-or-nothing — the same
+path gifting and resale already proved on testnet.
 
-So the real trade is **atomic settlement vs guaranteed funds**, and it cannot be
-had both ways without a hybrid (bid as a buy offer for atomicity, plus a small
-escrowed good-faith deposit forfeited if the winner fails to settle).
+`Destination` = broker does double duty: nobody but Hubworld can match a bid, and
+a losing bid is **inert** on-ledger rather than a live order someone could take
+later. It also means cleanup is cosmetic, not safety-critical — an uncancelled
+losing offer holds the bidder's owner reserve (0.2 XRP) but cannot be executed.
+Whether the broker can cancel a bidder's offer as its `Destination` is **not yet
+verified on testnet**; if it cannot, bidders cancel their own and nothing is
+unsafe.
+
+The trade-off, stated plainly: **funds are not locked.** A bidder can spend the
+money after bidding and settlement then fails with `tecINSUFFICIENT_FUNDS`. So
+`spendableDrops` is checked when a bid is placed and must be re-checked at
+settlement, falling back to the next-highest bid. Note that spendable is *not*
+the balance — reserves are withheld per owned object (`spendableFrom`).
+
+The compensating benefit is real: losing costs nothing, needs no refund, and
+requires no transaction from the loser. The originally planned "cancellation
+reaper" is not needed.
+
+**Still to build:** settlement at close. It needs the ticket holder's sell offer,
+and there is an unresolved question — when a winning bid exceeds the seller's
+sell-offer amount, who receives the surplus? That must be **measured on testnet**,
+not assumed, before settlement is written.
 
 ## Price tracker
 

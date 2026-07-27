@@ -267,6 +267,58 @@ export async function brokerSale(params: {
   }
 }
 
+/**
+ * How much XRP an account can actually spend, in drops.
+ *
+ * Not the same as its balance: XRPL locks a base reserve plus an owner reserve
+ * for every object the account holds (offers, NFT pages, trust lines). Treating
+ * the raw balance as spendable would accept bids the account cannot honour, which
+ * is the failure this check exists to prevent.
+ *
+ * Reserve amounts are network parameters rather than constants, so they are read
+ * from the ledger rather than hardcoded.
+ */
+export async function spendableDrops(address: string): Promise<bigint> {
+  const c = await ledger()
+
+  const [info, state] = await Promise.all([
+    c.request({ command: 'account_info', account: address, ledger_index: 'validated' }),
+    c.request({ command: 'server_info' }),
+  ])
+
+  const v = state.result.info.validated_ledger
+
+  return spendableFrom({
+    balanceDrops: BigInt(info.result.account_data.Balance),
+    ownerCount: info.result.account_data.OwnerCount ?? 0,
+    // server_info reports reserves in XRP. Defaults match the current network
+    // values but are only a fallback — the ledger is the authority.
+    reserveBaseXrp: v?.reserve_base_xrp ?? 1,
+    reserveIncXrp: v?.reserve_inc_xrp ?? 0.2,
+  })
+}
+
+/**
+ * The reserve arithmetic, split out so it is testable without a network.
+ *
+ * Reserve is a base plus an increment per owned object, and an account holding an
+ * NFT and open offers can therefore have a healthy balance and very little it can
+ * actually spend. Clamped at zero: an account below its reserve has nothing
+ * spendable, not a negative amount.
+ */
+export function spendableFrom(params: {
+  balanceDrops: bigint
+  ownerCount: number
+  reserveBaseXrp: number
+  reserveIncXrp: number
+}): bigint {
+  const toDrops = (xrp: number) => BigInt(Math.round(xrp * 1_000_000))
+  const reserve =
+    toDrops(params.reserveBaseXrp) + BigInt(params.ownerCount) * toDrops(params.reserveIncXrp)
+  const spendable = params.balanceDrops - reserve
+  return spendable > 0n ? spendable : 0n
+}
+
 // ------------------------------------------------------------------ gifting --
 
 // tfSellNFToken — marks the offer as "I am selling", as opposed to a bid.

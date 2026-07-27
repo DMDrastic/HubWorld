@@ -462,11 +462,12 @@ export function fetchMyListings(): Promise<Listing[]> {
 /** Mirrors Prisma's BidStatus. Only funded statuses may set the price. */
 export const BidStatusSchema = z.enum([
   'PENDING',
-  'ESCROWED',
+  'COMMITTED',
   'OUTBID',
   'WON',
-  'REFUNDED',
+  'LOST',
   'CANCELLED',
+  'FAILED',
 ])
 
 export const BidSchema = z.object({

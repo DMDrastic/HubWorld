@@ -7,10 +7,11 @@
  *   smooth line would imply interpolation between bids that never happened; the
  *   plateaus and jumps ARE the shape of an auction.
  *
- * - **Only escrowed bids set the price.** A bid is not real until its XRPL
- *   escrow validates. Plotting unfunded bids would let anyone pump the visible
- *   price with money they never committed, turning the chart into a manipulation
- *   surface. Pending bids are drawn as a ghosted marker, never as price.
+ * - **Only committed bids set the price.** A bid is a buy offer, and it is not
+ *   real until that offer exists on-ledger. Plotting unsigned bids would let
+ *   anyone pump the visible price with money they never committed, turning the
+ *   chart into a manipulation surface. Pending bids are drawn as a ghosted
+ *   marker, never as price.
  *
  * - **A candlestick chart was considered and rejected.** OHLC compresses many
  *   trades per interval into a range; an auction has few, monotonically rising
@@ -39,8 +40,8 @@ import {
 } from 'recharts'
 import { dropsToXrp, type Auction, type Bid } from '@/lib/api'
 
-/** A bid only counts toward price once its escrow exists on-ledger. */
-const FUNDED: ReadonlySet<Bid['status']> = new Set(['ESCROWED', 'OUTBID', 'WON'])
+/** A bid only counts toward price once its buy offer exists on-ledger. */
+const FUNDED: ReadonlySet<Bid['status']> = new Set(['COMMITTED', 'OUTBID', 'WON'])
 
 type PricePoint = {
   minutesToClose: number

@@ -90,8 +90,8 @@ export function AuctionDialog({
             {auction && <Badge variant="secondary">{auction.state}</Badge>}
           </DialogTitle>
           <DialogDescription>
-            Bids are escrow-locked on the XRP Ledger, so only funded bids count toward the
-            price.
+            Each bid is a buy offer on the XRP Ledger. Only bids committed on-ledger count
+            toward the price.
           </DialogDescription>
         </DialogHeader>
 

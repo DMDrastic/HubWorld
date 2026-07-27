@@ -3,9 +3,9 @@
  *
  * This exists so the price tracker can run against the real API before the
  * on-ledger bidding mechanism is settled. The Bid rows it writes are marked
- * ESCROWED but nothing is escrowed on-ledger — they are display fixtures, not
- * commitments, which is exactly why this script is dev-only and refuses to run
- * in production.
+ * COMMITTED but no buy offer exists on-ledger — they are display fixtures, not
+ * real bids, which is exactly why this script is dev-only and refuses to run in
+ * production.
  *
  *   npm run auction:create -- --event neon-rooftop-session --reserve 12
  */
@@ -98,7 +98,7 @@ async function main() {
       status: 'OUTBID' as const,
     })
   }
-  if (rows.length > 0) rows[rows.length - 1]!.status = 'ESCROWED'
+  if (rows.length > 0) rows[rows.length - 1]!.status = 'COMMITTED'
 
   // One unfunded bid, so the ghosted-pending rendering is exercised against real
   // data. It is higher than the leader and must NOT move the displayed price.
@@ -117,8 +117,8 @@ async function main() {
   console.log(`  id         ${auction.id}`)
   console.log(`  ticket     ${ticket.nfTokenId.slice(0, 16)}… (held by @${ticket.owner?.username ?? '?'})`)
   console.log(`  reserve    ${reserveXrp} XRP`)
-  console.log(`  bids       ${rows.length} (${rows.length - 1} funded, 1 pending)`)
-  console.log(`  top funded ${Number(top?.amountDrops ?? 0n) / 1e6} XRP`)
+  console.log(`  bids       ${rows.length} (${rows.length - 1} committed, 1 pending)`)
+  console.log(`  top bid    ${Number(top?.amountDrops ?? 0n) / 1e6} XRP`)
   console.log(`  closes     in ${minutesLeft} minutes`)
 }
 
