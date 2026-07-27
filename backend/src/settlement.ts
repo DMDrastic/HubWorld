@@ -18,6 +18,7 @@
  */
 import { prisma } from './prisma.js'
 import { brokerCancelOffers, brokerSale, platformFeeDrops, spendableDrops } from './ledger.js'
+import { publishAuctionEvent } from './realtime.js'
 
 /** Bid statuses backed by a live buy offer on-ledger. */
 export const COMMITTED_BID_STATUSES = ['COMMITTED', 'OUTBID'] as const
@@ -68,6 +69,7 @@ export async function settleAuction(auctionId: string): Promise<SettlementOutcom
 
   if (auction.bids.length === 0) {
     await close('CANCELLED')
+    publishAuctionEvent({ type: 'closed', auctionId: auction.id, reason: 'no-bids' })
     return { kind: 'no-bids' }
   }
 
@@ -75,6 +77,7 @@ export async function settleAuction(auctionId: string): Promise<SettlementOutcom
   if (top.amountDrops < reserve) {
     // The reserve exists precisely so the holder is not forced to sell cheap.
     await close('CANCELLED')
+    publishAuctionEvent({ type: 'closed', auctionId: auction.id, reason: 'reserve-not-met' })
     return { kind: 'reserve-not-met', topDrops: top.amountDrops, reserveDrops: reserve }
   }
 
@@ -197,6 +200,14 @@ export async function settleAuction(auctionId: string): Promise<SettlementOutcom
     } catch {
       // Reserves stay held until someone cancels; nothing is unsafe.
     }
+
+    publishAuctionEvent({
+      type: 'settled',
+      auctionId: auction.id,
+      amountDrops: bid.amountDrops.toString(),
+      winner: `@${bid.bidder.username}`,
+      txHash: result.hash,
+    })
 
     return {
       kind: 'settled',

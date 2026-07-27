@@ -498,3 +498,25 @@ enum TransferKind {
   AUCTION_SETTLE
   BURN
 }
+
+// ------------------------------------------------------------- job locking --
+
+/**
+ * A lease held by whichever process is running a periodic job.
+ *
+ * The auction sweep must not run twice concurrently: two processes would each
+ * pick the same due auction and try to broker it, and the second would waste a
+ * transaction fee discovering the offers were already consumed.
+ *
+ * This is a lease rather than a Postgres advisory lock on purpose. Advisory
+ * locks are scoped to a CONNECTION, and Prisma pools connections — the unlock
+ * could easily land on a different connection than the lock, leaking it
+ * permanently. A row with an expiry is connection-agnostic and self-healing: a
+ * process that dies holding the lease simply lets it expire.
+ */
+model JobLock {
+  name        String   @id
+  lockedUntil DateTime
+  owner       String
+  updatedAt   DateTime @updatedAt
+}

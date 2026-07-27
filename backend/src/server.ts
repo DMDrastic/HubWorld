@@ -3,12 +3,18 @@ import { env, brokerMode } from './env.js'
 import { prisma } from './prisma.js'
 import { disconnectLedger } from './ledger.js'
 import { settleDueAuctions } from './settlement.js'
+import { withLock } from './job-lock.js'
+import { attachRealtime, closeRealtime } from './realtime.js'
 
 const app = createApp()
 
 const server = app.listen(env.PORT, () => {
   console.log(`backend listening on http://localhost:${env.PORT} (${env.NODE_ENV})`)
 })
+
+// Realtime shares the HTTP server, so there is one port and the Vite proxy
+// needs no extra target.
+attachRealtime(server)
 
 /**
  * Auction closer.
@@ -17,21 +23,26 @@ const server = app.listen(env.PORT, () => {
  * page, so settlement cannot be driven by a request. This sweep is what actually
  * closes auctions.
  *
- * Single-process only: two instances running this would try to broker the same
- * auction twice. Before scaling out, this needs an advisory lock or a proper job
- * runner. Noted rather than pretended otherwise.
+ * Guarded twice over. The in-process flag stops this instance overlapping
+ * itself, since settlement waits on ledger validation and can outlast the
+ * interval. The database lease stops TWO instances settling the same auction —
+ * the loser would burn a transaction fee discovering the offers were already
+ * consumed.
  */
 const SWEEP_MS = 15_000
+/** Comfortably longer than a sweep; a crashed process only stalls this long. */
+const SWEEP_LOCK_TTL_MS = 2 * 60_000
+const SWEEP_LOCK = 'auction-sweep'
+
 let sweeping = false
 
 const sweep = async () => {
-  // Overlap guard: settlement submits transactions and waits for validation,
-  // which can easily outlast the interval.
   if (sweeping) return
   sweeping = true
   try {
-    const results = await settleDueAuctions()
-    for (const { auctionId, outcome } of results) {
+    const results = await withLock(SWEEP_LOCK, SWEEP_LOCK_TTL_MS, () => settleDueAuctions())
+    // null means another process holds the lease — a skipped run, not a failure.
+    for (const { auctionId, outcome } of results ?? []) {
       if (outcome.kind === 'not-due') continue
       console.log(`auction ${auctionId.slice(0, 8)}: ${outcome.kind}`,
         outcome.kind === 'settled' ? `${outcome.amountDrops} drops, tx ${outcome.txHash.slice(0, 12)}` : '')
@@ -57,7 +68,7 @@ for (const signal of ['SIGINT', 'SIGTERM'] as const) {
   process.on(signal, () => {
     if (timer) clearInterval(timer)
     server.close(() => {
-      void Promise.allSettled([disconnectLedger(), prisma.$disconnect()]).then(() =>
+      void Promise.allSettled([closeRealtime(), disconnectLedger(), prisma.$disconnect()]).then(() =>
         process.exit(0),
       )
     })

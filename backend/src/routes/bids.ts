@@ -20,6 +20,7 @@ import { brokerMode, xamanMode } from '../env.js'
 import { tryGetPayload, xaman } from '../xaman.js'
 import { issuesOf } from '../schemas.js'
 import { requireAuth } from '../session.js'
+import { publishAuctionEvent } from '../realtime.js'
 import {
   buildBuyOfferTx,
   offerIndexFromTx,
@@ -289,6 +290,17 @@ bidsRouter.get('/bids/:id', requireAuth, async (req, res) => {
       },
       data: { status: 'OUTBID' },
     })
+  })
+
+  // Push to everyone watching. Only committed bids are announced, for the same
+  // reason only committed bids set the price: an unfunded bid must not move what
+  // viewers see.
+  publishAuctionEvent({
+    type: 'bid',
+    auctionId: bid.auctionId,
+    amountDrops: bid.amountDrops.toString(),
+    bidder: `@${bid.bidder.username}`,
+    placedAt: new Date().toISOString(),
   })
 
   res.json({ ...view(), state: 'committed' })

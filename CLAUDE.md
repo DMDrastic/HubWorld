@@ -14,9 +14,9 @@ TypeScript end-to-end.
 
 **Ledger** — xrpl.js for XRPL interaction, Xaman for wallet signing.
 
-**Live bidding (partial)** — Recharts for bid visualisations; Socket.IO for realtime transport is **not** wired yet.
+**Live bidding** — Recharts for bid visualisations, Socket.IO for realtime transport.
 
-The **read** half is built and runs on real data: `GET /api/events/:slug/auction` and `GET /api/auctions`, consumed by `BidChart` inside `AuctionDialog`. The dialog currently polls our own API every 5s, which is acceptable (the 429 that bit us was Xaman's limit, not ours) but should become a Socket.IO subscription — pushing a bid the instant it lands is the entire appeal.
+The **read** half is built and runs on real data: `GET /api/events/:slug/auction` and `GET /api/auctions`, consumed by `BidChart` inside `AuctionDialog`. Updates are **pushed** over Socket.IO as bids commit, with a 30s fallback refresh in case the socket never connects. The HTTP fetch stays authoritative — realtime says *something changed*, the API says *what is true* — so one code path decides what counts as price. Vite's proxy needs `ws: true` on `/socket.io`, or the upgrade is proxied as plain HTTP and Socket.IO silently degrades to long polling.
 
 The **write** half — how a bid is committed on-ledger — is an open decision. See "Bidding: the escrow problem" below. `npm run auction:create` fabricates an auction with bid history for development; those Bid rows are display fixtures with nothing escrowed, and the script refuses to run in production.
 
@@ -213,9 +213,13 @@ Settlement needs the holder's **ACTIVE listing** to broker against; without one
 the auction parks in `SETTLING` rather than failing, since that is a setup gap
 rather than an auction outcome.
 
-**The sweep is single-process.** Two instances would try to broker the same
-auction twice. Before scaling out this needs an advisory lock or a real job
-runner — stated rather than pretended otherwise.
+**The sweep holds a database lease** (`JobLock`, `src/job-lock.ts`) so two
+instances cannot settle the same auction — the loser would burn a transaction fee
+discovering the offers were already consumed. It is a lease rather than a
+Postgres advisory lock because advisory locks are scoped to a CONNECTION and
+Prisma pools connections, so the unlock can land on a different connection than
+the lock and leak it permanently. A lease is connection-agnostic and self-healing:
+a process that dies simply lets it expire.
 
 ## Reconciling with the ledger
 

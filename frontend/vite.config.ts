@@ -19,6 +19,14 @@ export default defineConfig({
         target: 'http://localhost:4000',
         changeOrigin: true,
       },
+      // ws:true is required — without it the upgrade request is proxied as
+      // plain HTTP and Socket.IO silently falls back to long polling, which is
+      // the very thing the websocket is here to replace.
+      '/socket.io': {
+        target: 'http://localhost:4000',
+        changeOrigin: true,
+        ws: true,
+      },
     },
   },
 })

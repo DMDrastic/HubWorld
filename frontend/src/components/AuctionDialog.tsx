@@ -5,15 +5,19 @@
  * BidChart, and therefore Recharts (~410kB). Importing it eagerly anywhere would
  * defeat the code split, so keep the `lazy()` in App.tsx pointed here.
  *
- * Data comes from `GET /api/events/:slug/auction`. Refreshing is a modest poll
- * of OUR OWN API, which is fine — the 429 that bit us earlier was Xaman's rate
- * limit, not ours. It should still become a Socket.IO subscription, because
- * pushing a bid the moment it lands is the entire appeal of a live tracker.
+ * Data comes from `GET /api/events/:slug/auction`, then Socket.IO pushes updates
+ * as bids commit. A poll interval is not "live" — a tracker that lags by 5s
+ * shows a stale price during exactly the closing minutes people care about.
+ *
+ * The fetch stays authoritative and a slow fallback refresh remains, so the
+ * dialog is still correct if the socket never connects. Realtime accelerates it;
+ * it does not own the data.
  */
 import { useCallback, useEffect, useState } from 'react'
 import { BidChart } from '@/components/BidChart'
 import { BidForm } from '@/components/BidForm'
 import { ApiError, fetchAuction, type Auction } from '@/lib/api'
+import { watchAuction } from '@/lib/realtime'
 import { Badge } from '@/components/ui/badge'
 import {
   Dialog,
@@ -23,7 +27,8 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 
-const REFRESH_MS = 5000
+/** Fallback only — realtime carries the load, this covers a dead socket. */
+const FALLBACK_REFRESH_MS = 30_000
 
 export function AuctionDialog({
   slug,
@@ -67,7 +72,7 @@ export function AuctionDialog({
       if (stopped) return
       await load()
       if (stopped) return
-      timer = window.setTimeout(tick, REFRESH_MS)
+      timer = window.setTimeout(tick, FALLBACK_REFRESH_MS)
     }
     void tick()
 
@@ -76,6 +81,22 @@ export function AuctionDialog({
       window.clearTimeout(timer)
     }
   }, [open, load])
+
+  // Push updates. Keyed on the auction id alone: including the auction object
+  // would resubscribe on every refetch, which is the dependency mistake that
+  // turned GiftPanel's poll into a request loop.
+  const auctionId = auction?.id ?? null
+  useEffect(() => {
+    if (!open || !auctionId) return
+    return watchAuction(auctionId, (event) => {
+      // Refetch rather than patching state from the event. The event says
+      // something changed; the API says what the truth now is, and that keeps
+      // one code path deciding what counts as price.
+      if (event.type === 'bid' || event.type === 'settled' || event.type === 'closed') {
+        void load()
+      }
+    })
+  }, [open, auctionId, load])
 
   // Only tick the countdown while the dialog is on screen.
   useEffect(() => {
