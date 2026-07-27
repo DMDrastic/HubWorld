@@ -584,10 +584,19 @@ price + fee. The organizer's royalty is not modelled at all: the NFToken's nativ
 `TransferFee` deducts it and pays the issuer automatically.
 
 **XRPL skips `TransferFee` entirely when the issuer is party to the trade.**
-Both halves are verified on testnet:
+Verified on testnet:
 
 - issuer as buyer, 10 XRP sale → seller received the full **10.0**, no royalty leg
 - issuer uninvolved, 10 XRP sale → seller **9.5**, issuer **+0.5**, broker **0.25**
+- issuer uninvolved, 15 XRP **auction** → seller **13.89375**, issuer **+0.73125**,
+  broker **0.375**
+
+**The royalty is charged on the bid MINUS the broker fee, not on the headline
+price.** That last case makes it explicit: 5% of 15 would be 0.75, but the issuer
+received 0.73125, which is 5% of 14.625 — the amount left after brokerage.
+`TransferFee` applies to what actually transfers to the seller, so an organizer's
+effective take is slightly under their nominal rate whenever a broker fee is
+involved. Worth knowing before quoting a royalty to an organizer.
 
 Not a bug, and it matches the model: an organizer selling keeps 100%, while a
 genuine secondary resale pays them a royalty with no involvement at all. The
