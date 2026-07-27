@@ -1,0 +1,97 @@
+# Continuous integration.
+#
+# Everything green so far has been green because someone remembered to run it.
+# This codebase now decides who gets paid, so that is not a good enough
+# guarantee.
+#
+# The backend job runs a REAL Postgres rather than mocking it: the job-lock tests
+# assert that `INSERT ... ON CONFLICT ... WHERE` is atomic under concurrency, and
+# a mock would test our belief about Postgres instead of Postgres.
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+
+# A newer push makes an in-flight run irrelevant.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: hubworld
+          POSTGRES_PASSWORD: hubworld
+          POSTGRES_DB: hubworld_test
+        ports: ['5432:5432']
+        # Without this the steps can start before Postgres accepts connections.
+        options: >-
+          --health-cmd "pg_isready -U hubworld"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://hubworld:hubworld@localhost:5432/hubworld_test?schema=public
+      NODE_ENV: test
+      # Xaman credentials are deliberately absent: CI runs in stub mode and must
+      # never reach the real Xaman API. The server refuses stub mode only under
+      # NODE_ENV=production, so `test` is correct here.
+
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # engine-strict is on and Vite 8 needs >=20.19, so this is a floor
+          # rather than a preference.
+          node-version: 22
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - run: npm ci
+
+      # Migrations run against the real database, which also proves they apply
+      # cleanly from scratch — the failure mode that bit us when a migration
+      # sorted before the table it altered.
+      - run: npx prisma migrate deploy
+      - run: npx prisma generate
+
+      - name: Typecheck (src and tests)
+        run: npm run typecheck
+
+      - run: npm test
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
+      # The build is part of the contract: a chunk that fails to build is a
+      # broken deploy even when every test passes.
+      - run: npm run build
