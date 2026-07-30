@@ -1,0 +1,84 @@
+# HubWorld on Render.
+#
+# The Dockerfile stays host-agnostic on purpose, so everything Render-specific
+# lives here and nothing in the image knows where it runs.
+#
+# ONE service, deliberately. The frontend calls a relative `/api`, opens its
+# socket with a bare `io()`, and authenticates with a `SameSite=Lax` cookie that
+# a browser stops sending on XHR the moment the API is a different site. Serving
+# the app and the API from two services would break sign-in, and the fix for that
+# is one origin — not `SameSite=None`, which reintroduces the CSRF hole `Lax`
+# closes. So: one web service, serving both.
+
+services:
+  - type: web
+    name: hubworld
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    region: virginia
+    plan: free
+
+    # NOTE ON THE FREE PLAN: the service spins down after ~15 minutes idle, and
+    # the next request pays a cold start of roughly 30-60s. Two consequences
+    # worth knowing rather than rediscovering:
+    #
+    #   1. A demo link clicked cold looks broken. Warm it before showing anyone.
+    #   2. The auction sweep in server.ts runs on a 15s interval INSIDE the
+    #      process, so it does not run while the service is asleep. Auctions
+    #      close late — whenever traffic next wakes it — rather than on time.
+    #      That is a real behavioural difference from a paid always-on instance,
+    #      not just a latency one.
+    healthCheckPath: /api/health
+    # /api/health returns 200 even when Postgres is down, on purpose, so the UI
+    # can still render a status. That makes this LIVENESS only: it proves the
+    # process answers, not that the app works. Read the `db` field for that.
+
+    autoDeploy: true
+
+    envVars:
+      # PORT is deliberately absent. Render injects it and the app reads it via
+      # the env schema; hardcoding one here would bind the wrong port and every
+      # request would fail health checks.
+
+      - key: CORS_ORIGIN
+        value: https://hubworld.app
+
+      # Explicit rather than inherited from the schema default. Minting on
+      # mainnet costs real XRP and cannot be undone, so the ledger a deploy talks
+      # to should be visible in config rather than implied by an absent variable.
+      - key: XRPL_NETWORK
+        value: testnet
+
+      # sync: false means "set this in the dashboard, do not read it from this
+      # file". Every secret below is entered once in Render's UI and encrypted at
+      # rest; none of them may ever be committed here.
+      #
+      # DATABASE_URL comes from Neon. Use the DIRECT (unpooled) connection
+      # string, not the pooled one, and keep `?sslmode=require` — Neon refuses
+      # unencrypted connections.
+      #
+      # Pooled is the tempting default and it breaks migrations. The datasource
+      # in schema.prisma declares only `url`, with no `directUrl`, so Prisma uses
+      # this one connection for queries AND for `prisma migrate deploy` — which
+      # the image runs at startup. Migrations need a session-mode connection;
+      # against PgBouncer in transaction mode they fail, and the container then
+      # dies before serving anything. One free instance needs no pooling anyway.
+      - key: DATABASE_URL
+        sync: false
+
+      # Both required, not optional: the server refuses to boot in stub mode
+      # under NODE_ENV=production, which the image sets.
+      - key: XAMAN_API_KEY
+        sync: false
+      - key: XAMAN_API_SECRET
+        sync: false
+
+      # The one key Hubworld holds. Without it listings can be created and
+      # browsed but no sale can settle, so auctions would run and never close.
+      - key: PLATFORM_SEED
+        sync: false
+
+      # Switches payload resolution from polling to Xaman callbacks. Only useful
+      # once there is a public URL for Xaman to call, which is the case here.
+      - key: XAMAN_WEBHOOK_SECRET
+        sync: false
