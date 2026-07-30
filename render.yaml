@@ -53,16 +53,30 @@ services:
       # file". Every secret below is entered once in Render's UI and encrypted at
       # rest; none of them may ever be committed here.
       #
-      # DATABASE_URL comes from Neon. Use the DIRECT (unpooled) connection
-      # string, not the pooled one, and keep `?sslmode=require` — Neon refuses
-      # unencrypted connections.
+      # DATABASE_URL comes from Supabase. Use the SESSION POOLER string:
       #
-      # Pooled is the tempting default and it breaks migrations. The datasource
-      # in schema.prisma declares only `url`, with no `directUrl`, so Prisma uses
-      # this one connection for queries AND for `prisma migrate deploy` — which
-      # the image runs at startup. Migrations need a session-mode connection;
-      # against PgBouncer in transaction mode they fail, and the container then
-      # dies before serving anything. One free instance needs no pooling anyway.
+      #   postgresql://postgres.<ref>:<pw>@aws-0-<region>.pooler.supabase.com:5432/postgres
+      #
+      # Note the host is `...pooler.supabase.com` and the port is 5432. Getting
+      # this wrong fails in two different ways, and neither error names the real
+      # cause:
+      #
+      #   - The DIRECT connection (`db.<ref>.supabase.co:5432`) is what Supabase
+      #     documents for migrations, but on the free tier it resolves to IPv6
+      #     ONLY. Render dials out over IPv4, so it cannot reach it at all.
+      #   - The TRANSACTION pooler (port 6543) is IPv4 and reachable, but runs in
+      #     transaction mode, which cannot execute migrations.
+      #
+      # The session pooler is the only option that is both IPv4-reachable and in
+      # session mode. That matters here because schema.prisma declares only `url`
+      # and no `directUrl`, so this single connection serves queries AND the
+      # `prisma migrate deploy` the image runs at startup — and a container whose
+      # migrations fail dies before serving anything.
+      #
+      # ALSO: Supabase pauses free projects after ~7 days of inactivity, and
+      # restoring is a manual click in their dashboard. Combined with Render's
+      # sleep, a demo link left alone for a week needs BOTH woken up. Check the
+      # database before showing this to anyone.
       - key: DATABASE_URL
         sync: false
 
