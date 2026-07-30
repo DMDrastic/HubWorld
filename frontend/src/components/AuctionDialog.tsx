@@ -107,13 +107,26 @@ export function AuctionDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-xl">
+      <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 pr-6">
+          <DialogTitle className="flex items-center gap-2.5 pr-6 tracking-tight">
             {auction?.eventTitle ?? title}
-            {auction && <Badge variant="secondary">{auction.state}</Badge>}
+            {auction &&
+              (auction.state === 'live' ? (
+                // Live is a state, not a category, so it wears the live token
+                // and pairs the colour with a label — never colour alone.
+                <span className="border-live/25 bg-live/10 text-live inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs font-medium">
+                  <span className="relative flex size-1.5">
+                    <span className="bg-live absolute inline-flex size-full animate-ping rounded-full opacity-70" />
+                    <span className="bg-live relative inline-flex size-1.5 rounded-full" />
+                  </span>
+                  live
+                </span>
+              ) : (
+                <Badge variant="secondary">{auction.state}</Badge>
+              ))}
           </DialogTitle>
-          <DialogDescription>
+          <DialogDescription className="leading-relaxed">
             Each bid is a buy offer on the XRP Ledger. Only bids committed on-ledger count
             toward the price.
           </DialogDescription>
@@ -122,14 +135,20 @@ export function AuctionDialog({
         {error ? (
           <p className="text-destructive text-sm">{error}</p>
         ) : auction ? (
-          <div className="space-y-4">
+          <div className="space-y-5">
             <BidChart auction={auction} now={now} />
             {/* Bidding is only offered when signed in; the backend enforces it
                 regardless, this just avoids a pointless 401. */}
             {signedIn && <BidForm auction={auction} onPlaced={load} />}
           </div>
         ) : (
-          <p className="text-muted-foreground text-sm">Loading…</p>
+          // A skeleton in the chart's shape, so opening the dialog does not
+          // collapse and then jump when the data lands.
+          <div className="space-y-3" aria-busy="true" aria-label="Loading auction">
+            <div className="bg-muted h-10 w-40 animate-pulse rounded-lg" />
+            <div className="bg-muted h-48 w-full animate-pulse rounded-xl" />
+            <div className="bg-muted h-16 w-full animate-pulse rounded-xl" />
+          </div>
         )}
       </DialogContent>
     </Dialog>

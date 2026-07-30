@@ -117,34 +117,43 @@ export function SignIn({ onAuthenticated }: { onAuthenticated: (u: AuthUser) => 
   }
 
   return (
-    <Card>
+    <Card className="elevate ring-foreground/10 rounded-2xl">
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">
+        <CardTitle className="flex items-center gap-2 text-base">
           Sign in with Xaman
           {phase.kind === 'awaiting' && phase.payload.mode === 'stub' && (
             <Badge variant="secondary">stub mode</Badge>
           )}
         </CardTitle>
-        <CardDescription>
+        <CardDescription className="leading-relaxed">
           Signing proves you control the wallet — no password, no seed shared.
         </CardDescription>
       </CardHeader>
 
       <CardContent className="space-y-4">
         {phase.kind === 'idle' && (
-          <Button onClick={() => void start()} disabled={busy} className="w-full">
+          <Button onClick={() => void start()} disabled={busy} size="lg" className="w-full">
             {busy ? 'Starting…' : 'Sign in'}
           </Button>
         )}
 
         {phase.kind === 'awaiting' && (
           <div className="flex flex-col items-center gap-3">
-            <img
-              src={phase.payload.qrPng}
-              alt="Xaman sign-in QR code"
-              className="size-44 rounded-md border"
-            />
-            <p className="text-muted-foreground text-center text-sm">
+            {/* The QR sits on a white plate with its own quiet zone rather than
+                on the card. A scanner needs light-on-dark contrast and a clear
+                margin; against the dark surface the code can fail to read. */}
+            <div className="rounded-xl bg-white p-3">
+              <img
+                src={phase.payload.qrPng}
+                alt="Xaman sign-in QR code"
+                className="size-44 rounded-md"
+              />
+            </div>
+            <p className="text-muted-foreground flex items-center gap-2 text-center text-sm">
+              <span className="relative flex size-1.5">
+                <span className="bg-primary absolute inline-flex size-full animate-ping rounded-full opacity-70" />
+                <span className="bg-primary relative inline-flex size-1.5 rounded-full" />
+              </span>
               Scan in the Xaman app. Waiting for signature…
             </p>
 
@@ -162,9 +171,9 @@ export function SignIn({ onAuthenticated }: { onAuthenticated: (u: AuthUser) => 
 
         {phase.kind === 'claiming' && (
           <form onSubmit={claim} className="space-y-3">
-            <div className="rounded-md border p-3 text-sm">
+            <div className="bg-muted/50 rounded-xl border p-3 text-sm">
               <div className="text-muted-foreground text-xs">Wallet verified</div>
-              <div className="font-mono text-xs break-all">{phase.address}</div>
+              <div className="mt-0.5 font-mono text-xs break-all">{phase.address}</div>
             </div>
             <p className="text-sm">Pick your handle — this is how others will find you.</p>
             <div className="flex gap-2">

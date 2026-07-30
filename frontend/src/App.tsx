@@ -1,4 +1,5 @@
 import { Suspense, lazy, useCallback, useEffect, useState } from 'react'
+import { ArrowUpRight } from 'lucide-react'
 import {
   ApiError,
   fetchAuctions,
@@ -139,27 +140,31 @@ export function EventList({
 
         const body = (
           <div className="flex items-start justify-between gap-3">
-            <div>
-              <div className="font-medium">{e.title}</div>
-              <div className="text-muted-foreground text-sm">
+            <div className="min-w-0">
+              <div className="font-medium tracking-tight">{e.title}</div>
+              <div className="text-muted-foreground mt-0.5 text-sm">
                 {e.venue} · {dateFmt.format(new Date(e.startsAt))}
               </div>
               <div className="text-muted-foreground mt-1 text-xs">
                 by @{e.organizer.username} · {e.ticketsMinted}/{e.ticketCount} minted
               </div>
               {live && (
-                <div className="text-primary mt-2 text-xs font-medium">
-                  View live bidding →
+                <div className="text-live mt-2.5 flex items-center gap-1 text-xs font-medium">
+                  View live bidding
+                  <ArrowUpRight className="size-3.5" aria-hidden />
                 </div>
               )}
             </div>
-            <div className="flex shrink-0 flex-col items-end gap-1">
+            <div className="flex shrink-0 flex-col items-end gap-1.5">
               <Badge variant={e.status === 'SOLD_OUT' ? 'destructive' : 'secondary'}>
                 {e.status.replace('_', ' ').toLowerCase()}
               </Badge>
               {live && (
-                <span className="flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400">
-                  <span className="size-1.5 animate-pulse rounded-full bg-emerald-500" aria-hidden />
+                <span className="text-live flex items-center gap-1.5 text-xs font-medium">
+                  <span className="relative flex size-1.5">
+                    <span className="bg-live absolute inline-flex size-full animate-ping rounded-full opacity-70" />
+                    <span className="bg-live relative inline-flex size-1.5 rounded-full" />
+                  </span>
                   auction live
                 </span>
               )}
@@ -176,12 +181,12 @@ export function EventList({
                 type="button"
                 onClick={() => onOpenAuction(e)}
                 aria-label={`View live bidding for ${e.title}`}
-                className="hover:border-primary/60 hover:bg-accent/40 focus-visible:ring-ring w-full rounded-lg border p-4 text-left transition-colors focus-visible:ring-2 focus-visible:outline-none"
+                className="bg-card ring-foreground/8 hover:ring-live/40 hover:glow-live focus-visible:ring-ring w-full rounded-2xl p-5 text-left ring-1 transition-all focus-visible:ring-2 focus-visible:outline-none"
               >
                 {body}
               </button>
             ) : (
-              <div className="rounded-lg border p-4">{body}</div>
+              <div className="bg-card ring-foreground/8 rounded-2xl p-5 ring-1">{body}</div>
             )}
           </li>
         )
@@ -286,9 +291,9 @@ export default function App() {
         onSignOut={() => void handleSignOut()}
       />
 
-      <main className="mx-auto max-w-5xl px-4 pb-20">
+      <main className="mx-auto max-w-6xl px-4 pb-24">
         {error && (
-          <p className="text-destructive mt-4 rounded-md border border-current/20 p-3 text-sm">
+          <p className="text-destructive bg-destructive/8 mt-4 rounded-xl border border-current/20 p-3.5 text-sm">
             {error}
           </p>
         )}
@@ -302,8 +307,8 @@ export default function App() {
             {route === '/events' && (
               <section className="space-y-4 py-8">
                 <div>
-                  <h1 className="text-2xl font-semibold tracking-tight">Events</h1>
-                  <p className="text-muted-foreground text-sm">
+                  <h1 className="text-3xl font-semibold tracking-[-0.02em]">Events</h1>
+                  <p className="text-muted-foreground mt-1.5 text-sm leading-relaxed">
                     Sold-out nights open for bidding are marked live.
                   </p>
                 </div>
@@ -318,8 +323,8 @@ export default function App() {
             {route === '/tickets' && (
               <section className="space-y-4 py-8">
                 <div>
-                  <h1 className="text-2xl font-semibold tracking-tight">Your tickets</h1>
-                  <p className="text-muted-foreground text-sm">
+                  <h1 className="text-3xl font-semibold tracking-[-0.02em]">Your tickets</h1>
+                  <p className="text-muted-foreground mt-1.5 text-sm leading-relaxed">
                     Held in your wallet. Gift one to any @handle — it moves on-ledger.
                   </p>
                 </div>
@@ -331,8 +336,8 @@ export default function App() {
             {route === '/market' && (
               <section className="space-y-4 py-8">
                 <div>
-                  <h1 className="text-2xl font-semibold tracking-tight">Marketplace</h1>
-                  <p className="text-muted-foreground text-sm">
+                  <h1 className="text-3xl font-semibold tracking-[-0.02em]">Marketplace</h1>
+                  <p className="text-muted-foreground mt-1.5 text-sm leading-relaxed">
                     Resales settle on-ledger. The organizer earns a royalty on every one.
                   </p>
                 </div>
@@ -343,8 +348,8 @@ export default function App() {
             {route === '/door' && (
               <section className="space-y-4 py-8">
                 <div>
-                  <h1 className="text-2xl font-semibold tracking-tight">Door</h1>
-                  <p className="text-muted-foreground text-sm">
+                  <h1 className="text-3xl font-semibold tracking-[-0.02em]">Door</h1>
+                  <p className="text-muted-foreground mt-1.5 text-sm leading-relaxed">
                     Attendees sign to prove the ticket is theirs. The verdict shows here.
                   </p>
                 </div>
@@ -355,8 +360,8 @@ export default function App() {
             {route === '/organize' && isOrganizer(me.role) && (
               <section className="space-y-4 py-8">
                 <div>
-                  <h1 className="text-2xl font-semibold tracking-tight">Organize</h1>
-                  <p className="text-muted-foreground text-sm">
+                  <h1 className="text-3xl font-semibold tracking-[-0.02em]">Organize</h1>
+                  <p className="text-muted-foreground mt-1.5 text-sm leading-relaxed">
                     Create events and issue tickets. Your royalty follows every resale.
                   </p>
                 </div>

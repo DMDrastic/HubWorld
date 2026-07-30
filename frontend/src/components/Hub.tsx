@@ -10,6 +10,7 @@
  * decision lives on its own page.
  */
 import { useCallback, useEffect, useState } from 'react'
+import { ArrowUpRight, CalendarDays, Store, Ticket as TicketIcon } from 'lucide-react'
 import {
   dropsToXrp,
   fetchAuctions,
@@ -25,10 +26,18 @@ const dateFmt = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeSt
 
 function Stat({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
-    <div className="rounded-lg border p-4">
-      <div className="text-muted-foreground text-xs">{label}</div>
-      <div className="mt-1 text-2xl font-semibold tabular-nums">{value}</div>
-      {hint && <div className="text-muted-foreground mt-0.5 text-xs">{hint}</div>}
+    <div className="bg-card ring-foreground/8 rounded-2xl p-5 ring-1">
+      <div className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
+        {label}
+      </div>
+      {/* Proportional figures read better at display size; tabular is for
+          columns that must align vertically, which these do not. */}
+      <div className="mt-2 text-3xl font-semibold tracking-tight">{value}</div>
+      {hint && (
+        <div className="text-muted-foreground mt-1 truncate text-xs" title={hint}>
+          {hint}
+        </div>
+      )}
     </div>
   )
 }
@@ -52,6 +61,37 @@ function Countdown({ endsAt }: { endsAt: string }) {
   )
 }
 
+function SectionHeader({
+  title,
+  href,
+  label,
+  onNavigate,
+}: {
+  title: string
+  href: Route
+  label: string
+  onNavigate: (e: React.MouseEvent) => void
+}) {
+  return (
+    <div className="flex items-baseline justify-between">
+      <h2 className="font-medium tracking-tight">{title}</h2>
+      <a
+        href={href}
+        onClick={onNavigate}
+        className="text-muted-foreground hover:text-foreground text-xs underline-offset-4 hover:underline"
+      >
+        {label}
+      </a>
+    </div>
+  )
+}
+
+const SHORTCUTS = [
+  ['/events', 'Browse events', 'See what is on and which nights are up for bidding.', CalendarDays],
+  ['/tickets', 'Your tickets', 'Everything you hold, and gifting to an @handle.', TicketIcon],
+  ['/market', 'Marketplace', 'Buy a resale, or list and auction your own.', Store],
+] as const satisfies readonly (readonly [Route, string, string, typeof Store])[]
+
 export function Hub({ me, onOpenAuction }: { me: User; onOpenAuction: (slug: string) => void }) {
   const [tickets, setTickets] = useState<OwnedTicket[]>([])
   const [auctions, setAuctions] = useState<AuctionSummary[]>([])
@@ -72,25 +112,21 @@ export function Hub({ me, onOpenAuction }: { me: User; onOpenAuction: (slug: str
     (a, b) => +new Date(a.event.startsAt) - +new Date(b.event.startsAt),
   )
 
-  const shortcut = (to: Route, label: string, body: string) => (
-    <a
-      key={to}
-      href={to}
-      onClick={link(to)}
-      className="hover:border-primary/50 hover:bg-accent/30 rounded-lg border p-4 transition-colors"
-    >
-      <div className="font-medium">{label}</div>
-      <div className="text-muted-foreground mt-0.5 text-sm text-pretty">{body}</div>
-    </a>
-  )
-
   return (
-    <div className="space-y-8 py-8">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">
-          Welcome back, <span className="text-primary">@{me.username}</span>
-        </h1>
-        <p className="text-muted-foreground font-mono text-xs break-all">{me.xrplAddress}</p>
+    <div className="space-y-10 py-10">
+      <div className="relative">
+        <div
+          className="aurora pointer-events-none absolute inset-x-0 -top-20 h-64 opacity-50"
+          aria-hidden
+        />
+        <div className="relative">
+          <h1 className="text-3xl font-semibold tracking-[-0.02em]">
+            Welcome back, <span className="text-primary">@{me.username}</span>
+          </h1>
+          <p className="text-muted-foreground mt-1.5 font-mono text-xs break-all">
+            {me.xrplAddress}
+          </p>
+        </div>
       </div>
 
       <div className="grid gap-3 sm:grid-cols-3">
@@ -113,35 +149,44 @@ export function Hub({ me, onOpenAuction }: { me: User; onOpenAuction: (slug: str
 
       {auctions.length > 0 && (
         <section className="space-y-3">
-          <div className="flex items-baseline justify-between">
-            <h2 className="font-medium">Bidding now</h2>
-            <a
-              href="/events"
-              onClick={link('/events')}
-              className="text-muted-foreground hover:text-foreground text-xs underline-offset-4 hover:underline"
-            >
-              all events
-            </a>
-          </div>
+          <SectionHeader
+            title="Bidding now"
+            href="/events"
+            label="all events"
+            onNavigate={link('/events')}
+          />
           <ul className="space-y-2">
             {auctions.slice(0, 3).map((a) => (
               <li key={a.id}>
+                {/* The only glow in the signed-in shell. A live auction is the
+                    one thing on this page with a deadline attached. */}
                 <button
                   type="button"
                   onClick={() => onOpenAuction(a.eventSlug)}
-                  className="hover:border-primary/50 hover:bg-accent/30 flex w-full items-center justify-between gap-3 rounded-lg border p-4 text-left transition-colors"
+                  className="bg-card ring-foreground/8 hover:ring-live/40 hover:glow-live group flex w-full items-center justify-between gap-4 rounded-2xl p-5 text-left ring-1 transition-all"
                 >
                   <div className="min-w-0">
-                    <div className="truncate font-medium">{a.eventTitle}</div>
-                    <div className="text-muted-foreground text-xs">
+                    <div className="flex items-center gap-2">
+                      <span className="relative flex size-1.5 shrink-0">
+                        <span className="bg-live absolute inline-flex size-full animate-ping rounded-full opacity-70" />
+                        <span className="bg-live relative inline-flex size-1.5 rounded-full" />
+                      </span>
+                      <span className="truncate font-medium tracking-tight">{a.eventTitle}</span>
+                    </div>
+                    <div className="text-muted-foreground mt-1 text-xs">
                       {a.bidCount} bid{a.bidCount === 1 ? '' : 's'} · <Countdown endsAt={a.endsAt} />
                     </div>
                   </div>
-                  <div className="shrink-0 text-right">
-                    <div className="font-mono font-semibold tabular-nums">
-                      {dropsToXrp(a.topBidDrops)}
+                  <div className="flex shrink-0 items-center gap-3">
+                    <div className="text-right">
+                      <div className="font-mono text-lg font-semibold tabular-nums">
+                        {dropsToXrp(a.topBidDrops)}
+                      </div>
+                      <div className="text-muted-foreground text-[0.7rem] tracking-wide uppercase">
+                        XRP
+                      </div>
                     </div>
-                    <div className="text-muted-foreground text-xs">XRP</div>
+                    <ArrowUpRight className="text-muted-foreground group-hover:text-live size-4 transition-colors" />
                   </div>
                 </button>
               </li>
@@ -152,25 +197,21 @@ export function Hub({ me, onOpenAuction }: { me: User; onOpenAuction: (slug: str
 
       {upcoming.length > 0 && (
         <section className="space-y-3">
-          <div className="flex items-baseline justify-between">
-            <h2 className="font-medium">Your next tickets</h2>
-            <a
-              href="/tickets"
-              onClick={link('/tickets')}
-              className="text-muted-foreground hover:text-foreground text-xs underline-offset-4 hover:underline"
-            >
-              all tickets
-            </a>
-          </div>
+          <SectionHeader
+            title="Your next tickets"
+            href="/tickets"
+            label="all tickets"
+            onNavigate={link('/tickets')}
+          />
           <ul className="space-y-2">
             {upcoming.slice(0, 3).map((t) => (
               <li
                 key={t.nfTokenId}
-                className="flex items-center justify-between gap-3 rounded-lg border p-4"
+                className="bg-card ring-foreground/8 flex items-center justify-between gap-3 rounded-2xl p-5 ring-1"
               >
                 <div className="min-w-0">
-                  <div className="truncate font-medium">{t.event.title}</div>
-                  <div className="text-muted-foreground text-xs">
+                  <div className="truncate font-medium tracking-tight">{t.event.title}</div>
+                  <div className="text-muted-foreground mt-1 text-xs">
                     {dateFmt.format(new Date(t.event.startsAt))}
                     {t.tier ? ` · ${t.tier}` : ''}
                     {t.seat ? ` · ${t.seat}` : ''}
@@ -185,18 +226,34 @@ export function Hub({ me, onOpenAuction }: { me: User; onOpenAuction: (slug: str
       )}
 
       {usable.length === 0 && auctions.length === 0 && (
-        <div className="rounded-lg border border-dashed p-8 text-center">
-          <p className="font-medium">Your hub is empty</p>
-          <p className="text-muted-foreground mt-1 text-sm">
+        <div className="rounded-2xl border border-dashed p-12 text-center">
+          <p className="font-medium tracking-tight">Your hub is empty</p>
+          <p className="text-muted-foreground mx-auto mt-1.5 max-w-sm text-sm leading-relaxed">
             Tickets you buy, receive or win will appear here.
           </p>
         </div>
       )}
 
       <section className="grid gap-3 sm:grid-cols-3">
-        {shortcut('/events', 'Browse events', 'See what is on and which nights are up for bidding.')}
-        {shortcut('/tickets', 'Your tickets', 'Everything you hold, and gifting to an @handle.')}
-        {shortcut('/market', 'Marketplace', 'Buy a resale, or list and auction your own.')}
+        {SHORTCUTS.map(([to, label, body, Icon]) => (
+          <a
+            key={to}
+            href={to}
+            onClick={link(to)}
+            className="group bg-card ring-foreground/8 hover:ring-primary/30 rounded-2xl p-5 ring-1 transition-all hover:-translate-y-0.5"
+          >
+            <div className="flex items-center justify-between">
+              <div className="bg-primary/10 text-primary ring-primary/15 flex size-8 items-center justify-center rounded-lg ring-1">
+                <Icon className="size-4" aria-hidden />
+              </div>
+              <ArrowUpRight className="text-muted-foreground group-hover:text-primary size-4 transition-colors" />
+            </div>
+            <div className="mt-4 font-medium tracking-tight">{label}</div>
+            <div className="text-muted-foreground mt-1 text-sm leading-relaxed text-pretty">
+              {body}
+            </div>
+          </a>
+        ))}
       </section>
     </div>
   )
