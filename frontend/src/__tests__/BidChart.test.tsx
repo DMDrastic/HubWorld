@@ -41,6 +41,20 @@ function auction(bids: Bid[], reserveXrp = 12): Auction {
   }
 }
 
+/**
+ * Read the value paired with a label in the ticker strip's definition list.
+ *
+ * Asserting on the dt→dd pairing rather than one concatenated string means the
+ * test survives layout changes but still fails if a number is wrong, missing,
+ * or attached to the wrong label.
+ */
+function statValue(label: string): string {
+  const dt = screen.getByText(label)
+  const dd = dt.parentElement?.querySelector('dd')
+  if (!dd) throw new Error(`no <dd> paired with "${label}"`)
+  return dd.textContent ?? ''
+}
+
 describe('BidChart price integrity', () => {
   it('ignores a PENDING bid even when it is the highest', () => {
     // The attack: bid 999 XRP, never fund the escrow, and watch the headline
@@ -110,17 +124,19 @@ describe('BidChart price integrity', () => {
   })
 
   it('says when the reserve has not been met', () => {
+    // Below the reserve the actual figure is shown, so a bidder knows what it
+    // would take to clear it.
     render(
       <BidChart auction={auction([bid({ amountDrops: String(9 * XRP), status: 'COMMITTED' })], 12)} now={NOW} />,
     )
-    expect(screen.getByText(/reserve 12\.00/)).toBeTruthy()
+    expect(statValue('Reserve')).toBe('12.00')
   })
 
   it('says when the reserve has been met', () => {
     render(
       <BidChart auction={auction([bid({ amountDrops: String(15 * XRP), status: 'COMMITTED' })], 12)} now={NOW} />,
     )
-    expect(screen.getByText('above reserve')).toBeTruthy()
+    expect(statValue('Reserve')).toBe('met')
   })
 
   it('counts distinct bidders, not bids', () => {
@@ -136,7 +152,8 @@ describe('BidChart price integrity', () => {
         now={NOW}
       />,
     )
-    expect(screen.getByText(/3 bids · 1 bidders/)).toBeTruthy()
+    // Three bids, one bidder — both numbers must be present and distinct.
+    expect(statValue('Bids')).toBe('3 / 1 bidders')
   })
 
   it('renders an auction with no bids at all', () => {

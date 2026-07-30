@@ -45,6 +45,18 @@ const EnvSchema = z.object({
   // difference between one Xaman request per payload and one every 2.5s per
   // waiting user. Unset in dev, where there is no public URL to call back to.
   XAMAN_WEBHOOK_SECRET: z.string().min(16).optional(),
+
+  // Directory holding the built frontend (`frontend/dist`). When set, this
+  // process serves the app as well as the API, from ONE origin.
+  //
+  // That is not a convenience — it is what the frontend already requires. It
+  // calls a relative `/api` and opens its socket with a bare `io()`, and the
+  // session cookie is `SameSite=Lax`, which stops being sent on XHR the moment
+  // the API is a different site from the app. Splitting them across two hosts
+  // breaks auth; the fix is one origin, not `SameSite=None`.
+  //
+  // Unset in dev, where Vite serves the app on :5173 and proxies /api here.
+  WEB_DIST: z.string().min(1).optional(),
 })
 
 const parsed = EnvSchema.safeParse(process.env)

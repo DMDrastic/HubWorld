@@ -140,33 +140,51 @@ export function BidChart({ auction, now = Date.now() }: { auction: Auction; now?
     <div className="space-y-3">
       {/* Ticker strip — the glanceable, stock-ticker part. Cheaper than a chart
           and the only thing that works on a narrow screen. */}
-      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-        <div className="flex items-baseline gap-2">
-          <span className="font-mono text-2xl font-semibold tabular-nums">
-            {view.currentXrp.toFixed(2)}
-          </span>
-          <span className="text-muted-foreground text-xs">XRP</span>
-          {view.leader && (
-            <span className="text-muted-foreground text-xs">
-              {view.leader.bidder} · {fmtAgo(view.leader.placedAt, now)}
+      <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
+        <div>
+          <div className="text-muted-foreground text-[0.7rem] font-medium tracking-[0.14em] uppercase">
+            Leading bid
+          </div>
+          <div className="mt-1 flex items-baseline gap-2">
+            <span className="font-mono text-4xl font-semibold tracking-tight tabular-nums">
+              {view.currentXrp.toFixed(2)}
             </span>
+            <span className="text-muted-foreground text-sm font-medium">XRP</span>
+          </div>
+          {view.leader && (
+            <div className="text-muted-foreground mt-1 text-xs">
+              {view.leader.bidder} · {fmtAgo(view.leader.placedAt, now)}
+            </div>
           )}
         </div>
-        <div className="flex items-center gap-3 text-xs">
-          <span
-            className={
-              view.aboveReserve
-                ? 'text-emerald-600 dark:text-emerald-400'
-                : 'text-muted-foreground'
-            }
-          >
-            {view.aboveReserve ? 'above reserve' : `reserve ${view.reserveXrp.toFixed(2)}`}
-          </span>
-          <span className="text-muted-foreground">
-            {view.bidCount} bids · {view.distinctBidders} bidders
-          </span>
-          <span className="font-mono tabular-nums">{fmtCountdown(view.msToClose)}</span>
-        </div>
+
+        <dl className="flex items-center gap-5 text-xs">
+          <div>
+            <dt className="text-muted-foreground">Reserve</dt>
+            {/* Above-reserve is a STATE, so it wears the live token rather
+                than the series colour — the price line is already violet. */}
+            <dd
+              className={`mt-0.5 font-mono tabular-nums ${
+                view.aboveReserve ? 'text-live' : 'text-foreground'
+              }`}
+            >
+              {view.aboveReserve ? 'met' : view.reserveXrp.toFixed(2)}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-muted-foreground">Bids</dt>
+            <dd className="text-foreground mt-0.5 font-mono tabular-nums">
+              {view.bidCount}
+              <span className="text-muted-foreground"> / {view.distinctBidders} bidders</span>
+            </dd>
+          </div>
+          <div>
+            <dt className="text-muted-foreground">Closes</dt>
+            <dd className="text-foreground mt-0.5 font-mono tabular-nums">
+              {fmtCountdown(view.msToClose)}
+            </dd>
+          </div>
+        </dl>
       </div>
 
       {/* Price. Reversed axis so the close is on the right and time runs left to
@@ -200,10 +218,13 @@ export function BidChart({ auction, now = Date.now() }: { auction: Auction; now?
               contentStyle={{
                 background: 'var(--color-popover)',
                 border: '1px solid var(--color-border)',
-                borderRadius: 8,
+                borderRadius: 12,
                 fontSize: 12,
+                padding: '8px 12px',
+                boxShadow: '0 8px 24px -8px rgb(0 0 0 / 0.45)',
                 color: 'var(--color-popover-foreground)',
               }}
+              cursor={{ stroke: 'var(--color-border)', strokeWidth: 1 }}
               labelFormatter={(v: React.ReactNode) => `${Math.round(Number(v))}m to close`}
               formatter={(value: unknown, _n: unknown, item: unknown) => {
                 const p = (item as { payload?: PricePoint }).payload
@@ -215,19 +236,40 @@ export function BidChart({ auction, now = Date.now() }: { auction: Auction; now?
               y={view.reserveXrp}
               stroke="var(--color-muted-foreground)"
               strokeDasharray="4 4"
-              label={{ value: 'reserve', position: 'insideTopLeft', fontSize: 10, fill: 'var(--color-muted-foreground)' }}
+              strokeOpacity={0.7}
+              label={{
+                value: 'reserve',
+                position: 'insideTopLeft',
+                fontSize: 10,
+                fill: 'var(--color-muted-foreground)',
+              }}
             />
 
-            {/* stepAfter: the price holds until the next bid lands. */}
+            {/* stepAfter: the price holds until the next bid lands. The series
+                wears chart-1, not `primary` — it is a data mark that happens to
+                share the brand hue, and calling it `primary` would invite the
+                next series to reach for `secondary`. */}
+            <defs>
+              <linearGradient id="priceFill" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="var(--color-chart-1)" stopOpacity={0.28} />
+                <stop offset="100%" stopColor="var(--color-chart-1)" stopOpacity={0.02} />
+              </linearGradient>
+            </defs>
             <Area
               type="stepAfter"
               dataKey="priceXrp"
-              stroke="var(--color-primary)"
+              stroke="var(--color-chart-1)"
               strokeWidth={2}
-              fill="var(--color-primary)"
-              fillOpacity={0.12}
-              dot={{ r: 2.5, fill: 'var(--color-primary)' }}
-              activeDot={{ r: 4 }}
+              fill="url(#priceFill)"
+              dot={{ r: 2.5, fill: 'var(--color-chart-1)', strokeWidth: 0 }}
+              // A 2px surface ring keeps the hovered point legible where the
+              // mark overlaps the fill beneath it.
+              activeDot={{
+                r: 4.5,
+                fill: 'var(--color-chart-1)',
+                stroke: 'var(--color-card)',
+                strokeWidth: 2,
+              }}
               isAnimationActive={false}
             />
 
@@ -263,23 +305,30 @@ export function BidChart({ auction, now = Date.now() }: { auction: Auction; now?
               contentStyle={{
                 background: 'var(--color-popover)',
                 border: '1px solid var(--color-border)',
-                borderRadius: 8,
+                borderRadius: 12,
                 fontSize: 12,
+                padding: '8px 12px',
+                boxShadow: '0 8px 24px -8px rgb(0 0 0 / 0.45)',
                 color: 'var(--color-popover-foreground)',
               }}
+              cursor={{ stroke: 'var(--color-border)', strokeWidth: 1 }}
               labelFormatter={(v: React.ReactNode) => `${Math.round(Number(v))}m to close`}
               formatter={(v: unknown) => [`${v}`, 'bids']}
             />
+            {/* Rounded data-ends, anchored to the baseline. */}
             <Bar
               dataKey="bids"
-              fill="var(--color-primary)"
-              fillOpacity={0.35}
+              fill="var(--color-chart-1)"
+              fillOpacity={0.4}
+              radius={[4, 4, 0, 0]}
               isAnimationActive={false}
             />
           </BarChart>
         </ResponsiveContainer>
       </div>
-      <div className="text-muted-foreground text-center text-[10px]">bid velocity</div>
+      <div className="text-muted-foreground text-center text-[0.65rem] tracking-[0.14em] uppercase">
+        bid velocity
+      </div>
 
       {view.pending.length > 0 && (
         <p className="text-muted-foreground text-xs">

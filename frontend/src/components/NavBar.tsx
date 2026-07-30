@@ -9,8 +9,10 @@
  * open-in-new-tab all keep working, and the router only intercepts plain left
  * clicks.
  */
+import { Moon, Sun } from 'lucide-react'
 import { isOrganizer, type Health, type User } from '@/lib/api'
 import { useLinkHandler, type Route } from '@/lib/router'
+import { useTheme } from '@/lib/theme'
 
 type Destination = { to: Route; label: string }
 
@@ -36,11 +38,51 @@ function HealthDot({ health }: { health: Health | null }) {
       className="flex items-center gap-1.5"
       title={health ? `api ${health.status} · db ${health.db}` : 'connecting'}
     >
-      <span
-        className={`size-1.5 rounded-full ${ok ? 'bg-emerald-500' : 'bg-destructive animate-pulse'}`}
-        aria-hidden
-      />
+      <span className="relative flex size-1.5">
+        {ok && (
+          <span className="bg-live absolute inline-flex size-full animate-ping rounded-full opacity-60" />
+        )}
+        <span
+          className={`relative inline-flex size-1.5 rounded-full ${
+            ok ? 'bg-live' : 'bg-destructive animate-pulse'
+          }`}
+          aria-hidden
+        />
+      </span>
       <span className="sr-only">{health ? `API ${health.status}` : 'connecting'}</span>
+    </span>
+  )
+}
+
+function ThemeToggle() {
+  const [theme, setTheme] = useTheme()
+  const next = theme === 'dark' ? 'light' : 'dark'
+  return (
+    <button
+      type="button"
+      onClick={() => setTheme(next)}
+      // The label names the DESTINATION, not the current state — "dark mode" on
+      // a button that is already dark reads as a status, not a control.
+      aria-label={`Switch to ${next} mode`}
+      title={`Switch to ${next} mode`}
+      className="text-muted-foreground hover:text-foreground hover:bg-accent focus-visible:ring-ring flex size-8 items-center justify-center rounded-lg transition-colors focus-visible:ring-2 focus-visible:outline-none"
+    >
+      {theme === 'dark' ? <Moon className="size-4" /> : <Sun className="size-4" />}
+    </button>
+  )
+}
+
+/** The mark: a ring of destinations around a centre — the hub-world idea. */
+function Mark() {
+  return (
+    <span className="from-primary/25 to-primary/5 ring-primary/25 text-primary flex size-7 items-center justify-center rounded-lg bg-linear-to-br ring-1">
+      <svg viewBox="0 0 24 24" className="size-4" fill="none" aria-hidden>
+        <circle cx="12" cy="12" r="3" fill="currentColor" />
+        <circle cx="12" cy="4" r="1.8" fill="currentColor" opacity=".55" />
+        <circle cx="20" cy="12" r="1.8" fill="currentColor" opacity=".55" />
+        <circle cx="12" cy="20" r="1.8" fill="currentColor" opacity=".55" />
+        <circle cx="4" cy="12" r="1.8" fill="currentColor" opacity=".55" />
+      </svg>
     </span>
   )
 }
@@ -62,28 +104,18 @@ export function NavBar({
   const items = destinations(me, hasDoor)
 
   return (
-    <header className="bg-background/80 sticky top-0 z-40 border-b backdrop-blur-md">
-      <div className="mx-auto flex h-14 max-w-5xl items-center gap-6 px-4">
+    <header className="bg-background/70 sticky top-0 z-40 border-b backdrop-blur-xl">
+      <div className="mx-auto flex h-16 max-w-6xl items-center gap-6 px-4">
         <a
           href="/"
           onClick={link('/')}
-          className="flex shrink-0 items-center gap-2 font-semibold tracking-tight"
+          className="flex shrink-0 items-center gap-2.5 text-[0.95rem] font-semibold tracking-tight"
         >
-          {/* The mark: a ring of destinations around a centre, which is the
-              hub-world idea the product is named for. */}
-          <span className="bg-primary/10 text-primary flex size-7 items-center justify-center rounded-md">
-            <svg viewBox="0 0 24 24" className="size-4" fill="none" aria-hidden>
-              <circle cx="12" cy="12" r="3" fill="currentColor" />
-              <circle cx="12" cy="4" r="1.8" fill="currentColor" opacity=".55" />
-              <circle cx="20" cy="12" r="1.8" fill="currentColor" opacity=".55" />
-              <circle cx="12" cy="20" r="1.8" fill="currentColor" opacity=".55" />
-              <circle cx="4" cy="12" r="1.8" fill="currentColor" opacity=".55" />
-            </svg>
-          </span>
+          <Mark />
           HubWorld
         </a>
 
-        <nav className="hidden flex-1 items-center gap-1 sm:flex">
+        <nav className="hidden flex-1 items-center gap-0.5 sm:flex">
           {items.map((d) => {
             const active = route === d.to
             return (
@@ -92,10 +124,10 @@ export function NavBar({
                 href={d.to}
                 onClick={link(d.to)}
                 aria-current={active ? 'page' : undefined}
-                className={`rounded-md px-3 py-1.5 text-sm transition-colors ${
+                className={`rounded-lg px-3 py-1.5 text-sm transition-colors ${
                   active
-                    ? 'bg-accent text-accent-foreground font-medium'
-                    : 'text-muted-foreground hover:text-foreground hover:bg-accent/50'
+                    ? 'bg-primary/12 text-primary font-medium'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-accent/60'
                 }`}
               >
                 {d.label}
@@ -104,11 +136,14 @@ export function NavBar({
           })}
         </nav>
 
-        <div className="ml-auto flex items-center gap-3 text-sm">
+        <div className="ml-auto flex items-center gap-2 text-sm">
           <HealthDot health={health} />
+          <ThemeToggle />
           {me ? (
             <div className="flex items-center gap-2">
-              <span className="text-muted-foreground hidden md:inline">@{me.username}</span>
+              <span className="bg-muted text-muted-foreground hidden rounded-lg px-2 py-1 font-mono text-xs md:inline">
+                @{me.username}
+              </span>
               <button
                 type="button"
                 onClick={onSignOut}
@@ -132,9 +167,9 @@ export function NavBar({
               href={d.to}
               onClick={link(d.to)}
               aria-current={route === d.to ? 'page' : undefined}
-              className={`shrink-0 rounded-md px-3 py-1 text-sm ${
+              className={`shrink-0 rounded-lg px-3 py-1 text-sm ${
                 route === d.to
-                  ? 'bg-accent text-accent-foreground font-medium'
+                  ? 'bg-primary/12 text-primary font-medium'
                   : 'text-muted-foreground'
               }`}
             >

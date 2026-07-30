@@ -1,10 +1,39 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" class="dark">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>HubWorld</title>
+    <meta name="theme-color" content="#09090d" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#f6f6f8" media="(prefers-color-scheme: light)" />
+    <meta
+      name="description"
+      content="Event ticketing on the XRP Ledger. Your tickets live in your own wallet — gift them, resell them, bid on a sold-out night, and walk in by signing at the door."
+    />
+    <title>HubWorld — every ticket you hold, in one hub</title>
+
+    <!--
+      Theme, applied before first paint.
+
+      `class="dark"` on <html> above is the default, so the very first frame is
+      already dark and there is no flash. This script only has to DEMOTE to light
+      for someone who has chosen it. Doing this from React instead would paint
+      dark, mount, then repaint light — the flash this exists to prevent.
+
+      Deliberately inline and blocking: an external file could be fetched after
+      first paint, which defeats the point.
+    -->
+    <script>
+      (function () {
+        try {
+          if (localStorage.getItem('hubworld_theme') === 'light') {
+            document.documentElement.classList.remove('dark')
+          }
+        } catch (e) {
+          /* Storage blocked — keep the default dark. */
+        }
+      })()
+    </script>
   </head>
   <body>
     <div id="root"></div>

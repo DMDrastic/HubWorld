@@ -1,0 +1,15 @@
+# node_modules are reinstalled per-stage from the lockfile; copying the host's
+# would drag in darwin-native binaries that cannot run in the image.
+**/node_modules
+**/dist
+
+# Secrets must never enter the build context — a COPY of the repo would bake
+# them into a layer, where they survive even if a later step deletes them.
+**/.env
+**/.env.*
+!**/.env.example
+
+.git
+.github
+**/*.log
+**/.DS_Store

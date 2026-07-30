@@ -306,6 +306,45 @@ Decisions that are load-bearing, not stylistic:
 - **Distinct bidder count is shown**, because one person walking up their own bid
   is a different market from three competing and price cannot distinguish them.
 
+## Deploying
+
+**One image, one process, one origin.** The `Dockerfile` at the repo root builds
+the frontend and backend separately and ships them together: Express serves the
+built app from `WEB_DIST` alongside `/api`.
+
+That is a requirement, not packaging convenience. The frontend calls a relative
+`/api`, opens its socket with a bare `io()`, and authenticates with a
+`SameSite=Lax` cookie — which a browser stops sending on XHR the moment the API
+is a different site from the app. **Splitting the two across hosts breaks
+sign-in**, and the fix is one origin, not `SameSite=None` (which reintroduces
+the CSRF hole `Lax` closes). Any host that runs a container works; nothing in
+the image is host-specific.
+
+**The SPA fallback is part of the server, not the host's config.** The router
+owns `/tickets`, `/market` and the rest, and those paths exist only in the
+browser — so `serveWebApp` in `app.ts` returns `index.html` for any GET that
+accepts HTML. Without it, loading one of those URLs directly, or just
+refreshing, 404s on a page that works fine when navigated to. Vite hides this in
+dev by doing the same thing.
+
+Ordering matters and is easy to get wrong: **the `/api` 404 is registered before
+the static and fallback handlers**, so a mistyped API route answers JSON rather
+than falling through to the shell and handing the client HTML to parse as JSON.
+
+`index.html` is served `no-cache` because it names the current hashed bundles; a
+stale copy points at assets the next deploy has already deleted. Everything
+under `/assets` is fingerprinted and gets a year, `immutable`. Everything else
+keeps its name across deploys and gets an hour.
+
+The container runs `prisma migrate deploy` before serving — a process that comes
+up against an un-migrated database answers every request with a Prisma error,
+which is worse than failing to start.
+
+**Still outstanding before this is actually live:** `XRPL_NETWORK` has never
+been anything but `testnet`, so every figure measured in this document is
+testnet; and the Xaman application's payload quota is exhausted and its
+credentials still need rotating.
+
 ## Local environment
 
 - Postgres: Homebrew `postgresql@15` on `:5432`, database `hubworld_dev`.
@@ -547,7 +586,9 @@ unique `nfTokenId`, so a duplicate poll is a no-op rather than a second ticket.
 Payloads set `force_network` from `XRPL_NETWORK`. Without it a wallet set to
 mainnet would sign a testnet-intended mint against real funds.
 
-There is no event-creation API yet; organizers are onboarded by hand:
+Events are created through `POST /api/events` (organizer-only, via
+`OrganizerPanel`). The script remains for seeding and for onboarding an
+organizer before they have signed in:
 
 ```sh
 npm run event:create -- --organizer <handle> --title "<title>" [--tickets 50]
