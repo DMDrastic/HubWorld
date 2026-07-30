@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { QrCode } from '@/components/QrCode'
 import {
   ApiError,
   buyListing,
@@ -239,7 +240,7 @@ export function SellPanel({ onChanged }: { onChanged: () => void }) {
                 {mine.map((l) => (
                   <div
                     key={l.listingId}
-                    className="flex items-center justify-between gap-3 rounded-md border p-3"
+                    className="bg-muted/40 flex items-center justify-between gap-3 rounded-xl p-3.5"
                   >
                     <div className="min-w-0">
                       <div className="truncate text-sm">{l.ticket.event.title}</div>
@@ -279,7 +280,7 @@ export function SellPanel({ onChanged }: { onChanged: () => void }) {
                 {market.map((l) => (
                   <div
                     key={l.listingId}
-                    className="flex items-center justify-between gap-3 rounded-md border p-3"
+                    className="bg-muted/40 flex items-center justify-between gap-3 rounded-xl p-3.5"
                   >
                     <div className="min-w-0">
                       <div className="truncate text-sm">{l.ticket.event.title}</div>
@@ -320,7 +321,7 @@ export function SellPanel({ onChanged }: { onChanged: () => void }) {
                     value={nfTokenId}
                     onChange={(e) => setNfTokenId(e.target.value)}
                     aria-label="ticket to sell"
-                    className="border-input bg-background w-full rounded-md border px-3 py-2 text-sm"
+                    className="border-input bg-background focus-visible:border-ring focus-visible:ring-ring/50 w-full rounded-lg border px-3 py-2 text-sm transition-colors focus-visible:ring-[3px] focus-visible:outline-none"
                   >
                     {tickets.map((t) => (
                       <option key={t.nfTokenId} value={t.nfTokenId}>
@@ -378,11 +379,7 @@ export function SellPanel({ onChanged }: { onChanged: () => void }) {
             {phase.payload !== null &&
               (listing === null || NEEDS_SIGNATURE.has(listing.state)) && (
                 <>
-                  <img
-                    src={phase.payload.qrPng}
-                    alt="Xaman signing QR code"
-                    className="size-44 rounded-md border"
-                  />
+                  <QrCode src={phase.payload.qrPng} alt="Xaman signing QR code" />
                   <p className="text-muted-foreground text-center text-sm">
                     Scan in Xaman to sign.
                   </p>
@@ -398,7 +395,7 @@ export function SellPanel({ onChanged }: { onChanged: () => void }) {
                     : MESSAGES[listing.state]}
                 </p>
                 {listing.state === 'sold' && (
-                  <div className="w-full space-y-1 rounded-md border p-3 text-xs">
+                  <div className="bg-muted/40 w-full space-y-1 rounded-xl p-3.5 text-xs">
                     <div className="text-muted-foreground">seller receives</div>
                     <div>{dropsToXrp(listing.priceDrops)} XRP minus the royalty</div>
                     <div className="text-muted-foreground mt-1">platform fee</div>

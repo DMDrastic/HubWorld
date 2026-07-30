@@ -98,7 +98,9 @@
     --accent-foreground: #101014;
     --destructive: #d03b3b;
 
-    /* Live/auction state. Green — never the brand violet. */
+    /* The system's one affirmative green: an auction is live, a ticket was
+       admitted. Never the brand violet — a state is not an action. Anywhere it
+       carries meaning it is paired with a label or an icon, never hue alone. */
     --live: #15803d;
     --live-foreground: #ffffff;
 

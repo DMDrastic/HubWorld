@@ -7,6 +7,7 @@
  * is why the backend checks spendable balance before issuing the payload.
  */
 import { useEffect, useState } from 'react'
+import { QrCode } from '@/components/QrCode'
 import {
   ApiError,
   dropsToXrp,
@@ -116,11 +117,7 @@ export function BidForm({
         </div>
         {(bid === null || bid.state === 'pending') && (
           <>
-            <img
-              src={phase.payload.qrPng}
-              alt="Xaman bid QR code"
-              className="size-40 rounded-md border"
-            />
+            <QrCode src={phase.payload.qrPng} alt="Xaman bid QR code" className="size-40" />
             <p className="text-muted-foreground text-center text-sm">{MESSAGES.pending}</p>
           </>
         )}
