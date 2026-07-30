@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { QrCode } from '@/components/QrCode'
 import {
   ApiError,
   createMint,
@@ -157,7 +158,7 @@ export function MintPanel({
                 id="mint-event"
                 value={slug}
                 onChange={(e) => setSlug(e.target.value)}
-                className="border-input bg-background w-full rounded-md border px-3 py-2 text-sm"
+                className="border-input bg-background focus-visible:border-ring focus-visible:ring-ring/50 w-full rounded-lg border px-3 py-2 text-sm transition-colors focus-visible:ring-[3px] focus-visible:outline-none"
               >
                 {events.map((e) => (
                   <option key={e.slug} value={e.slug}>
@@ -190,11 +191,7 @@ export function MintPanel({
 
         {phase.kind === 'awaiting' && (
           <div className="flex flex-col items-center gap-3">
-            <img
-              src={phase.payload.qrPng}
-              alt="Xaman mint QR code"
-              className="size-44 rounded-md border"
-            />
+            <QrCode src={phase.payload.qrPng} alt="Xaman mint QR code" />
             <p className="text-muted-foreground text-center text-sm">
               {phase.signed
                 ? 'Signed — waiting for the ledger to validate…'
@@ -210,7 +207,7 @@ export function MintPanel({
           <div className="space-y-3">
             <p className="text-sm font-medium">Ticket minted on-ledger.</p>
             {phase.ticket && (
-              <div className="space-y-1 rounded-md border p-3 text-sm">
+              <div className="bg-muted/40 space-y-1 rounded-xl p-3.5 text-sm">
                 <div>{phase.ticket.event.title}</div>
                 <div className="text-muted-foreground text-xs">NFTokenID</div>
                 <div className="font-mono text-xs break-all">{phase.ticket.nfTokenId}</div>

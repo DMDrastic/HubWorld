@@ -82,7 +82,7 @@ function ApplyForm({ policy, status, onApplied }: {
   return (
     <form onSubmit={submit} className="space-y-3">
       {application?.state === 'rejected' && (
-        <div className="border-destructive/50 bg-destructive/10 rounded-md border p-3 text-sm">
+        <div className="border-destructive/50 bg-destructive/10 rounded-xl border p-3.5 text-sm">
           <div className="font-medium">Not approved</div>
           {application.reviewNote && (
             <div className="text-muted-foreground mt-1 text-xs">{application.reviewNote}</div>
@@ -109,7 +109,7 @@ function ApplyForm({ policy, status, onApplied }: {
         placeholder="What kind of events do you run?"
         aria-label="what you run"
         rows={3}
-        className="border-input bg-background w-full rounded-md border px-3 py-2 text-sm"
+        className="border-input bg-background focus-visible:border-ring focus-visible:ring-ring/50 w-full rounded-lg border px-3 py-2 text-sm transition-colors focus-visible:ring-[3px] focus-visible:outline-none"
       />
 
       {policy && (
@@ -165,7 +165,7 @@ function CreateEventForm({ policy, onCreated }: { policy: Policy | null; onCreat
   return (
     <form onSubmit={submit} className="space-y-3">
       <div className="text-sm font-medium">Create an event</div>
-      {created && <p className="text-sm text-emerald-600 dark:text-emerald-400">Created “{created}”.</p>}
+      {created && <p className="text-live text-sm">Created “{created}”.</p>}
 
       <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Event title" aria-label="event title" />
       <Input value={venue} onChange={(e) => setVenue(e.target.value)} placeholder="Venue" aria-label="venue" />
@@ -247,7 +247,7 @@ function ReviewQueue() {
     <div className="space-y-2 border-t pt-4">
       <div className="text-sm font-medium">Applications to review ({applications.length})</div>
       {applications.map((a) => (
-        <div key={a.id} className="space-y-2 rounded-md border p-3">
+        <div key={a.id} className="bg-muted/40 space-y-2 rounded-xl p-3.5">
           <div className="text-sm font-medium">{a.orgName}</div>
           <div className="text-muted-foreground text-xs">
             {a.applicant} · {a.contact}

@@ -10,6 +10,8 @@
  * mistake for "admitted".
  */
 import { useCallback, useEffect, useState } from 'react'
+import { CheckCircle2, Clock, XCircle } from 'lucide-react'
+import { QrCode } from '@/components/QrCode'
 import {
   addStaff,
   ApiError,
@@ -177,10 +179,16 @@ export function DoorPanel() {
   const verdict = result ? VERDICT[result.state] : null
   const toneClass =
     verdict?.tone === 'good'
-      ? 'border-emerald-500/60 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400'
+      ? 'border-live/50 bg-live/10 text-live'
       : verdict?.tone === 'bad'
         ? 'border-destructive/60 bg-destructive/10 text-destructive'
         : 'border-border'
+  // Admit / do-not-admit is a red-green decision, which is the single most
+  // common form of colour blindness — and it is made in a doorway, at a glance,
+  // often in bad light. The label already carries the meaning; the icon gives a
+  // second non-colour channel so the verdict never rests on hue alone.
+  const VerdictIcon =
+    verdict?.tone === 'good' ? CheckCircle2 : verdict?.tone === 'bad' ? XCircle : Clock
 
   return (
     <Card>
@@ -206,7 +214,7 @@ export function DoorPanel() {
               value={slug}
               onChange={(e) => setSlug(e.target.value)}
               aria-label="event to check in for"
-              className="border-input bg-background w-full rounded-md border px-3 py-2 text-sm"
+              className="border-input bg-background focus-visible:border-ring focus-visible:ring-ring/50 w-full rounded-lg border px-3 py-2 text-sm transition-colors focus-visible:ring-[3px] focus-visible:outline-none"
             >
               {events.map((e) => (
                 <option key={e.slug} value={e.slug}>
@@ -289,11 +297,7 @@ export function DoorPanel() {
           <div className="flex flex-col items-center gap-3">
             {(!result || result.state === 'pending') && (
               <>
-                <img
-                  src={phase.payload.qrPng}
-                  alt="Check-in QR code"
-                  className="size-48 rounded-md border"
-                />
+                <QrCode src={phase.payload.qrPng} alt="Check-in QR code" className="size-48" />
                 <p className="text-muted-foreground text-center text-sm">
                   Ask them to scan this and sign.
                 </p>
@@ -301,8 +305,9 @@ export function DoorPanel() {
             )}
 
             {verdict && result && result.state !== 'pending' && (
-              <div className={`w-full rounded-lg border-2 p-4 text-center ${toneClass}`}>
-                <div className="text-xl font-semibold">{verdict.label}</div>
+              <div className={`w-full rounded-xl border-2 p-5 text-center ${toneClass}`}>
+                <VerdictIcon className="mx-auto size-7" aria-hidden />
+                <div className="mt-2 text-xl font-semibold tracking-tight">{verdict.label}</div>
                 <div className="mt-1 text-sm">{result.reason ?? verdict.detail}</div>
                 {result.holder && <div className="mt-2 text-sm font-medium">{result.holder}</div>}
                 {result.ticket && (result.ticket.tier || result.ticket.seat) && (

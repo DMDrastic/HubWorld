@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { QrCode } from '@/components/QrCode'
 import {
   ApiError,
   acceptGift,
@@ -214,7 +215,7 @@ export function GiftPanel({ onChanged }: { onChanged: () => void }) {
             {incoming.map((g) => (
               <div
                 key={g.giftId}
-                className="flex items-center justify-between gap-3 rounded-md border p-3"
+                className="bg-muted/40 flex items-center justify-between gap-3 rounded-xl p-3.5"
               >
                 <div className="min-w-0">
                   <div className="truncate text-sm">{g.ticket.event.title}</div>
@@ -258,7 +259,7 @@ export function GiftPanel({ onChanged }: { onChanged: () => void }) {
             {outgoing.map((g) => (
               <div
                 key={g.giftId}
-                className="flex items-center justify-between gap-3 rounded-md border p-3"
+                className="bg-muted/40 flex items-center justify-between gap-3 rounded-xl p-3.5"
               >
                 <div className="min-w-0">
                   <div className="truncate text-sm">{g.ticket.event.title}</div>
@@ -315,7 +316,7 @@ export function GiftPanel({ onChanged }: { onChanged: () => void }) {
                     id="gift-ticket"
                     value={nfTokenId}
                     onChange={(e) => setNfTokenId(e.target.value)}
-                    className="border-input bg-background w-full rounded-md border px-3 py-2 text-sm"
+                    className="border-input bg-background focus-visible:border-ring focus-visible:ring-ring/50 w-full rounded-lg border px-3 py-2 text-sm transition-colors focus-visible:ring-[3px] focus-visible:outline-none"
                   >
                     {tickets.map((t) => (
                       <option key={t.nfTokenId} value={t.nfTokenId}>
@@ -351,11 +352,7 @@ export function GiftPanel({ onChanged }: { onChanged: () => void }) {
 
             {phase.payload !== null && (giftState === null || NEEDS_SIGNATURE.has(giftState.state)) && (
               <>
-                <img
-                  src={phase.payload!.qrPng}
-                  alt="Xaman signing QR code"
-                  className="size-44 rounded-md border"
-                />
+                <QrCode src={phase.payload!.qrPng} alt="Xaman signing QR code" />
                 <p className="text-muted-foreground text-center text-sm">
                   Scan in Xaman to sign.
                 </p>

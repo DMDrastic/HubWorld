@@ -8,6 +8,7 @@ import {
   type AuthUser,
   type SignInCreated,
 } from '@/lib/api'
+import { QrCode } from '@/components/QrCode'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -139,16 +140,7 @@ export function SignIn({ onAuthenticated }: { onAuthenticated: (u: AuthUser) => 
 
         {phase.kind === 'awaiting' && (
           <div className="flex flex-col items-center gap-3">
-            {/* The QR sits on a white plate with its own quiet zone rather than
-                on the card. A scanner needs light-on-dark contrast and a clear
-                margin; against the dark surface the code can fail to read. */}
-            <div className="rounded-xl bg-white p-3">
-              <img
-                src={phase.payload.qrPng}
-                alt="Xaman sign-in QR code"
-                className="size-44 rounded-md"
-              />
-            </div>
+            <QrCode src={phase.payload.qrPng} alt="Xaman sign-in QR code" />
             <p className="text-muted-foreground flex items-center gap-2 text-center text-sm">
               <span className="relative flex size-1.5">
                 <span className="bg-primary absolute inline-flex size-full animate-ping rounded-full opacity-70" />
