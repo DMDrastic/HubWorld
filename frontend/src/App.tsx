@@ -24,6 +24,7 @@ import { SellPanel } from '@/components/SellPanel'
 import { DoorPanel } from '@/components/DoorPanel'
 import { NavBar } from '@/components/NavBar'
 import { Landing } from '@/components/Landing'
+import { SignInRequired } from '@/components/SignInRequired'
 import { Hub } from '@/components/Hub'
 import { useRoute } from '@/lib/router'
 import { OrganizerPanel } from '@/components/OrganizerPanel'
@@ -298,87 +299,120 @@ export default function App() {
           </p>
         )}
 
-        {!me ? (
-          <Landing onAuthenticated={handleAuthenticated} />
-        ) : (
-          <>
-            {route === '/' && <Hub me={me} onOpenAuction={openAuctionBySlug} />}
+        {/* `/` and `/events` render for everybody. The rest describe an account
+            — what you hold, what you are selling, whose door you work — so
+            signed out they say why they are empty instead of silently rendering
+            the landing page under someone else's URL. */}
+        {route === '/' &&
+          (me ? (
+            <Hub me={me} onOpenAuction={openAuctionBySlug} />
+          ) : (
+            <Landing onAuthenticated={handleAuthenticated} />
+          ))}
 
-            {route === '/events' && (
-              <section className="space-y-4 py-8">
-                <div>
-                  <h1 className="text-3xl font-semibold tracking-[-0.02em]">Events</h1>
-                  <p className="text-muted-foreground mt-1.5 text-sm leading-relaxed">
-                    Sold-out nights open for bidding are marked live.
-                  </p>
-                </div>
-                <EventList
-                  events={events}
-                  auctionSlugs={auctionSlugs}
-                  onOpenAuction={setAuctionEvent}
-                />
-              </section>
-            )}
+        {route === '/events' && (
+          <section className="space-y-4 py-8">
+            <div>
+              <h1 className="text-3xl font-semibold tracking-[-0.02em]">Events</h1>
+              <p className="text-muted-foreground mt-1.5 text-sm leading-relaxed">
+                Sold-out nights open for bidding are marked live.
+                {!me && ' Anyone can watch an auction; bidding needs a wallet.'}
+              </p>
+            </div>
+            <EventList
+              events={events}
+              auctionSlugs={auctionSlugs}
+              onOpenAuction={setAuctionEvent}
+            />
+          </section>
+        )}
 
-            {route === '/tickets' && (
-              <section className="space-y-4 py-8">
-                <div>
-                  <h1 className="text-3xl font-semibold tracking-[-0.02em]">Your tickets</h1>
-                  <p className="text-muted-foreground mt-1.5 text-sm leading-relaxed">
-                    Held in your wallet. Gift one to any @handle — it moves on-ledger.
-                  </p>
-                </div>
-                <GiftPanel onChanged={handleMinted} />
-                <HandleLookup />
-              </section>
-            )}
+        {route === '/tickets' &&
+          (me ? (
+            <section className="space-y-4 py-8">
+              <div>
+                <h1 className="text-3xl font-semibold tracking-[-0.02em]">Your tickets</h1>
+                <p className="text-muted-foreground mt-1.5 text-sm leading-relaxed">
+                  Held in your wallet. Gift one to any @handle — it moves on-ledger.
+                </p>
+              </div>
+              <GiftPanel onChanged={handleMinted} />
+              <HandleLookup />
+            </section>
+          ) : (
+            <SignInRequired
+              title="Your tickets"
+              blurb="Tickets live in your own wallet, so this page is whatever that wallet holds. Sign in to see yours."
+              onAuthenticated={handleAuthenticated}
+            />
+          ))}
 
-            {route === '/market' && (
-              <section className="space-y-4 py-8">
-                <div>
-                  <h1 className="text-3xl font-semibold tracking-[-0.02em]">Marketplace</h1>
-                  <p className="text-muted-foreground mt-1.5 text-sm leading-relaxed">
-                    Resales settle on-ledger. The organizer earns a royalty on every one.
-                  </p>
-                </div>
-                <SellPanel onChanged={handleMinted} />
-              </section>
-            )}
+        {route === '/market' &&
+          (me ? (
+            <section className="space-y-4 py-8">
+              <div>
+                <h1 className="text-3xl font-semibold tracking-[-0.02em]">Marketplace</h1>
+                <p className="text-muted-foreground mt-1.5 text-sm leading-relaxed">
+                  Resales settle on-ledger. The organizer earns a royalty on every one.
+                </p>
+              </div>
+              <SellPanel onChanged={handleMinted} />
+            </section>
+          ) : (
+            <SignInRequired
+              title="Marketplace"
+              blurb="Buying and selling both need a wallet to sign with — a resale moves the ticket and the money in one on-ledger transaction."
+              onAuthenticated={handleAuthenticated}
+            />
+          ))}
 
-            {route === '/door' && (
-              <section className="space-y-4 py-8">
-                <div>
-                  <h1 className="text-3xl font-semibold tracking-[-0.02em]">Door</h1>
-                  <p className="text-muted-foreground mt-1.5 text-sm leading-relaxed">
-                    Attendees sign to prove the ticket is theirs. The verdict shows here.
-                  </p>
-                </div>
-                <DoorPanel />
-              </section>
-            )}
+        {route === '/door' &&
+          (me ? (
+            <section className="space-y-4 py-8">
+              <div>
+                <h1 className="text-3xl font-semibold tracking-[-0.02em]">Door</h1>
+                <p className="text-muted-foreground mt-1.5 text-sm leading-relaxed">
+                  Attendees sign to prove the ticket is theirs. The verdict shows here.
+                </p>
+              </div>
+              <DoorPanel />
+            </section>
+          ) : (
+            <SignInRequired
+              title="Door"
+              blurb="Working a door is granted per event, so this page depends on who you are. Sign in to see the doors you may work."
+              onAuthenticated={handleAuthenticated}
+            />
+          ))}
 
-            {route === '/organize' && isOrganizer(me.role) && (
-              <section className="space-y-4 py-8">
-                <div>
-                  <h1 className="text-3xl font-semibold tracking-[-0.02em]">Organize</h1>
-                  <p className="text-muted-foreground mt-1.5 text-sm leading-relaxed">
-                    Create events and issue tickets. Your royalty follows every resale.
-                  </p>
-                </div>
-                <OrganizerPanel role={me.role} onChanged={handleMinted} />
-                <MintPanel events={organizing} onMinted={handleMinted} />
-              </section>
-            )}
+        {route === '/organize' && !me && (
+          <SignInRequired
+            title="Organize"
+            blurb="Issuing tickets means minting from your own wallet, so it starts with signing in. Organizer access is reviewed by a person."
+            onAuthenticated={handleAuthenticated}
+          />
+        )}
 
-            {/* A regular user who types /organize gets the application form
-                rather than a blank page or a 403. */}
-            {route === '/organize' && !isOrganizer(me.role) && (
-              <section className="space-y-4 py-8">
-                <h1 className="text-2xl font-semibold tracking-tight">Run your own events</h1>
-                <OrganizerPanel role={me.role} onChanged={handleMinted} />
-              </section>
-            )}
-          </>
+        {route === '/organize' && me && isOrganizer(me.role) && (
+          <section className="space-y-4 py-8">
+            <div>
+              <h1 className="text-3xl font-semibold tracking-[-0.02em]">Organize</h1>
+              <p className="text-muted-foreground mt-1.5 text-sm leading-relaxed">
+                Create events and issue tickets. Your royalty follows every resale.
+              </p>
+            </div>
+            <OrganizerPanel role={me.role} onChanged={handleMinted} />
+            <MintPanel events={organizing} onMinted={handleMinted} />
+          </section>
+        )}
+
+        {/* A regular user who types /organize gets the application form
+            rather than a blank page or a 403. */}
+        {route === '/organize' && me && !isOrganizer(me.role) && (
+          <section className="space-y-4 py-8">
+            <h1 className="text-2xl font-semibold tracking-tight">Run your own events</h1>
+            <OrganizerPanel role={me.role} onChanged={handleMinted} />
+          </section>
         )}
       </main>
 

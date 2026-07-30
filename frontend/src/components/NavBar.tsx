@@ -17,7 +17,12 @@ import { useTheme } from '@/lib/theme'
 type Destination = { to: Route; label: string }
 
 function destinations(me: User | null, hasDoor: boolean): Destination[] {
-  if (!me) return []
+  // Signed out, Events is still worth reaching: it is about the world rather
+  // than about you, and the API serves it publicly. Asking someone to connect a
+  // crypto wallet before they may even look at what is on is the same mistake
+  // the landing page was written to fix. Everything else stays absent, because
+  // the remaining destinations describe things only an account can have.
+  if (!me) return [{ to: '/events', label: 'Events' }]
 
   const base: Destination[] = [
     { to: '/', label: 'Hub' },
