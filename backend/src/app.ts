@@ -1,3 +1,5 @@
+import fs from 'node:fs'
+import path from 'node:path'
 import express, { type NextFunction, type Request, type Response } from 'express'
 import cors from 'cors'
 import cookieParser from 'cookie-parser'
@@ -49,6 +51,56 @@ export function isTransientNetworkError(err: unknown, depth = 0): boolean {
   return typeof e.message === 'string' && /NotConnectedError|websocket was closed/i.test(e.message)
 }
 
+/**
+ * Serve the built frontend from this process, on the same origin as the API.
+ *
+ * The SPA fallback is the half that is easy to forget and impossible to miss
+ * once it bites: the router owns `/tickets`, `/market` and the rest, but those
+ * paths exist only in the browser. Without a rewrite, loading one directly — or
+ * simply refreshing — asks the server for a file that was never built, and the
+ * user gets a 404 on a page that works fine when navigated to. Vite hides this
+ * in dev by serving index.html for unknown paths.
+ */
+function serveWebApp(app: express.Express, dist: string): void {
+  const indexHtml = path.join(dist, 'index.html')
+
+  if (!fs.existsSync(indexHtml)) {
+    // Failing loudly at boot beats serving 404s for every page and leaving
+    // someone to work out that WEB_DIST pointed at nothing.
+    console.error(`WEB_DIST is set to "${dist}" but no index.html is there.`)
+    console.error('Build the frontend first (npm run build in frontend/).')
+    process.exit(1)
+  }
+
+  app.use(
+    express.static(dist, {
+      // index.html is served by the fallback below so it gets its own
+      // cache policy; letting static serve it would cache it like an asset.
+      index: false,
+      setHeaders: (res, filePath) => {
+        // Vite fingerprints everything under /assets, so those URLs can never
+        // change meaning and are safe to cache forever. Anything else
+        // (favicon.svg, robots.txt) keeps its name across deploys and must not
+        // be pinned for a year.
+        const oneYear = 'public, max-age=31536000, immutable'
+        const oneHour = 'public, max-age=3600'
+        res.setHeader('Cache-Control', filePath.includes(`${path.sep}assets${path.sep}`) ? oneYear : oneHour)
+      },
+    }),
+  )
+
+  app.get(/.*/, (req, res, next) => {
+    // A client asking for JSON or an image that does not exist wants a 404, not
+    // a page. Only hand back the shell to something that would render it.
+    if (!req.accepts('html')) return next()
+
+    // Never cache the shell: it names the current hashed bundles, so a stale
+    // copy points at assets a later deploy has already deleted.
+    res.setHeader('Cache-Control', 'no-cache')
+    res.sendFile(indexHtml)
+  })
+}
+
 export function createApp() {
   const app = express()
 
@@ -80,6 +132,18 @@ export function createApp() {
   app.use('/api', redemptionRouter)
   app.use('/api', organizersRouter)
   app.use('/api', webhooksRouter)
+
+  // An unmatched /api route must 404 as JSON, and must do so BEFORE the static
+  // and SPA handlers below. Without this an API typo falls through to the SPA
+  // fallback and answers 200 with index.html — the client then tries to parse
+  // HTML as JSON and reports a syntax error instead of "no such route".
+  app.use('/api', (_req, res) => {
+    res.status(404).json({ error: 'Not found' })
+  })
+
+  if (env.WEB_DIST) {
+    serveWebApp(app, env.WEB_DIST)
+  }
 
   app.use((_req, res) => {
     res.status(404).json({ error: 'Not found' })
