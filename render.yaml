@@ -96,3 +96,25 @@ services:
       # once there is a public URL for Xaman to call, which is the case here.
       - key: XAMAN_WEBHOOK_SECRET
         sync: false
+
+      # Supabase Storage, for event posters. A deploy's filesystem is ephemeral,
+      # so uploads cannot live on disk.
+      #
+      # Both URL and key are `sync: false` rather than written here. The key is
+      # obviously secret — it bypasses row-level security — but the URL is left
+      # out too, because this repository is public and the project ref names
+      # where the database lives. Nothing is gained by publishing it.
+      #
+      # NOTE: an EMPTY value is worse than an absent one. The schema is
+      # `.min(1).optional()`, so a blank fails validation and the server refuses
+      # to boot; leave the variable unset instead if storage is not wanted.
+      # Unset, uploads answer 503 and everything else works.
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+
+      # Not secret, and it must match the bucket created in Supabase — which
+      # has to be PUBLIC, since posters are rendered on public event pages.
+      - key: SUPABASE_BUCKET
+        value: event-images
