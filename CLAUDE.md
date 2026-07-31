@@ -594,6 +594,65 @@ organizer before they have signed in:
 npm run event:create -- --organizer <handle> --title "<title>" [--tickets 50]
 ```
 
+### Bulk minting: why this caps out in the low hundreds
+
+`NFTokenMint` is one NFT per transaction, and the organizer must sign each one
+because the issuer is the royalty recipient. A thousand tickets is a thousand
+Xaman payloads, a thousand taps, and a thousand against the payload quota. That
+is not a UX problem to design around; it is a wall, and it is worth stating
+plainly rather than discovering during a sales conversation.
+
+**The constraint is a triangle, and only two corners are available at once:**
+
+1. **The organizer is the issuer** — required, because `TransferFee` pays the
+   issuer and that is the whole royalty model.
+2. **No delegation** — Hubworld cannot sign as anyone.
+3. **Unattended bulk minting.**
+
+(1)+(2) is where we are: the organizer signs everything, so it does not scale.
+(1)+(3) needs delegation. (2)+(3) means Hubworld issues, royalties accrue to us,
+and paying organizers out reintroduces exactly the funds-custody role brokered
+mode exists to avoid.
+
+**We chose (1)+(2), deliberately.** "Hubworld cannot act as you" is the load-
+bearing claim of the whole design, and it is very hard to win back once given up.
+XRPL's `RegularKey` is the obvious lever and the wrong one — it is unscoped, so
+an organizer granting it would also be granting the ability to send payments from
+their account. Granular per-transaction-type delegation would be a better shape
+if it becomes available, but it still ends the claim above.
+
+**Batch transactions do not rescue this, on two counts.** The `Batch` amendment
+(XLS-56) would let one signature carry several inner mints, but a signature-
+validation flaw found on 19 Feb 2026 led to rippled 3.1.1 marking both `Batch`
+and `fixBatchInnerSigs` unsupported and blocking them from validator votes on all
+production networks; a `BatchV1_1` successor is the replacement. More decisively,
+**the cap is eight inner transactions** — so even once it ships, a thousand
+tickets is 125 signatures. An 8× improvement, not a solution.
+
+**MPTs are the only path that actually reaches thousands.** Multi-Purpose Tokens
+(XLS-33) activated as `MPTokensV1` in October 2025, and `MPTokenIssuance` carries
+a `TransferFee`, so the royalty survives. One issuance transaction covers the
+entire supply, whatever its size.
+
+The catch is that MPT units are fungible — which is *honest* for general
+admission, where there is no meaningful difference between ticket #447 and #448,
+and wrong for reserved seating, where `seat` means something. So **tiers are the
+natural seam**: general admission becomes an MPT issuance, reserved seating stays
+NFTs. Not two products bolted together; the right primitive for each.
+
+**What MPT would cost, stated before anyone starts it:** the brokered settlement
+does not transfer. `NFTokenAcceptOffer` with `NFTokenBrokerFee` — moving ticket
+and XRP atomically with our fee taken from the spread, neither party able to
+settle alone — is NFT-specific machinery. Resale, the platform fee and the whole
+auction mechanism would need redesigning for MPT-backed tickets. Redemption gets
+fuzzier too: a fungible unit cannot be individually marked used, only counted, so
+`already_used` versus `no_ticket` stops being the crisp distinction the door
+depends on.
+
+**So, today: Hubworld suits events in the tens to low hundreds.** That is a
+consequence of refusing delegation, not an oversight, and the honest thing is to
+say so rather than let an organizer find out at ticket 200.
+
 ## Gifting
 
 XRPL has **no transfer transaction**, so a gift is two signatures on two
