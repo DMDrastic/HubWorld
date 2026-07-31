@@ -23,6 +23,7 @@ import { trackPayload } from '../payload-store.js'
 import { issuesOf, usernameSchema } from '../schemas.js'
 import { requireAuth } from '../session.js'
 import { ON_LEDGER_STATES, mayExpire } from '../gift-policy.js'
+import { signedByOtherAccount } from '../signer.js'
 import {
   buildAcceptOfferTx,
   buildCancelOfferTx,
@@ -395,6 +396,22 @@ giftsRouter.get('/gifts/:id', requireAuth, async (req, res) => {
       res.json(view())
       return
     }
+    // The sender's payload can be signed by any account in their Xaman. If a
+    // different one signed, the offer on-ledger is from a wallet that is not the
+    // one we recorded as the sender — and since the offer moves a ticket, the
+    // GIFT provenance row would name someone who never held it.
+    if (signedByOtherAccount(gift.fromAddress, status.account)) {
+      await prisma.gift.update({
+        where: { id: gift.id },
+        data: { status: 'FAILED', failureReason: 'Signed by a different account than the sender' },
+      })
+      res.json({
+        ...view(),
+        state: 'failed',
+        reason: 'Signed by a different account than the sender',
+      })
+      return
+    }
     if (!status.txid) {
       res.json(view({ signed: true }))
       return
@@ -515,6 +532,29 @@ giftsRouter.get('/gifts/:id', requireAuth, async (req, res) => {
       return
     }
     res.json(view({ awaitingRecipient: true }))
+    return
+  }
+  // Same check on the receiving side, and it matters more here: this half moves
+  // ownership. Accepting with a different wallet would put the ticket in an
+  // account we never recorded, while the GIFT provenance row and
+  // `Ticket.ownerAddress` both claim the intended recipient holds it.
+  //
+  // The offer's `Destination` means only the recipient CAN accept, so the ledger
+  // would reject a stranger — but a user with several accounts in one Xaman is
+  // not a stranger, and that is exactly the case this catches.
+  if (signedByOtherAccount(gift.toAddress, status.account)) {
+    await prisma.gift.update({
+      where: { id: gift.id },
+      data: {
+        status: 'FAILED',
+        failureReason: 'Signed by a different account than the recipient',
+      },
+    })
+    res.json({
+      ...view(),
+      state: 'failed',
+      reason: 'Signed by a different account than the recipient',
+    })
     return
   }
   if (!status.txid) {

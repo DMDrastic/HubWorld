@@ -22,6 +22,7 @@ import { trackPayload } from '../payload-store.js'
 import { issuesOf } from '../schemas.js'
 import { requireAuth } from '../session.js'
 import { publishAuctionEvent } from '../realtime.js'
+import { signedByOtherAccount } from '../signer.js'
 import {
   buildBuyOfferTx,
   offerIndexFromTx,
@@ -248,6 +249,40 @@ bidsRouter.get('/bids/:id', requireAuth, async (req, res) => {
     res.json(view())
     return
   }
+  // A payload is BUILT for one account, but Xaman signs with whichever account
+  // the user has selected in the app — nothing in the signature ties it to the
+  // account we intended. So the signer has to be checked here, or the ledger and
+  // this row describe different people.
+  //
+  // Observed for real on testnet: a bid started while signed in as one user was
+  // signed with a different wallet, and committed under the first user's name.
+  // The consequences are not cosmetic. `Bid.bidderAddress` is what settlement
+  // reads spendable balance from, so it would check an account that is not
+  // paying; the `Transfer` provenance row would name the wrong party; and
+  // `Ticket.ownerId` would disagree with the ledger until `ledger:sync` ran.
+  //
+  // Worst of all it is an integrity hole in the auction: `auction-policy` stops
+  // an organizer AUCTIONING their own allocation, but this let the issuer BID on
+  // one while appearing to be somebody else — and XRPL silently skips
+  // `TransferFee` when the issuer is party to a trade, so that bid would also
+  // have paid no royalty.
+  if (signedByOtherAccount(bid.bidderAddress, status.account)) {
+    await prisma.bid.update({
+      where: { id: bid.id },
+      data: {
+        status: 'FAILED',
+        buyTxHash: status.txid ?? null,
+        failureReason: 'Signed by a different account than the bidder',
+      },
+    })
+    res.json({
+      ...view(),
+      state: 'failed',
+      reason: 'Signed by a different account than the bidder',
+    })
+    return
+  }
+
   if (!status.txid) {
     res.json(view({ signed: true }))
     return
