@@ -195,6 +195,11 @@ model Event {
   description String?
   venue       String?
   startsAt    DateTime
+
+  /// Public URL of the event's poster in object storage. Null renders a
+  /// generated fallback rather than a broken image — an organizer who has not
+  /// uploaded one yet is the normal case, not an error.
+  imageUrl String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 

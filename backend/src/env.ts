@@ -46,6 +46,16 @@ const EnvSchema = z.object({
   // waiting user. Unset in dev, where there is no public URL to call back to.
   XAMAN_WEBHOOK_SECRET: z.string().min(16).optional(),
 
+  // Supabase Storage, for event posters. Render's filesystem is ephemeral, so
+  // uploads cannot live on disk. All optional: without them the upload route
+  // answers 503 and everything else works, so dev needs no bucket.
+  //
+  // The SERVICE key bypasses row-level security, so it is backend-only and must
+  // never reach the bundle — the same rule as XAMAN_API_SECRET.
+  SUPABASE_URL: z.string().url().optional(),
+  SUPABASE_SERVICE_KEY: z.string().min(1).optional(),
+  SUPABASE_BUCKET: z.string().min(1).default('event-images'),
+
   // Directory holding the built frontend (`frontend/dist`). When set, this
   // process serves the app as well as the API, from ONE origin.
   //
@@ -106,8 +116,22 @@ export const brokerMode: 'live' | 'disabled' = env.PLATFORM_SEED ? 'live' : 'dis
  */
 export const webhookMode: 'live' | 'disabled' = env.XAMAN_WEBHOOK_SECRET ? 'live' : 'disabled'
 
+/**
+ * Whether an organizer can upload an event poster. Events work fine without it —
+ * a missing image renders a generated fallback, which is the normal state for an
+ * event nobody has uploaded art for yet.
+ */
+export const storageMode: 'live' | 'disabled' =
+  env.SUPABASE_URL && env.SUPABASE_SERVICE_KEY ? 'live' : 'disabled'
+
 if (brokerMode === 'disabled') {
   console.warn(
     'PLATFORM_SEED not set — sales cannot settle. Run `npm run platform:setup` (testnet).',
+  )
+}
+
+if (storageMode === 'disabled') {
+  console.warn(
+    'SUPABASE_URL/SERVICE_KEY not set — event poster upload disabled (events render a fallback).',
   )
 }

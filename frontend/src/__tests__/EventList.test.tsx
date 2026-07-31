@@ -8,7 +8,7 @@
  */
 import { describe, expect, it, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
-import { EventList } from '@/App'
+import { EventList } from '@/components/EventList'
 import type { EventSummary } from '@/lib/api'
 
 // Which slugs have a live auction now comes from GET /api/auctions, so the test

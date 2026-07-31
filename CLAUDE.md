@@ -445,6 +445,7 @@ Hubworld out of the funds-custody path. Changing this changes who mints.
 | `POST /api/events` | organizer-only; create an event |
 | `GET /api/events?status=&limit=` | event list |
 | `GET /api/events/:slug` | event detail |
+| `POST /api/events/:slug/image` | organizer-only; upload the event poster (raw image body) |
 | `POST /api/events/:slug/mint` | organizer-only; build an NFTokenMint → Xaman payload |
 | `GET /api/mint/:uuid` | poll → `pending` / `minted` / `rejected` / `expired` / `failed` |
 | `GET /api/tickets/mine?verify=` | inventory; `verify=true` reconciles against the ledger |
