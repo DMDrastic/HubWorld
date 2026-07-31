@@ -1,5 +1,4 @@
 import { Suspense, lazy, useCallback, useEffect, useState } from 'react'
-import { ArrowUpRight } from 'lucide-react'
 import {
   ApiError,
   fetchAuctions,
@@ -26,9 +25,10 @@ import { NavBar } from '@/components/NavBar'
 import { Landing } from '@/components/Landing'
 import { SignInRequired } from '@/components/SignInRequired'
 import { Hub } from '@/components/Hub'
+import { EventList } from '@/components/EventList'
+import { EventImagePanel } from '@/components/EventImagePanel'
 import { useRoute } from '@/lib/router'
 import { OrganizerPanel } from '@/components/OrganizerPanel'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -45,11 +45,6 @@ import {
 const AuctionDialog = lazy(() =>
   import('@/components/AuctionDialog').then((m) => ({ default: m.AuctionDialog })),
 )
-
-const dateFmt = new Intl.DateTimeFormat(undefined, {
-  dateStyle: 'medium',
-  timeStyle: 'short',
-})
 
 function HandleLookup() {
   const [handle, setHandle] = useState('')
@@ -111,88 +106,6 @@ function HandleLookup() {
         )}
       </CardContent>
     </Card>
-  )
-}
-
-export function EventList({
-  events,
-  auctionSlugs,
-  onOpenAuction,
-}: {
-  events: EventSummary[]
-  /** Slugs with a live auction, from GET /api/auctions. */
-  auctionSlugs: ReadonlySet<string>
-  onOpenAuction: (event: EventSummary) => void
-}) {
-  if (events.length === 0) {
-    return (
-      <p className="text-muted-foreground text-sm">
-        No events yet — run <code className="font-mono">npm run db:seed</code> in backend/.
-      </p>
-    )
-  }
-
-  return (
-    <ul className="space-y-3">
-      {events.map((e) => {
-        // Only an event with a live auction is interactive. Everything else is
-        // a plain row, so clicking never opens an empty window.
-        const live = auctionSlugs.has(e.slug)
-
-        const body = (
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <div className="font-medium tracking-tight">{e.title}</div>
-              <div className="text-muted-foreground mt-0.5 text-sm">
-                {e.venue} · {dateFmt.format(new Date(e.startsAt))}
-              </div>
-              <div className="text-muted-foreground mt-1 text-xs">
-                by @{e.organizer.username} · {e.ticketsMinted}/{e.ticketCount} minted
-              </div>
-              {live && (
-                <div className="text-live mt-2.5 flex items-center gap-1 text-xs font-medium">
-                  View live bidding
-                  <ArrowUpRight className="size-3.5" aria-hidden />
-                </div>
-              )}
-            </div>
-            <div className="flex shrink-0 flex-col items-end gap-1.5">
-              <Badge variant={e.status === 'SOLD_OUT' ? 'destructive' : 'secondary'}>
-                {e.status.replace('_', ' ').toLowerCase()}
-              </Badge>
-              {live && (
-                <span className="text-live flex items-center gap-1.5 text-xs font-medium">
-                  <span className="relative flex size-1.5">
-                    <span className="bg-live absolute inline-flex size-full animate-ping rounded-full opacity-70" />
-                    <span className="bg-live relative inline-flex size-1.5 rounded-full" />
-                  </span>
-                  auction live
-                </span>
-              )}
-            </div>
-          </div>
-        )
-
-        return (
-          <li key={e.slug}>
-            {live ? (
-              // A real button, not a clickable div — it must be keyboard
-              // reachable and announced as activatable.
-              <button
-                type="button"
-                onClick={() => onOpenAuction(e)}
-                aria-label={`View live bidding for ${e.title}`}
-                className="bg-card ring-foreground/8 hover:ring-live/40 hover:glow-live focus-visible:ring-ring w-full rounded-2xl p-5 text-left ring-1 transition-all focus-visible:ring-2 focus-visible:outline-none"
-              >
-                {body}
-              </button>
-            ) : (
-              <div className="bg-card ring-foreground/8 rounded-2xl p-5 ring-1">{body}</div>
-            )}
-          </li>
-        )
-      })}
-    </ul>
   )
 }
 
@@ -402,6 +315,7 @@ export default function App() {
               </p>
             </div>
             <OrganizerPanel role={me.role} onChanged={handleMinted} />
+            <EventImagePanel events={organizing} onChanged={handleMinted} />
             <MintPanel events={organizing} onMinted={handleMinted} />
           </section>
         )}

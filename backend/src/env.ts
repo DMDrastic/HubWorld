@@ -129,3 +129,9 @@ if (brokerMode === 'disabled') {
     'PLATFORM_SEED not set — sales cannot settle. Run `npm run platform:setup` (testnet).',
   )
 }
+
+if (storageMode === 'disabled') {
+  console.warn(
+    'SUPABASE_URL/SERVICE_KEY not set — event poster upload disabled (events render a fallback).',
+  )
+}

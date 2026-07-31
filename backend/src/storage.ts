@@ -47,6 +47,18 @@ export async function uploadPublicObject(
   const res = await fetch(`${base}/storage/v1/object/${bucket}/${path}`, {
     method: 'POST',
     headers: {
+      // BOTH headers, deliberately. Supabase has two key formats in circulation
+      // and they authenticate differently:
+      //
+      //   - legacy `service_role` keys are JWTs and go in `Authorization: Bearer`
+      //   - current `sb_secret_…` keys are NOT JWTs, and Bearer alone is rejected
+      //     with "Invalid Compact JWS" — Storage tries to parse them as a token
+      //     and fails. They authenticate via `apikey`.
+      //
+      // Sending both means either format works, so rotating a key or inheriting
+      // an older project does not silently break uploads. Verified against a
+      // real bucket: Bearer alone fails, `apikey` succeeds.
+      apikey: env.SUPABASE_SERVICE_KEY!,
       Authorization: `Bearer ${env.SUPABASE_SERVICE_KEY!}`,
       'Content-Type': contentType,
       'Cache-Control': 'public, max-age=31536000, immutable',
@@ -58,14 +70,35 @@ export async function uploadPublicObject(
 
   if (!res.ok) {
     const text = await res.text().catch(() => '')
-    // The bucket not existing is the overwhelmingly likely first failure, and
-    // Supabase's message for it is not obvious, so name it.
-    if (res.status === 404) {
+
+    // Storage does NOT put its real status in the HTTP status. A missing bucket
+    // comes back as HTTP 400 carrying {"statusCode":"404","code":"NoSuchBucket"},
+    // so branching on res.status alone would miss every case worth naming.
+    // Observed against a live project; parsing the body is the only way to tell
+    // these apart.
+    const body = (() => {
+      try {
+        return JSON.parse(text) as { code?: string; message?: string }
+      } catch {
+        return null
+      }
+    })()
+
+    if (body?.code === 'NoSuchBucket') {
       throw new StorageError(
-        `Bucket "${bucket}" not found — create it in Supabase and make it public`,
+        `Bucket "${bucket}" does not exist in this Supabase project — create it and make it public`,
       )
     }
-    throw new StorageError(`Upload failed: ${res.status} ${text.slice(0, 200)}`)
+    // "Invalid Compact JWS" means the key is not a JWT and was sent somewhere
+    // that expects one. With both headers set that should not happen, so say
+    // what it actually implies rather than echoing a cryptography error.
+    if (/Invalid Compact JWS/i.test(text)) {
+      throw new StorageError('Supabase rejected the storage key — check SUPABASE_SERVICE_KEY')
+    }
+
+    throw new StorageError(
+      `Upload failed: ${body?.message ?? text.slice(0, 200) ?? res.status}`,
+    )
   }
 
   // Public buckets serve from a stable, unauthenticated path. Anything stored

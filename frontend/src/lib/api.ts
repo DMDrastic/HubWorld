@@ -17,6 +17,9 @@ export const EventSummarySchema = z.object({
   title: z.string(),
   venue: z.string().nullable(),
   startsAt: z.string(),
+  // Null is the normal state, not an error — an event nobody has uploaded art
+  // for renders a generated fallback rather than a broken image.
+  imageUrl: z.string().nullable().optional(),
   status: z.enum(['DRAFT', 'PUBLISHED', 'SOLD_OUT', 'COMPLETED', 'CANCELLED']),
   ticketCount: z.number(),
   ticketsMinted: z.number(),
@@ -790,6 +793,47 @@ export function createEvent(body: {
 }): Promise<z.infer<typeof CreatedEventSchema>> {
   return request('/events', CreatedEventSchema, { method: 'POST', body })
 }
+
+const UploadedImageSchema = z.object({ slug: z.string(), imageUrl: z.string().nullable() })
+
+/**
+ * Upload an event poster.
+ *
+ * Sends the file as the raw body rather than multipart, matching what the API
+ * expects — no FormData, and nothing to parse server-side. It cannot go through
+ * `request`, which JSON-encodes everything.
+ *
+ * The browser sets `Content-Type` from the File itself, but the server does not
+ * trust it: it reads the magic bytes and refuses a file that disagrees with its
+ * own declared type. So a wrong type here is a clear 400, not a corrupt bucket.
+ */
+export async function uploadEventImage(
+  slug: string,
+  file: File,
+): Promise<z.infer<typeof UploadedImageSchema>> {
+  let res: Response
+  try {
+    res = await fetch(`${API_BASE}/events/${encodeURIComponent(slug)}/image`, {
+      method: 'POST',
+      headers: { Accept: 'application/json', 'Content-Type': file.type },
+      credentials: 'same-origin',
+      body: file,
+    })
+  } catch {
+    throw new ApiError('Could not reach the backend.')
+  }
+  if (!res.ok) {
+    const body = (await res.json().catch(() => null)) as { error?: string } | null
+    throw new ApiError(body?.error ?? `Upload failed (${res.status})`, res.status)
+  }
+  const parsed = UploadedImageSchema.safeParse(await res.json())
+  if (!parsed.success) throw new ApiError('Unexpected response shape from image upload')
+  return parsed.data
+}
+
+/** What the server accepts. Mirrored here only to fail fast in the picker. */
+export const IMAGE_ACCEPT = 'image/jpeg,image/png,image/webp'
+export const MAX_IMAGE_BYTES = 2 * 1024 * 1024
 
 // There is deliberately no token storage here.
 //
