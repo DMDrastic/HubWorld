@@ -22,6 +22,7 @@ import { trackPayload } from '../payload-store.js'
 import { issuesOf, slugSchema } from '../schemas.js'
 import { requireAuth, requireOrganizer } from '../session.js'
 import { buildMintTx, nftokenIdFromTx, XAMAN_NETWORK } from '../ledger.js'
+import { signedByOtherAccount } from '../signer.js'
 
 export const mintRouter = Router()
 
@@ -203,8 +204,33 @@ mintRouter.get('/mint/:uuid', requireAuth, async (req, res) => {
     return
   }
 
-  // Signed. A signature is not a mint: the transaction still has to be
-  // submitted and validated before an NFTokenID exists.
+  // Signed by WHOM, though. A payload is built for one account but Xaman signs
+  // with whichever account the user has selected, so the signer must match the
+  // organizer we built this mint for.
+  //
+  // This one is more than bookkeeping: the signer becomes the NFT's ISSUER, and
+  // the issuer is who `TransferFee` pays. A mint signed by the wrong account
+  // produces a ticket whose royalties go to that account forever, with a
+  // `Ticket` row claiming it belongs to the event's organizer. It cannot be
+  // corrected afterwards — the issuer is baked into the NFTokenID.
+  if (signedByOtherAccount(request.event.organizer.xrplAddress, status.account)) {
+    await prisma.mintRequest.update({
+      where: { id: request.id },
+      data: {
+        status: 'FAILED',
+        txHash: status.txid ?? null,
+        failureReason: 'Signed by a different account than the event organizer',
+      },
+    })
+    res.json({
+      state: 'failed',
+      reason: 'Signed by a different account than the event organizer',
+    })
+    return
+  }
+
+  // A signature is not a mint: the transaction still has to be submitted and
+  // validated before an NFTokenID exists.
   if (!status.txid) {
     await prisma.mintRequest.update({
       where: { id: request.id },
