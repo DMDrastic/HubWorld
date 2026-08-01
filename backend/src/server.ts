@@ -31,9 +31,19 @@ attachRealtime(server)
  * consumed.
  */
 const SWEEP_MS = 15_000
-/** Comfortably longer than a sweep; a crashed process only stalls this long. */
-const SWEEP_LOCK_TTL_MS = 2 * 60_000
-const SWEEP_LOCK = 'auction-sweep'
+/**
+ * Hygiene runs under one lease; settlement takes a lease PER AUCTION inside
+ * `settleDueAuctions`.
+ *
+ * These jobs have opposite shapes. Payload reconciliation and cancellation are
+ * short, global and pointless to duplicate, so one lease is right. Settlement is
+ * a queue of independent items, and a single lease over the whole queue meant a
+ * stall on one auction blocked every other auction in the system until the TTL
+ * lapsed — and a second instance could never take a share of the work.
+ */
+const HYGIENE_LOCK = 'payload-hygiene'
+/** Short: these are a handful of API calls, not ledger submissions. */
+const HYGIENE_LOCK_TTL_MS = 60_000
 
 let sweeping = false
 
@@ -41,7 +51,7 @@ const sweep = async () => {
   if (sweeping) return
   sweeping = true
   try {
-    const results = await withLock(SWEEP_LOCK, SWEEP_LOCK_TTL_MS, async () => {
+    await withLock(HYGIENE_LOCK, HYGIENE_LOCK_TTL_MS, async () => {
       // Webhooks get lost — a deploy mid-flight, a blip, a bad URL. Without this
       // a real signature would sit unrecognised until it expired, which for a
       // mint or a bid means money stuck.
@@ -53,9 +63,11 @@ const sweep = async () => {
       // payload at all — sign-in breaks for everyone. Observed at 67.
       const freed = await cancelAbandonedPayloads()
       if (freed > 0) console.log(`cancelled ${freed} abandoned Xaman payload(s)`)
-      return settleDueAuctions()
     })
-    // null means another process holds the lease — a skipped run, not a failure.
+
+    // Not wrapped in a lease here: each auction takes its own, so an instance
+    // that loses one simply moves to the next instead of skipping the sweep.
+    const results = await settleDueAuctions()
     for (const { auctionId, outcome } of results ?? []) {
       if (outcome.kind === 'not-due') continue
       console.log(`auction ${auctionId.slice(0, 8)}: ${outcome.kind}`,
