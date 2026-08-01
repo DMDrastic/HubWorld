@@ -22,6 +22,7 @@
 import { ArrowUpRight, CalendarDays, MapPin } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import type { EventSummary } from '@/lib/api'
+import { posterSrcSet, posterUrl } from '@/lib/poster'
 
 const dateFmt = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' })
 
@@ -38,11 +39,14 @@ function hueFrom(slug: string): number {
   return Math.abs(h) % 360
 }
 
-function Poster({ event }: { event: EventSummary }) {
+function Poster({ event, width }: { event: EventSummary; width: number }) {
   if (event.imageUrl) {
     return (
       <img
-        src={event.imageUrl}
+        // Sized for this card rather than served raw: uploads are whatever the
+        // organizer had, and the first real one was 1.77MB for a 400px slot.
+        src={posterUrl(event.imageUrl, width)}
+        srcSet={posterSrcSet(event.imageUrl, width)}
         // The title is already adjacent in the DOM, so describing the poster
         // again would make a screen reader say the event name twice. It is
         // decorative here, and empty alt is how you say so.
@@ -89,7 +93,7 @@ export function EventCard({
   const body = (
     <>
       <div className={`relative overflow-hidden ${featured ? 'aspect-16/10' : 'aspect-4/3'}`}>
-        <Poster event={event} />
+        <Poster event={event} width={featured ? 560 : 440} />
 
         {/* Scrim, so white text stays legible over an arbitrary photograph.
             Without it, contrast depends on whatever the organizer uploaded. */}

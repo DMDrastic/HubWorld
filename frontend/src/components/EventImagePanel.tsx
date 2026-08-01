@@ -15,6 +15,7 @@ import { useRef, useState } from 'react'
 import { ImagePlus, Loader2 } from 'lucide-react'
 import { ApiError, IMAGE_ACCEPT, MAX_IMAGE_BYTES, uploadEventImage } from '@/lib/api'
 import type { EventSummary } from '@/lib/api'
+import { posterUrl } from '@/lib/poster'
 import { Button } from '@/components/ui/button'
 import {
   Card,
@@ -72,7 +73,12 @@ function Row({
     <li className="bg-muted/40 flex items-center gap-3 rounded-xl p-3">
       <div className="bg-muted size-14 shrink-0 overflow-hidden rounded-lg ring-1 ring-current/10">
         {event.imageUrl ? (
-          <img src={event.imageUrl} alt="" className="size-full object-cover" />
+          // A 56px thumbnail has even less use for the full file than a card does.
+          <img
+            src={posterUrl(event.imageUrl, 120)}
+            alt=""
+            className="size-full object-cover"
+          />
         ) : (
           <div className="text-muted-foreground grid size-full place-items-center">
             <ImagePlus className="size-4" aria-hidden />
