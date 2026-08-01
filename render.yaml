@@ -118,3 +118,11 @@ services:
       # has to be PUBLIC, since posters are rendered on public event pages.
       - key: SUPABASE_BUCKET
         value: event-images
+
+      # Left on 'memory' because the free plan runs a single instance, and a lone
+      # process needs no cross-process coordination. Switch to 'postgres' at the
+      # same moment you scale past one instance — not after, because the failure
+      # mode is silent: viewers connected to one instance simply never see events
+      # published by another, and nothing errors.
+      - key: REALTIME_ADAPTER
+        value: memory
