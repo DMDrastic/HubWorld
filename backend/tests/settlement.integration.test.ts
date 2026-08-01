@@ -31,7 +31,10 @@ vi.mock('../src/ledger.js', async () => {
 })
 
 const { prisma } = await import('../src/prisma.js')
-const { settleAuction } = await import('../src/settlement.js')
+const { settleAuction, settleDueAuctions, auctionLockName, BROKER_LOCK } = await import(
+  '../src/settlement.js'
+)
+const { acquireLock, releaseLock } = await import('../src/job-lock.js')
 
 const XRP = 1_000_000n
 const TAG = 'it-settle'
@@ -430,5 +433,115 @@ describe('edge cases that would otherwise mis-sell', () => {
     expect(brokerSale).toHaveBeenCalledWith(
       expect.objectContaining({ brokerFeeDrops: 2_500_000n }),
     )
+  })
+})
+
+/**
+ * Concurrency, now that the lease is per auction rather than per sweep.
+ *
+ * The old design took one `auction-sweep` lease around everything, which made
+ * these races impossible by making concurrency impossible. Splitting the lease
+ * buys fault isolation — a stalled auction no longer blocks every other one —
+ * but it opens two doors that were previously nailed shut, and both are tested
+ * here because both would lose somebody money.
+ */
+describe('per-auction leasing', () => {
+  async function releaseAll(auctionId: string) {
+    await releaseLock(auctionLockName(auctionId)).catch(() => undefined)
+    await releaseLock(BROKER_LOCK).catch(() => undefined)
+  }
+
+  it('settles exactly once when two sweeps run at the same time', async () => {
+    const ctx = await seed({
+      reserveDrops: 5n * XRP,
+      endsAt: PAST(),
+      bids: [{ amount: 10n * XRP, status: 'COMMITTED' }],
+      withSellOffer: true,
+    })
+    brokerSale.mockResolvedValue({ hash: 'TX-ONCE', succeeded: true, result: 'tesSUCCESS' })
+
+    // Both build their due list before either finishes — the exact race the
+    // single global lease used to prevent by construction.
+    const [a, b] = await Promise.all([settleDueAuctions(), settleDueAuctions()])
+
+    // The ledger must be touched once. Twice would mean paying a second bidder
+    // for a ticket that had already moved.
+    expect(brokerSale).toHaveBeenCalledTimes(1)
+
+    const kinds = [...a, ...b].map((r) => r.outcome.kind)
+    expect(kinds.filter((k) => k === 'settled')).toHaveLength(1)
+
+    const auction = await prisma.auction.findUniqueOrThrow({ where: { id: ctx.auctionId } })
+    expect(auction.status).toBe('SETTLED')
+    await releaseAll(ctx.auctionId)
+  })
+
+  it('does not undo a finished auction when handed a stale id', async () => {
+    // The failure this guards: sweep one settles and releases; sweep two arrives
+    // with an id from its earlier query, finds no COMMITTED bids left, and takes
+    // the no-bids path — CANCELLING an auction that had just sold.
+    const ctx = await seed({
+      reserveDrops: 5n * XRP,
+      endsAt: PAST(),
+      bids: [{ amount: 10n * XRP, status: 'COMMITTED' }],
+      withSellOffer: true,
+    })
+    brokerSale.mockResolvedValue({ hash: 'TX-STALE', succeeded: true, result: 'tesSUCCESS' })
+
+    const first = await settleAuction(ctx.auctionId)
+    expect(first.kind).toBe('settled')
+
+    const again = await settleAuction(ctx.auctionId)
+    expect(again.kind).toBe('already-resolved')
+
+    const auction = await prisma.auction.findUniqueOrThrow({ where: { id: ctx.auctionId } })
+    expect(auction.status).toBe('SETTLED')
+
+    const winner = await prisma.bid.findFirstOrThrow({ where: { auctionId: ctx.auctionId } })
+    expect(winner.status).toBe('WON')
+    await releaseAll(ctx.auctionId)
+  })
+
+  it('skips an auction another process is holding, without touching it', async () => {
+    const ctx = await seed({
+      reserveDrops: 5n * XRP,
+      endsAt: PAST(),
+      bids: [{ amount: 10n * XRP, status: 'COMMITTED' }],
+      withSellOffer: true,
+    })
+    // Stand in for another instance mid-settlement.
+    expect(await acquireLock(auctionLockName(ctx.auctionId), 60_000)).toBe(true)
+
+    const results = await settleDueAuctions()
+
+    expect(results.find((r) => r.auctionId === ctx.auctionId)).toBeUndefined()
+    expect(brokerSale).not.toHaveBeenCalled()
+    const auction = await prisma.auction.findUniqueOrThrow({ where: { id: ctx.auctionId } })
+    expect(auction.status).toBe('LIVE')
+    await releaseAll(ctx.auctionId)
+  })
+
+  it('leaves every bid untouched when the broker is busy', async () => {
+    // Broker contention must never look like a bidder who could not pay. Marking
+    // one LOST here would discard a good bid for a reason that had nothing to do
+    // with the bidder.
+    const ctx = await seed({
+      reserveDrops: 5n * XRP,
+      endsAt: PAST(),
+      bids: [
+        { amount: 10n * XRP, status: 'COMMITTED' },
+        { amount: 8n * XRP, status: 'OUTBID' },
+      ],
+      withSellOffer: true,
+    })
+    expect(await acquireLock(BROKER_LOCK, 60_000)).toBe(true)
+
+    const outcome = await settleAuction(ctx.auctionId)
+
+    expect(outcome.kind).toBe('broker-busy')
+    expect(brokerSale).not.toHaveBeenCalled()
+    const bids = await prisma.bid.findMany({ where: { auctionId: ctx.auctionId } })
+    expect(bids.map((b) => b.status).sort()).toEqual(['COMMITTED', 'OUTBID'])
+    await releaseAll(ctx.auctionId)
   })
 })

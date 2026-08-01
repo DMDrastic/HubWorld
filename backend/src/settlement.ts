@@ -19,9 +19,48 @@
 import { prisma } from './prisma.js'
 import { brokerCancelOffers, brokerSale, platformFeeDrops, spendableDrops } from './ledger.js'
 import { publishAuctionEvent } from './realtime.js'
+import { withLock } from './job-lock.js'
 
 /** Bid statuses backed by a live buy offer on-ledger. */
 export const COMMITTED_BID_STATUSES = ['COMMITTED', 'OUTBID'] as const
+
+/**
+ * One lease per auction, rather than one lease over the whole sweep.
+ *
+ * The old design took a single `auction-sweep` lease around everything. Two
+ * problems followed. A settlement that stalled on a ledger call held that lease
+ * for its full TTL, so no process could settle ANY auction until it lapsed —
+ * head-of-line blocking across the entire system. And a second instance could
+ * never help, because the lock was all-or-nothing rather than per-item.
+ *
+ * Naming the lease after the auction fixes both: a stuck auction blocks only
+ * itself, and instances divide the queue instead of one taking all of it.
+ */
+export function auctionLockName(auctionId: string): string {
+  return `auction:${auctionId}`
+}
+
+/** Comfortably longer than settling one auction, which may walk several bids. */
+export const AUCTION_LOCK_TTL_MS = 2 * 60_000
+
+/**
+ * The broker account is the real serialisation point, and it is NOT the auction.
+ *
+ * `brokerSale` calls `autofill`, which reads the platform account's current
+ * `Sequence` from the ledger. Two settlements submitting at the same time — same
+ * process or different instances — would autofill the SAME sequence, and the
+ * loser fails. Per-auction leases alone would therefore have made concurrency
+ * unsafe rather than faster.
+ *
+ * So submission takes a second, global lease held only around the submit itself.
+ * Everything before it (reading spendable balances, choosing a candidate) still
+ * runs concurrently across auctions; only the one operation that must be serial
+ * is serialised. Solving this properly means managing the broker's sequence
+ * explicitly, or using more than one broker account.
+ */
+export const BROKER_LOCK = 'broker-submit'
+/** Must exceed a submit-and-validate round trip, which is seconds not minutes. */
+const BROKER_LOCK_TTL_MS = 60_000
 
 export type SettlementOutcome =
   | { kind: 'not-due'; endsAt: Date }
@@ -30,6 +69,10 @@ export type SettlementOutcome =
   | { kind: 'no-sell-offer' }
   | { kind: 'settled'; winnerId: string; amountDrops: bigint; feeDrops: bigint; txHash: string }
   | { kind: 'failed'; reason: string }
+  /** Another process holds the broker. Nothing was changed; the next sweep retries. */
+  | { kind: 'broker-busy' }
+  /** Already SETTLED or CANCELLED. Re-running would undo a finished auction. */
+  | { kind: 'already-resolved'; status: string }
 
 /**
  * Settle one auction.
@@ -51,6 +94,18 @@ export async function settleAuction(auctionId: string): Promise<SettlementOutcom
     },
   })
   if (!auction) return { kind: 'failed', reason: 'Auction not found' }
+
+  // Re-read the status rather than trusting the id we were handed.
+  //
+  // This matters far more with per-auction leases than it did with one global
+  // one. Two sweeps can now each hold a due-auction list built a moment apart:
+  // the first settles and releases, and the second arrives with an id that is
+  // already finished. Without this guard it would find no COMMITTED bids left,
+  // take the no-bids path, and CANCEL an auction that had just sold — moving the
+  // ticket back and marking the winner's bid LOST.
+  if (auction.status !== 'LIVE' && auction.status !== 'SETTLING') {
+    return { kind: 'already-resolved', status: auction.status }
+  }
 
   if (auction.endsAt > new Date()) return { kind: 'not-due', endsAt: auction.endsAt }
 
@@ -124,11 +179,22 @@ export async function settleAuction(auctionId: string): Promise<SettlementOutcom
       }
     }
 
-    const result = await brokerSale({
-      sellOfferIndex: listing.offerIndex,
-      buyOfferIndex: bid.buyOfferIndex,
-      brokerFeeDrops: fee,
-    })
+    // Captured before the closure: both were narrowed to non-null above, but
+    // that narrowing does not survive into a callback, since TypeScript cannot
+    // know the values still hold by the time it runs.
+    const sellOfferIndex = listing.offerIndex
+    const buyOfferIndex = bid.buyOfferIndex
+
+    // Serialised on the broker account, not on this auction — see BROKER_LOCK.
+    const result = await withLock(BROKER_LOCK, BROKER_LOCK_TTL_MS, () =>
+      brokerSale({ sellOfferIndex, buyOfferIndex, brokerFeeDrops: fee }),
+    )
+
+    // Someone else is mid-submission. Crucially this returns BEFORE touching any
+    // bid: nothing was attempted, so marking this bidder LOST would be a lie and
+    // would discard a perfectly good bid. The auction keeps its state and the
+    // next sweep tries again.
+    if (result === null) return { kind: 'broker-busy' }
 
     if (!result.succeeded) {
       // This bidder cannot pay after all. Demote and fall through to the next —
@@ -236,7 +302,17 @@ export async function settleDueAuctions(): Promise<
 
   const results = []
   for (const a of due) {
-    results.push({ auctionId: a.id, outcome: await settleAuction(a.id) })
+    // The lease lives here rather than inside settleAuction, so it is taken
+    // exactly once: both callers — the sweep and `npm run auction:settle` —
+    // arrive through this function. That also closes a real hole, because the
+    // script previously took NO lock at all, so running it while the server was
+    // sweeping could have had two processes settling the same auction.
+    const outcome = await withLock(auctionLockName(a.id), AUCTION_LOCK_TTL_MS, () =>
+      settleAuction(a.id),
+    )
+    // null means another process already has this one. A skipped auction is not
+    // a result — reporting it would make routine contention look like an event.
+    if (outcome !== null) results.push({ auctionId: a.id, outcome })
   }
   return results
 }
