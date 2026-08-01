@@ -61,6 +61,13 @@ export async function uploadPublicObject(
       apikey: env.SUPABASE_SERVICE_KEY!,
       Authorization: `Bearer ${env.SUPABASE_SERVICE_KEY!}`,
       'Content-Type': contentType,
+      // Supabase IGNORES this on the object endpoint — measured against a live
+      // bucket, which serves `cache-control: no-cache` regardless of what the
+      // upload asks for, whether sent as a header or as a `cacheControl`
+      // multipart field. It is sent anyway in case that changes, but caching is
+      // not obtained here: it comes from linking through the transformation
+      // endpoint, which serves `public, max-age=31536000, immutable`. See
+      // frontend/src/lib/poster.ts, which is where the caching actually happens.
       'Cache-Control': 'public, max-age=31536000, immutable',
     },
     // A Buffer is what undici's fetch wants for a binary body, and unlike a
