@@ -523,7 +523,16 @@ listingsRouter.get('/listings/:id', requireAuth, async (req, res) => {
   }
 
   // ---- withdrawal --------------------------------------------------------
-  if (listing.cancelPayloadUuid && listing.status === 'ACTIVE') {
+  //
+  // CANCELLING is included deliberately, and leaving it out was a trap: the
+  // status is written precisely when `txSucceeded` cannot yet see a validated
+  // transaction, so the listing needs a LATER poll to finish the job — but a
+  // later poll no longer matched an ACTIVE-only guard, and nothing else in the
+  // codebase moves a listing out of CANCELLING. The withdrawal therefore never
+  // completed: the seller's offer stayed live on-ledger, and because
+  // `ON_LEDGER_STATES` counts CANCELLING, that ticket could never be listed or
+  // auctioned again. A state you can enter and not leave is a leak, not a state.
+  if (listing.cancelPayloadUuid && (listing.status === 'ACTIVE' || listing.status === 'CANCELLING')) {
     const cancel = await tryGetPayload(listing.cancelPayloadUuid)
     if (cancel !== 'unavailable' && cancel?.signed && cancel.txid) {
       const ok = await txSucceeded(cancel.txid)
@@ -544,6 +553,18 @@ listingsRouter.get('/listings/:id', requireAuth, async (req, res) => {
           prisma.ticket.update({ where: { id: listing.ticketId }, data: { status: 'MINTED' } }),
         ])
         res.json({ ...view(), state: 'cancelled' })
+        return
+      }
+      // The ledger rejected the cancellation, so the sell offer is still live
+      // and the listing is still genuinely for sale. Returning it to ACTIVE is
+      // what the state means; leaving it in CANCELLING would strand the ticket
+      // for a withdrawal that demonstrably did not happen.
+      if (listing.status === 'CANCELLING') {
+        await prisma.listing.update({
+          where: { id: listing.id },
+          data: { status: 'ACTIVE', cancelPayloadUuid: null, cancelTxHash: null },
+        })
+        res.json({ ...view(), state: 'active' })
         return
       }
     }
