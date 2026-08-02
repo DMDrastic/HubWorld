@@ -23,6 +23,7 @@
     "auction:create": "tsx scripts/create-auction.ts",
     "broker:match": "tsx scripts/broker-match.ts",
     "ledger:sync": "tsx scripts/ledger-sync.ts",
+    "broker:backfill": "tsx scripts/backfill-broker-address.ts",
     "auction:settle": "tsx scripts/settle-auctions.ts",
     "role:grant": "tsx scripts/grant-role.ts",
     "payloads:cancel": "tsx scripts/cancel-abandoned.ts",

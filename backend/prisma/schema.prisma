@@ -474,6 +474,23 @@ model Listing {
   // Snapshotted: re-resolving later could retarget a listing already on-ledger.
   sellerAddress String
 
+  /// Which broker this listing's offers name as their `Destination`.
+  ///
+  /// Snapshotted for the same reason as `sellerAddress`, but the consequence is
+  /// worse. Both offers are built with `Destination` = the broker, so only THAT
+  /// account can ever settle them. Resolving the broker globally at settlement
+  /// time means rotating `PLATFORM_SEED` silently strands every live offer on
+  /// the ledger — unsettleable, with nothing recording which key they needed.
+  ///
+  /// Recording it here is also what makes more than one broker possible: with a
+  /// single serialised account, every sale platform-wide queues behind one
+  /// sequence, and one stuck transaction halts all of them.
+  ///
+  /// Nullable only for rows written before this existed; those name whichever
+  /// broker was configured then. Run `npm run broker:backfill` before any key
+  /// rotation, and treat null as "the current platform address" until then.
+  brokerAddress String?
+
   /// What the seller receives before the issuer's TransferFee. Always drops.
   priceDrops BigInt
   /// Hubworld's cut, fixed at listing time from the event's platformBps, so a
