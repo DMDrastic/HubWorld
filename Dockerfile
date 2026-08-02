@@ -60,6 +60,21 @@ COPY --from=web /web/dist ./public
 # Where Express looks for the built app. Absent, it serves the API only.
 ENV WEB_DIST=/app/public
 
+# Which commit this image was built from, reported by GET /api/health.
+#
+# Baked in at build time rather than read at runtime, so the answer describes
+# the code in the image and cannot drift from it. Declared here, after every
+# COPY and RUN, because its value changes on every single build: anything below
+# an ARG is rebuilt when that ARG changes, and below this point there is only
+# metadata (EXPOSE, CMD). Move it higher and each deploy re-runs `npm ci`.
+#
+# Render injects RENDER_GIT_COMMIT into builds automatically, so
+# `--build-arg COMMIT_SHA=$RENDER_GIT_COMMIT` is all a host needs — and if it
+# passes nothing, the backend falls back to RENDER_GIT_COMMIT at runtime and
+# then to 'unknown'. Never required.
+ARG COMMIT_SHA=""
+ENV COMMIT_SHA=${COMMIT_SHA}
+
 # Informational; the host decides the real port and PORT is read from env.
 EXPOSE 4000
 
