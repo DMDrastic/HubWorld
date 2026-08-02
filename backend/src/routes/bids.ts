@@ -16,6 +16,7 @@
 import { Router } from 'express'
 import { z } from 'zod'
 import { prisma } from '../prisma.js'
+import { NETWORK } from '../network.js'
 import { brokerMode, xamanMode } from '../env.js'
 import { tryGetPayload, xaman } from '../xaman.js'
 import { trackPayload } from '../payload-store.js'
@@ -197,6 +198,7 @@ bidsRouter.post('/auctions/:id/bid', requireAuth, async (req, res) => {
   const bid = await prisma.bid.create({
     data: {
       auctionId: auction.id,
+      network: NETWORK,
       bidderId: me.id,
       bidderAddress: me.xrplAddress,
       amountDrops,

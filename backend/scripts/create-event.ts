@@ -8,6 +8,7 @@
  *   npm run event:create -- --organizer dm_drastic --title "Neon Rooftop"
  */
 import { prisma } from '../src/prisma.js'
+import { NETWORK } from '../src/network.js'
 import { env } from '../src/env.js'
 
 function arg(name: string): string | undefined {
@@ -69,6 +70,7 @@ async function main() {
 
   const event = await prisma.event.create({
     data: {
+      network: NETWORK,
       slug,
       title,
       venue: arg('venue') ?? 'Hub World',

@@ -9,7 +9,9 @@
  *
  *   npm run auction:create -- --event neon-rooftop-session --reserve 12
  */
+import { Prisma } from '@prisma/client'
 import { prisma } from '../src/prisma.js'
+import { NETWORK } from '../src/network.js'
 import { env } from '../src/env.js'
 
 function arg(name: string): string | undefined {
@@ -70,6 +72,7 @@ async function main() {
 
   const auction = await prisma.auction.create({
     data: {
+      network: NETWORK,
       ticketId: ticket.id,
       startsAt,
       endsAt,
@@ -84,7 +87,7 @@ async function main() {
   // the velocity strip, and a uniform spread would make it look pointless.
   const span = endsAt.getTime() - startsAt.getTime()
   let price = 8n * XRP
-  const rows = []
+  const rows: Prisma.BidCreateManyInput[] = []
   for (let i = 0; i < bidCount; i++) {
     const t = (i + 1) / (bidCount + 1)
     const at = startsAt.getTime() + span * Math.pow(t, 2.6)
@@ -93,9 +96,10 @@ async function main() {
     rows.push({
       auctionId: auction.id,
       bidderId: bidders[i % bidders.length]!.id,
+      network: NETWORK,
       amountDrops: price,
       placedAt: new Date(at),
-      status: 'OUTBID' as const,
+      status: 'OUTBID',
     })
   }
   if (rows.length > 0) rows[rows.length - 1]!.status = 'COMMITTED'
@@ -105,9 +109,10 @@ async function main() {
   rows.push({
     auctionId: auction.id,
     bidderId: bidders[0]!.id,
+    network: NETWORK,
     amountDrops: price + 2n * XRP,
     placedAt: new Date(now - 30_000),
-    status: 'PENDING' as const,
+    status: 'PENDING',
   })
 
   await prisma.bid.createMany({ data: rows })

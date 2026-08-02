@@ -24,6 +24,7 @@
 import { Router } from 'express'
 import { z } from 'zod'
 import { prisma } from '../prisma.js'
+import { NETWORK } from '../network.js'
 import { xamanMode } from '../env.js'
 import { tryGetPayload, xaman, SIGNIN_TTL_MINUTES } from '../xaman.js'
 import { trackPayload } from '../payload-store.js'
@@ -87,6 +88,7 @@ redemptionRouter.post('/events/:slug/checkin', requireAuth, async (req, res) => 
   const redemption = await prisma.redemption.create({
     data: {
       payloadUuid: payload.uuid,
+      network: NETWORK,
       eventId: event.id,
       staffId: req.userId!,
       expiresAt,

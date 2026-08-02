@@ -17,8 +17,9 @@
  * DEV ONLY. It holds seeds for the wallets it creates, which is exactly why it
  * refuses to run in production or against mainnet.
  */
-import { Client, Wallet, type Transaction } from 'xrpl'
+import { Client, Wallet, type SubmittableTransaction } from 'xrpl'
 import { prisma } from '../src/prisma.js'
+import { NETWORK } from '../src/network.js'
 import { env } from '../src/env.js'
 import {
   XRPL_ENDPOINT,
@@ -39,7 +40,7 @@ function arg(name: string): string | undefined {
 }
 
 /** Sign and submit as a simulated wallet, returning the validated metadata. */
-async function submit(client: Client, wallet: Wallet, tx: Transaction) {
+async function submit(client: Client, wallet: Wallet, tx: SubmittableTransaction) {
   const prepared = await client.autofill(tx)
   const signed = wallet.sign(prepared)
   const res = await client.submitAndWait(signed.tx_blob)
@@ -146,6 +147,7 @@ async function main() {
 
     const event = await prisma.event.create({
       data: {
+        network: NETWORK,
         slug: `${TAG}-auction-${uniq}`,
         title: `Simulated Auction ${uniq}`,
         venue: 'The Nexus',
@@ -163,7 +165,7 @@ async function main() {
     const mint = await submit(
       client,
       organizer,
-      buildMintTx({ issuerAddress: organizer.classicAddress, taxon: event.nftTaxon, royaltyBps: 500 }) as Transaction,
+      buildMintTx({ issuerAddress: organizer.classicAddress, taxon: event.nftTaxon, royaltyBps: 500 }) as SubmittableTransaction,
     )
     const nfTokenId = nfTokenIdFrom(mint.meta)
 
@@ -177,15 +179,16 @@ async function main() {
       Amount: '0',
       Destination: seller.classicAddress,
       Flags: 1,
-    } as Transaction)
+    } as SubmittableTransaction)
     await submit(client, seller, {
       TransactionType: 'NFTokenAcceptOffer',
       Account: seller.classicAddress,
       NFTokenSellOffer: offerIndexFrom(giftOffer.meta),
-    } as Transaction)
+    } as SubmittableTransaction)
 
     const ticket = await prisma.ticket.create({
       data: {
+        network: NETWORK,
         nfTokenId,
         eventId: event.id,
         ownerId: uSeller.id,
@@ -208,12 +211,13 @@ async function main() {
         nfTokenId,
         amountDrops: sellAmount,
         brokerAddress: platformAddress(),
-      }) as Transaction,
+      }) as SubmittableTransaction,
     )
 
     const endsAt = closeNow ? new Date(Date.now() - 1000) : new Date(Date.now() + minutes * 60_000)
     const auction = await prisma.auction.create({
       data: {
+        network: NETWORK,
         ticketId: ticket.id,
         startsAt: new Date(Date.now() - 60_000),
         endsAt,
@@ -224,6 +228,7 @@ async function main() {
 
     await prisma.listing.create({
       data: {
+        network: NETWORK,
         ticketId: ticket.id,
         sellerId: uSeller.id,
         sellerAddress: seller.classicAddress,
@@ -255,10 +260,11 @@ async function main() {
           nfTokenId,
           amountDrops: b.amount,
           brokerAddress: platformAddress(),
-        }) as Transaction,
+        }) as SubmittableTransaction,
       )
       await prisma.bid.create({
         data: {
+          network: NETWORK,
           auctionId: auction.id,
           bidderId: b.user.id,
           bidderAddress: b.wallet.classicAddress,

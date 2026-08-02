@@ -136,6 +136,13 @@ npm run test:watch
 **Vitest**, installed separately in each folder (no workspace). Backend tests
 live in `tests/` and are typechecked by `tsconfig.test.json` — the build's
 `rootDir` is `src`, so without that second config they would never be checked.
+
+`tsconfig.test.json` also covers **the scripts that touch Postgres** (named
+individually). They were previously outside every tsconfig, so the `network`
+column — which the compiler caught at every route and test — reached them only
+as a runtime failure partway through a run. The ledger *spikes* stay excluded:
+they cast loosely against xrpl's types on purpose, are imported by nothing, and
+touch no tables.
 Frontend tests live in `src/__tests__/` with jsdom + Testing Library.
 
 Backend coverage is the pure ledger logic: `TransferFee` scaling, the
@@ -451,6 +458,46 @@ clients must not parse them into JS numbers.
 Models: `User` (@handle → r-address), `Event`, `Ticket`, `Listing`
 (fixed-price), `Auction` + `Bid` (escrow-locked), `Transfer` (append-only
 provenance).
+
+### Every ledger-bound row records its network
+
+`Event`, `MintRequest`, `Ticket`, `Gift`, `Redemption`, `Listing`, `Auction`,
+`Bid` and `Transfer` carry `network: XrplNetwork` (`TESTNET`/`DEVNET`/`MAINNET`).
+`src/network.ts` exports `NETWORK` — the one place `env.XRPL_NETWORK`'s lowercase
+value is reconciled with the uppercase enum — and `onThisNetwork` for scoping
+reads.
+
+**Identity deliberately does NOT carry it.** `User`, `Session` and
+`SignInRequest` are network-free: a `SignIn` is a pseudo-transaction that is
+never submitted to any ledger, so the proof binding an @handle to an r-address
+holds on all of them. The same person is the same person everywhere.
+
+**There is no database default, on purpose.** A default means a forgotten field
+silently labels a mainnet row as testnet — exactly the failure the column
+exists to prevent. Instead the column is required, so the *compiler* finds every
+create; the migration backfilled existing rows to `TESTNET`, which is what they
+factually are, using a `DEFAULT` that it drops again in the same file.
+
+**`nfTokenId` and `txHash` are unique per network, not globally**
+(`@@unique([network, nfTokenId])`, `@@unique([network, txHash])`). An NFTokenID
+derives from the issuer's AccountID, the taxon and the sequence — none of which
+are network-specific — so the same account minting the same taxon at the same
+sequence on two networks produces byte-identical ids. Reusing a seed across
+networks is ordinary in development, so this is reachable, not theoretical. A
+global unique would reject a legitimate mainnet ticket or let an upsert quietly
+rewrite the testnet row holding that id. Lookups are
+`where: { network_nfTokenId: { network: NETWORK, nfTokenId } }`.
+
+**Anything that ACTS on the ledger must scope by network**, and both such paths
+now do: `settleDueAuctions` (it submits a transaction — a foreign auction would
+be brokered against offers that do not exist here, spending the fee to find out)
+and `ledger:sync` (pointed at mainnet it saw every testnet ticket as held by
+nobody and reported the whole inventory as drift, which `--apply` would have
+acted on). Read-only list endpoints are NOT scoped yet; that only matters if one
+database ever holds two networks, which the deployment guidance says to avoid.
+
+The recommendation stands regardless: **one database per network.** The column
+is what makes a mistake survivable, not a licence to mix.
 
 **Royalties use XRPL brokered mode**: the organizer is the NFT issuer and
 collects `royaltyBps` via the native `TransferFee`; Hubworld brokers the

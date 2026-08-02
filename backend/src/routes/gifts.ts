@@ -17,6 +17,7 @@
 import { Router } from 'express'
 import { z } from 'zod'
 import { prisma } from '../prisma.js'
+import { NETWORK } from '../network.js'
 import { xamanMode } from '../env.js'
 import { tryGetPayload, xaman, SIGNIN_TTL_MINUTES } from '../xaman.js'
 import { trackPayload } from '../payload-store.js'
@@ -75,7 +76,7 @@ giftsRouter.post('/tickets/:nfTokenId/gift', requireAuth, async (req, res) => {
   const nfTokenId = params.data.nfTokenId.toUpperCase()
 
   const [ticket, me, recipient] = await Promise.all([
-    prisma.ticket.findUnique({ where: { nfTokenId } }),
+    prisma.ticket.findUnique({ where: { network_nfTokenId: { network: NETWORK, nfTokenId } } }),
     prisma.user.findUnique({ where: { id: req.userId! } }),
     prisma.user.findUnique({ where: { username: body.data.to } }),
   ])
@@ -162,6 +163,7 @@ giftsRouter.post('/tickets/:nfTokenId/gift', requireAuth, async (req, res) => {
   const gift = await prisma.gift.create({
     data: {
       ticketId: ticket.id,
+      network: NETWORK,
       fromId: me.id,
       toId: recipient.id,
       // Snapshot the addresses — re-resolving the handle later could retarget
@@ -598,11 +600,14 @@ giftsRouter.get('/gifts/:id', requireAuth, async (req, res) => {
       },
     })
 
-    const already = await tx.transfer.findUnique({ where: { txHash: status.txid! } })
+    const already = await tx.transfer.findUnique({
+      where: { network_txHash: { network: NETWORK, txHash: status.txid! } },
+    })
     if (!already) {
       await tx.transfer.create({
         data: {
           ticketId: gift.ticketId,
+          network: NETWORK,
           fromAddress: gift.fromAddress,
           toAddress: gift.toAddress,
           txHash: status.txid!,

@@ -44,6 +44,22 @@ decision further down is guesswork without them:
 **Instrument payload counting before you start** (see 2), so the rehearsal
 produces both sets of numbers in one pass rather than needing a second run.
 
+**Use a separate database, and note that rows now say which ledger they are
+on.** Until 2026-08-02 nothing recorded it: pointing a deployment at mainnet
+would have put mainnet and testnet tickets in one table, indistinguishable, and
+`ledger:sync --apply` would have rewritten ownership across the whole testnet
+inventory it could no longer see on-ledger. `network` on every ledger-bound
+model closes that, and the two paths that ACT on the ledger — the settlement
+sweep and `ledger:sync` — are scoped to it. The column makes the mistake
+survivable; **one database per network is still the recommendation**, because
+read-only list endpoints are not scoped.
+
+Creating the mainnet broker account is a **manual** step by design:
+`npm run platform:setup` refuses mainnet rather than conjuring an account with
+real money behind it. Create it deliberately, fund it, and put the seed in a
+real secret manager. `broker:backfill` is not needed for a fresh database — it
+guards *rotating* a seed against listings that already name the old broker.
+
 Do not skip to scaling work because the rehearsal feels small. A ten-ticket
 mainnet event de-risks more than a thousand-ticket testnet one.
 

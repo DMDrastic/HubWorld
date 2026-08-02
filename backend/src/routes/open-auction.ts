@@ -25,6 +25,7 @@
 import { Router } from 'express'
 import { z } from 'zod'
 import { prisma } from '../prisma.js'
+import { NETWORK } from '../network.js'
 import { brokerMode, xamanMode } from '../env.js'
 import { xaman } from '../xaman.js'
 import { trackPayload } from '../payload-store.js'
@@ -84,7 +85,10 @@ openAuctionRouter.post('/tickets/:nfTokenId/auction', requireAuth, async (req, r
   const reserveDrops = BigInt(body.data.reserveDrops)
 
   const [ticket, me] = await Promise.all([
-    prisma.ticket.findUnique({ where: { nfTokenId }, include: { event: true } }),
+    prisma.ticket.findUnique({
+      where: { network_nfTokenId: { network: NETWORK, nfTokenId } },
+      include: { event: true },
+    }),
     prisma.user.findUnique({ where: { id: req.userId! } }),
   ])
 
@@ -194,6 +198,7 @@ openAuctionRouter.post('/tickets/:nfTokenId/auction', requireAuth, async (req, r
     const auction = await tx.auction.create({
       data: {
         ticketId: ticket.id,
+        network: NETWORK,
         startsAt: new Date(now),
         endsAt,
         reserveDrops,
@@ -205,6 +210,7 @@ openAuctionRouter.post('/tickets/:nfTokenId/auction', requireAuth, async (req, r
     const listing = await tx.listing.create({
       data: {
         ticketId: ticket.id,
+        network: NETWORK,
         sellerId: me.id,
         sellerAddress: me.xrplAddress,
         brokerAddress,

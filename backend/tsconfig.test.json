@@ -8,5 +8,24 @@
     "rootDir": ".",
     "outDir": null
   },
-  "include": ["src/**/*.ts", "tests/**/*.ts"]
+  // The schema-touching scripts are typechecked; the ledger spikes are not.
+  // They were previously outside every tsconfig, so a schema change that every
+  // route caught at build time reached these only as a runtime failure partway
+  // through a run. The spikes are excluded because they cast loosely against
+  // xrpl's types on purpose, are imported by nothing, and touch no tables.
+  "include": [
+    "src/**/*.ts",
+    "tests/**/*.ts",
+    "scripts/backfill-broker-address.ts",
+    "scripts/broker-match.ts",
+    "scripts/cancel-abandoned.ts",
+    "scripts/create-auction.ts",
+    "scripts/create-event.ts",
+    "scripts/demo-reset.ts",
+    "scripts/grant-role.ts",
+    "scripts/ledger-sync.ts",
+    "scripts/purge-test-data.ts",
+    "scripts/settle-auctions.ts",
+    "scripts/simulate-auction.ts"
+  ]
 }

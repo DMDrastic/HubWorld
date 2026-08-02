@@ -31,6 +31,7 @@ vi.mock('../src/ledger.js', async () => {
 })
 
 const { prisma } = await import('../src/prisma.js')
+const { NETWORK } = await import('../src/network.js')
 const { settleAuction, settleDueAuctions, auctionLockName, BROKER_LOCK } = await import(
   '../src/settlement.js'
 )
@@ -71,6 +72,7 @@ async function seed(opts: {
 
   const event = await prisma.event.create({
     data: {
+      network: NETWORK,
       slug: `${TAG}-${uniq}`,
       title: 'Settlement Test',
       startsAt: new Date(Date.now() + 86_400_000),
@@ -84,6 +86,7 @@ async function seed(opts: {
 
   const ticket = await prisma.ticket.create({
     data: {
+      network: NETWORK,
       nfTokenId: `${uniq}${'0'.repeat(64)}`.slice(0, 64).toUpperCase(),
       eventId: event.id,
       ownerId: seller.id,
@@ -94,6 +97,7 @@ async function seed(opts: {
 
   const auction = await prisma.auction.create({
     data: {
+      network: NETWORK,
       ticketId: ticket.id,
       startsAt: new Date(Date.now() - 3_600_000),
       endsAt: opts.endsAt,
@@ -105,6 +109,7 @@ async function seed(opts: {
   if (opts.withSellOffer !== false) {
     await prisma.listing.create({
       data: {
+        network: NETWORK,
         ticketId: ticket.id,
         sellerId: seller.id,
         sellerAddress: seller.xrplAddress,
@@ -123,6 +128,7 @@ async function seed(opts: {
     opts.bids.map((b, i) =>
       prisma.bid.create({
         data: {
+          network: NETWORK,
           auctionId: auction.id,
           bidderId: bidderRows[i]!.id,
           bidderAddress: bidderRows[i]!.xrplAddress,
@@ -257,7 +263,7 @@ describe('the happy path', () => {
     expect(ticket.status).toBe('MINTED')
 
     // Provenance and the sale close in the same transaction as ownership.
-    const transfer = await prisma.transfer.findUnique({ where: { txHash: 'TX-WIN' } })
+    const transfer = await prisma.transfer.findUnique({ where: { network_txHash: { network: NETWORK, txHash: 'TX-WIN' } } })
     expect(transfer?.kind).toBe('AUCTION_SETTLE')
 
     const auction = await prisma.auction.findUniqueOrThrow({ where: { id: ctx.auctionId } })
@@ -354,7 +360,7 @@ describe('when the top bidder cannot pay', () => {
     expect(out.amountDrops).toBe(20n * XRP)
     expect(brokerSale).toHaveBeenCalledTimes(2)
 
-    const transfer = await prisma.transfer.findUnique({ where: { txHash: 'TX-OK' } })
+    const transfer = await prisma.transfer.findUnique({ where: { network_txHash: { network: NETWORK, txHash: 'TX-OK' } } })
     expect(transfer?.kind).toBe('AUCTION_SETTLE')
   })
 

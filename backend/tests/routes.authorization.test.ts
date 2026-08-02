@@ -81,6 +81,7 @@ vi.mock('../src/env.js', async () => {
 })
 
 const { prisma } = await import('../src/prisma.js')
+const { NETWORK } = await import('../src/network.js')
 const { createApp } = await import('../src/app.js')
 const { createSession } = await import('../src/session.js')
 const { env } = await import('../src/env.js')
@@ -123,6 +124,7 @@ function as(actor: Actor) {
 async function mkEvent(organizer: Actor, opts: { slug?: string; ticketCount?: number } = {}) {
   return prisma.event.create({
     data: {
+      network: NETWORK,
       slug: opts.slug ?? `${STAG}${uniq}`,
       title: 'Route Test Event',
       startsAt: new Date(Date.now() + 86_400_000),
@@ -139,6 +141,7 @@ async function mkEvent(organizer: Actor, opts: { slug?: string; ticketCount?: nu
 async function mkTicket(eventId: string, owner: Actor, suffix = '1') {
   return prisma.ticket.create({
     data: {
+      network: NETWORK,
       nfTokenId: `${suffix}${hexUniq}${'0'.repeat(64)}`.slice(0, 64).toUpperCase(),
       eventId,
       ownerId: owner.id,
@@ -557,6 +560,7 @@ describe('only the counterparty who owns a flow may act on it', () => {
     const ticket = await mkTicket(event.id, seller)
     const listing = await prisma.listing.create({
       data: {
+        network: NETWORK,
         ticketId: ticket.id,
         sellerId: seller.id,
         sellerAddress: seller.address,
@@ -606,6 +610,7 @@ describe('only the counterparty who owns a flow may act on it', () => {
     const ticket = await mkTicket(event.id, sender)
     const gift = await prisma.gift.create({
       data: {
+        network: NETWORK,
         ticketId: ticket.id,
         fromId: sender.id,
         toId: recipient.id,
@@ -841,6 +846,7 @@ describe('an auction’s sell offer is never publicly buyable', () => {
     const ticket = await mkTicket(event.id, holder)
     const auction = await prisma.auction.create({
       data: {
+        network: NETWORK,
         ticketId: ticket.id,
         startsAt: new Date(Date.now() - 3_600_000),
         endsAt: new Date(Date.now() + 3_600_000),
@@ -850,6 +856,7 @@ describe('an auction’s sell offer is never publicly buyable', () => {
     })
     const listing = await prisma.listing.create({
       data: {
+        network: NETWORK,
         ticketId: ticket.id,
         sellerId: holder.id,
         sellerAddress: holder.address,
@@ -903,6 +910,7 @@ describe('an auction’s sell offer is never publicly buyable', () => {
     const ticket = await mkTicket(event.id, seller)
     const listing = await prisma.listing.create({
       data: {
+        network: NETWORK,
         ticketId: ticket.id,
         sellerId: seller.id,
         sellerAddress: seller.address,
@@ -946,6 +954,7 @@ describe('the API answers as an API', () => {
     const ticket = await mkTicket(event.id, seller)
     await prisma.listing.create({
       data: {
+        network: NETWORK,
         ticketId: ticket.id,
         sellerId: seller.id,
         sellerAddress: seller.address,

@@ -60,7 +60,7 @@ async function main() {
   const readOffer = async (index: string) => {
     try {
       const r = await c.request({ command: 'ledger_entry', index, ledger_index: 'validated' })
-      const node = r.result.node as Record<string, unknown> | undefined
+      const node = r.result.node as unknown as Record<string, unknown> | undefined
       return node ? { amount: String(node.Amount), owner: String(node.Owner), flags: Number(node.Flags ?? 0) } : null
     } catch {
       return null

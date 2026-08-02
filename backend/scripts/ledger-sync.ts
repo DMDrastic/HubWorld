@@ -13,6 +13,7 @@
  *   npm run ledger:sync -- --apply   # fix what it found
  */
 import { prisma } from '../src/prisma.js'
+import { NETWORK, onThisNetwork } from '../src/network.js'
 import { accountNfts, disconnectLedger, ledger } from '../src/ledger.js'
 import {
   WATCHED,
@@ -63,7 +64,11 @@ async function main() {
   }
 
   // ---- tickets: the ledger decides -------------------------------------
+  // Scoped to THIS network. Without it, a run against mainnet walks every
+  // testnet ticket, finds none of them held by any account it can see, and
+  // reports the entire inventory as drift — which `--apply` would then act on.
   const tickets = await prisma.ticket.findMany({
+    where: onThisNetwork,
     include: { owner: { select: { username: true } } },
   })
 
@@ -116,7 +121,10 @@ async function main() {
 
   // NFTs on-ledger that we have no Ticket row for, matched to an event by taxon.
   const knownIds = new Set(tickets.map((t) => t.nfTokenId))
-  const events = await prisma.event.findMany({ select: { id: true, slug: true, nftTaxon: true } })
+  const events = await prisma.event.findMany({
+    where: onThisNetwork,
+    select: { id: true, slug: true, nftTaxon: true },
+  })
   const byTaxon = new Map(events.map((e) => [e.nftTaxon, e]))
 
   for (const [nfTokenId, holder] of holders) {
@@ -134,6 +142,7 @@ async function main() {
     if (APPLY) {
       await prisma.ticket.create({
         data: {
+          network: NETWORK,
           nfTokenId,
           eventId: event.id,
           ownerId: holder.id,
@@ -147,7 +156,10 @@ async function main() {
 
   // ---- listings: is the offer still there? ------------------------------
   const listings = await prisma.listing.findMany({
-    where: { status: { in: ['ACTIVE', 'BUYER_PENDING', 'SETTLING', 'CANCELLING', 'FAILED'] } },
+    where: {
+      ...onThisNetwork,
+      status: { in: ['ACTIVE', 'BUYER_PENDING', 'SETTLING', 'CANCELLING', 'FAILED'] },
+    },
     include: { seller: { select: { username: true } }, buyer: { select: { username: true } } },
   })
 

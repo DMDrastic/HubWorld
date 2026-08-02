@@ -17,6 +17,33 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+/**
+ * Which XRP Ledger a row's on-ledger identifiers belong to.
+ *
+ * An `NFTokenID`, an offer index, a tx hash and an r-address are only meaningful
+ * against one network. Without this column a database holding both is
+ * indistinguishable to anything that reads the ledger: `ledger:sync` pointed at
+ * mainnet saw every testnet ticket as "held by nobody we know", and `--apply`
+ * would have rewritten ownership on rows that were perfectly correct.
+ *
+ * Deliberately NOT defaulted. A default means a forgotten field silently
+ * mislabels a mainnet row as testnet, which is precisely the class of silent
+ * wrongness this exists to prevent — so every create must state the network and
+ * the compiler finds any that does not. Existing rows were backfilled to
+ * TESTNET by the migration, which is what they factually are.
+ *
+ * Identity is deliberately absent from this: `User`, `Session` and
+ * `SignInRequest` carry no network. A signature proving an @handle owns an
+ * r-address is a `SignIn` pseudo-transaction that is never submitted to any
+ * ledger, so the binding holds on all of them. The same person is the same
+ * person on testnet and mainnet.
+ */
+enum XrplNetwork {
+  TESTNET
+  DEVNET
+  MAINNET
+}
+
 // ---------------------------------------------------------------- identity --
 
 model User {
@@ -190,7 +217,13 @@ model Session {
 
 model Event {
   id          String   @id @default(uuid())
+  /// Slug stays globally unique — it is a URL, and two events cannot share one
+  /// path just because they issue on different ledgers.
   slug        String   @unique
+
+  /// Which ledger this event's tickets are issued on. Every Ticket, MintRequest
+  /// and Listing beneath it inherits the same value.
+  network XrplNetwork
   title       String
   description String?
   venue       String?
@@ -224,6 +257,7 @@ model Event {
   staff        EventStaff[]
 
   @@index([status, startsAt])
+  @@index([network, status])
 }
 
 /**
@@ -239,6 +273,8 @@ model MintRequest {
   id          String     @id @default(uuid())
   payloadUuid String     @unique // Xaman payload UUID
   status      MintStatus @default(PENDING)
+
+  network XrplNetwork
 
   eventId String
   event   Event  @relation(fields: [eventId], references: [id])
@@ -288,7 +324,17 @@ enum EventStatus {
 
 model Ticket {
   id        String @id @default(uuid())
-  nfTokenId String @unique // 64-char hex NFTokenID — the ticket's real identity
+  /// 64-char hex NFTokenID — the ticket's real identity, but only WITHIN a
+  /// network. An NFTokenID is derived from the issuer's AccountID, the taxon
+  /// and the issuer's sequence, none of which are network-specific: the same
+  /// account minting the same taxon at the same sequence on two networks
+  /// produces byte-identical ids. Reusing a seed across networks is ordinary in
+  /// development, so this is reachable rather than theoretical. A global unique
+  /// would reject a legitimate mainnet ticket, or let an upsert quietly rewrite
+  /// the testnet row that already held the id.
+  nfTokenId String
+
+  network XrplNetwork
 
   eventId String
   event   Event  @relation(fields: [eventId], references: [id])
@@ -313,8 +359,10 @@ model Ticket {
   gifts       Gift[]
   redemptions Redemption[]
 
+  @@unique([network, nfTokenId])
   @@index([eventId, status])
   @@index([ownerId])
+  @@index([network, status])
 }
 
 /**
@@ -330,6 +378,8 @@ model Ticket {
  */
 model Gift {
   id String @id @default(uuid())
+
+  network XrplNetwork
 
   ticketId String
   ticket   Ticket @relation(fields: [ticketId], references: [id])
@@ -414,6 +464,8 @@ model Redemption {
   payloadUuid String           @unique
   status      RedemptionStatus @default(PENDING)
 
+  network XrplNetwork
+
   eventId String
   event   Event  @relation(fields: [eventId], references: [id])
 
@@ -465,6 +517,8 @@ enum RedemptionStatus {
  */
 model Listing {
   id String @id @default(uuid())
+
+  network XrplNetwork
 
   ticketId String
   ticket   Ticket @relation(fields: [ticketId], references: [id])
@@ -554,6 +608,8 @@ enum ListingStatus {
 model Auction {
   id String @id @default(uuid())
 
+  network XrplNetwork
+
   ticketId String
   ticket   Ticket @relation(fields: [ticketId], references: [id])
 
@@ -599,6 +655,8 @@ enum AuctionStatus {
  */
 model Bid {
   id String @id @default(uuid())
+
+  network XrplNetwork
 
   auctionId String
   auction   Auction @relation(fields: [auctionId], references: [id])
@@ -650,12 +708,19 @@ model Transfer {
   ticketId String
   ticket   Ticket @relation(fields: [ticketId], references: [id])
 
+  network XrplNetwork
+
   fromAddress String?
   toAddress   String
-  txHash      String       @unique
+  /// Unique per network, not globally: a transaction hash is a hash of the
+  /// signed blob, and the same account submitting the same fields at the same
+  /// sequence on two networks collides. Scoped for the same reason as
+  /// `Ticket.nfTokenId`.
+  txHash      String
   kind        TransferKind
   occurredAt  DateTime
 
+  @@unique([network, txHash])
   @@index([ticketId, occurredAt])
 }
 

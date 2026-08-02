@@ -17,6 +17,7 @@
  *    demoted and the next-highest bid is tried, rather than the auction failing.
  */
 import { prisma } from './prisma.js'
+import { NETWORK, onThisNetwork } from './network.js'
 import { brokerCancelOffers, brokerSale, platformFeeDrops, spendableDrops } from './ledger.js'
 import { publishAuctionEvent } from './realtime.js'
 import { withLock } from './job-lock.js'
@@ -255,11 +256,14 @@ export async function settleAuction(auctionId: string): Promise<SettlementOutcom
           status: 'MINTED',
         },
       })
-      const already = await tx.transfer.findUnique({ where: { txHash: result.hash } })
+      const already = await tx.transfer.findUnique({
+        where: { network_txHash: { network: NETWORK, txHash: result.hash } },
+      })
       if (!already) {
         await tx.transfer.create({
           data: {
             ticketId: auction.ticketId,
+            network: NETWORK,
             fromAddress: listing.sellerAddress,
             toAddress: bid.bidderAddress!,
             txHash: result.hash,
@@ -314,8 +318,15 @@ export async function settleAuction(auctionId: string): Promise<SettlementOutcom
 export async function settleDueAuctions(): Promise<
   Array<{ auctionId: string; outcome: SettlementOutcome }>
 > {
+  // Scoped to this network for the same reason `ledger:sync` is: settlement
+  // SUBMITS a transaction. An auction from another ledger would be brokered
+  // against offers that do not exist here, burning the fee to discover it.
   const due = await prisma.auction.findMany({
-    where: { status: { in: ['LIVE', 'SETTLING'] }, endsAt: { lte: new Date() } },
+    where: {
+      ...onThisNetwork,
+      status: { in: ['LIVE', 'SETTLING'] },
+      endsAt: { lte: new Date() },
+    },
     select: { id: true },
     orderBy: { endsAt: 'asc' },
     take: 25,
