@@ -386,6 +386,80 @@ so the event is correctly **not** auctionable — the tickets have to reach
 holders first. An organizer cannot auction their own stock, which is the rule
 working exactly as intended.
 
+## 5b-ii. A whole event, minted AND sold — and the two walls it hits
+
+`scripts/full-event-sim.ts`, devnet. Minting a thousand tickets is only half a
+product; tickets nobody can buy are not tickets. This runs the rest.
+
+**At 40 tickets the whole loop works**, and the event correctly becomes
+auctionable at the end:
+
+```
+tickets minted 40 · sold 40 · organizer holds 0
+ORGANIZER SIGNATURES: 1   platform: 80 (unattended)   buyers: 40 (one each)
+>> SOLD OUT. The secondary market opens: auctions become available.
+```
+
+That is the complete answer to the auction question. Minting never opens the
+secondary market; **selling does**, because `soldOut` requires
+`organizerHolds === 0`.
+
+**At 1,000 tickets it does not complete**, and the reasons are worth more than
+the success would have been.
+
+### Wall 1: unattended SELLING needs a second, far more dangerous permission
+
+`NFTokenMint` alone does not distribute anything. Putting tickets up for sale
+needs `NFTokenCreateOffer`, which **can** be delegated — but the two permissions
+are not equally safe:
+
+- **Minting** can only ever create value for the organizer.
+- **Offer creation lets the delegate give the organizer's tickets away.**
+  Measured: a zero-price offer from the organizer's account to the delegate
+  returns `tesSUCCESS`.
+
+Money stays protected either way — a `Payment` from the organizer's account is
+still refused with `terNO_DELEGATE_PERMISSION`. **Inventory is not.** So the
+clean claim, *"HubWorld can mint tickets as you and nothing else"*, becomes
+*"HubWorld can mint your tickets and also hand them to anyone"* the moment
+unattended selling is on the table. That is a materially different thing to ask
+an organizer to agree to, and it should be a separate, explicit grant rather
+than bundled into event creation.
+
+### Wall 2: an open sell offer costs owner reserve, so a whole event cannot be listed at once
+
+Every open `NFTokenOffer` is an owned object costing **0.2 XRP of reserve on the
+organizer**. Listing 1,000 tickets simultaneously therefore locks about
+**200 XRP** on their account, on top of ~8 XRP for the NFT pages.
+
+Measured on a 100 XRP account: offers failed with **`tecINSUFFICIENT_RESERVE`**
+after ~490, exactly matching the predicted ceiling of `(100 − 1) / 0.2 ≈ 495`.
+In the full run only **453 of 1,000** offers existed, and 453 tickets sold.
+
+**The failure is silent.** A `tec` result still consumes the sequence and the
+fee, so a naive submitter sees 1,000 transactions "succeed" while half the
+event never went on sale. This is the same shape as the dropped-transaction
+problem in 5b-i and needs the same answer: **check engine results, do not infer
+success from the sequence advancing.**
+
+### What this changes about the design
+
+- **Do not list an entire event up front.** Create sell offers on demand as
+  buyers arrive, so reserve is only ever held for offers actually open. That
+  also matches how tickets really sell.
+- **Or put the reserve on the buyer** by having buyers create *buy* offers,
+  which costs each of them 0.2 XRP for one object rather than the organizer
+  200 XRP for a thousand.
+- **Check the organizer's spendable reserve before a run** — roughly
+  `0.2 × (tickets + open offers) + pages + base`. This is a precondition, like
+  the ~8 XRP for minting alone, and it is much larger once offers are included.
+
+### Throughput, for the record
+
+Minting and offer creation both sustain ~20/s: 1,000 mints in 52s, 1,000 offer
+transactions in 48s, buyer accepts at 15–26/s. Speed was never the problem —
+reserve and permissions are.
+
 ## 5c. Onboarding: stablecoins work, but they solve the smaller problem
 
 The worry is that asking a normal person to install Xaman, keep a seed phrase
