@@ -664,13 +664,38 @@ an organizer granting it would also be granting the ability to send payments fro
 their account. Granular per-transaction-type delegation would be a better shape
 if it becomes available, but it still ends the claim above.
 
+**It now exists, and it works.** `PermissionDelegationV1_1` is **active on
+devnet** (pending on testnet, absent from mainnet). Measured 2026-08-02 with
+`scripts/delegation-spike.ts`:
+
+- An organizer can `DelegateSet` **only** `NFTokenMint` to Hubworld.
+- Hubworld mints with `Account` = organizer, `Delegate` = Hubworld, signed by
+  Hubworld's key — and **the resulting NFT's `Issuer` is the ORGANIZER**, with
+  `TransferFee` intact. **The royalty model survives.**
+- Hubworld attempting a `Payment` from the organizer's account is refused with
+  `terNO_DELEGATE_PERMISSION` — so it is genuinely scoped, unlike `RegularKey`.
+- Revocation is one transaction and takes effect immediately.
+- The **delegate** pays the transaction fee, not the organizer.
+
+That is the (1)+(3) corner, reachable without giving up (1). It lifts the
+minting ceiling while keeping royalties, brokered settlement, resale, auctions
+and per-ticket door verdicts — everything MPT would have destroyed — and it
+takes minting off the Xaman quota entirely, since Hubworld signs directly.
+
+**It still weakens "Hubworld cannot act as you"**, to "Hubworld can mint tickets
+as you, nothing else, and only while you allow it". Narrower, ledger-enforced
+and revocable, but a product decision rather than a free win. And it is **not on
+mainnet**, so the low-hundreds ceiling stands until it activates. See
+`ROADMAP.md` §5b.
+
 **Batch transactions do not rescue this, on two counts.** The `Batch` amendment
 (XLS-56) would let one signature carry several inner mints, but a signature-
 validation flaw found on 19 Feb 2026 led to rippled 3.1.1 marking both `Batch`
 and `fixBatchInnerSigs` unsupported and blocking them from validator votes on all
-production networks; a `BatchV1_1` successor is the replacement. More decisively,
-**the cap is eight inner transactions** — so even once it ships, a thousand
-tickets is 125 signatures. An 8× improvement, not a solution.
+production networks; a `BatchV1_1` successor is the replacement — **now visible
+on testnet as `supported=true`, pending activation** (2026-08-02). More
+decisively, **the cap is eight inner transactions** — so even once it ships, a
+thousand tickets is 125 signatures. An 8× improvement, not a solution.
 
 **MPTs are the only path that actually reaches thousands.** Multi-Purpose Tokens
 (XLS-33) activated as `MPTokensV1` in October 2025. One issuance transaction
