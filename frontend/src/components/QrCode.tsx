@@ -30,6 +30,17 @@
  * Chosen with CSS rather than by sniffing the user agent: the question is "is
  * there room for a QR", which is what a media query actually answers, and it
  * stays correct in a resized window or a split view.
+ *
+ * THE ONE PLACE THAT MUST NOT PASS `next`: the door.
+ *
+ * All of the above assumes the QR is for the device SHOWING it — true for
+ * sign-in, minting, gifting, listing, buying and bidding, where you are the one
+ * signing. Door check-in inverts that: the payload is signed by the ATTENDEE and
+ * the code is displayed on the STAFF device for their phone to scan. A door
+ * volunteer is holding a phone, so a link there would open Xaman on the STAFF's
+ * device and have the wrong person sign. `DoorPanel` therefore passes no `next`
+ * and says why at the call site. Leaving `next` optional is what makes that
+ * refusal expressible.
  * ---------------------------------------------------------------------------
  */
 import { cn } from '@/lib/utils'

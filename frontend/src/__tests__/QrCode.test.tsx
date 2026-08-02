@@ -64,3 +64,27 @@ describe('the Xaman signing prompt', () => {
     expect(screen.getByRole('link', { name: /open in xaman/i }).getAttribute('target')).toBeNull()
   })
 })
+
+/**
+ * The door is the one flow where the QR is NOT for the device showing it.
+ *
+ * Everywhere else you are the signer, so on a phone a deep link is strictly
+ * better. At the door the payload is signed by the ATTENDEE while the code is
+ * displayed on the STAFF device for their phone to scan. A volunteer working a
+ * door is holding a phone — so offering the link there would open Xaman on the
+ * staff device and have the wrong person sign: admitting nobody at best, and
+ * the wrong person if that volunteer happens to hold a ticket for the event.
+ *
+ * The protection is that `next` is optional and DoorPanel does not pass it. This
+ * pins the half that lives in this component: no link without `next`, at any
+ * width, so the door cannot acquire one by accident.
+ */
+describe('a QR meant for someone else’s device', () => {
+  it('offers no link when the caller withholds one, whatever the mode', () => {
+    render(<QrCode src={QR} alt="check-in" mode="live" />)
+
+    expect(screen.queryByRole('link', { name: /open in xaman/i })).toBeNull()
+    // And the QR is never hidden in that case — it is the only way to sign.
+    expect(screen.getByAltText('check-in')).not.toBeNull()
+  })
+})
