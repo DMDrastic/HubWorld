@@ -326,6 +326,67 @@ secondary market and the door's precision permanently.
 - Count the added `MPTokenAuthorize` payload into the quota model from
   section 2.
 
+## 5c. Onboarding: stablecoins work, but they solve the smaller problem
+
+The worry is that asking a normal person to install Xaman, keep a seed phrase
+and buy XRP before they can buy a ticket is a wall. Worth separating the three
+barriers, because they have very different answers.
+
+**Pricing in a stablecoin works completely.** Measured on testnet 2026-08-02
+(`scripts/stablecoin-spike.ts`), a full brokered sale denominated in an issued
+currency:
+
+| | before | after |
+| --- | --- | --- |
+| buyer | 1000 | **895** (paid 105) |
+| broker (platform fee) | 0 | **5** |
+| organizer (royalty) | 0 | **5** |
+| seller | 0 | **95** |
+
+`tesSUCCESS`. Brokered settlement, `NFTokenBrokerFee` and `TransferFee` all
+survive, and **the arithmetic is identical to the XRP path** — the royalty is
+charged on the bid minus the broker fee (105 − 5 = 100, 5% = 5), exactly as
+`CLAUDE.md` documents for XRP. Nothing about the settlement model has to change.
+
+Two requirements it surfaced: the stablecoin issuer must set `asfDefaultRipple`
+or balances cannot move between third parties at all, and **the organizer needs
+a trustline too** — without one there is nowhere for their royalty to land.
+
+**What it does NOT fix.** The buyer still needs a wallet, still needs XRP for
+reserves, and now needs one more signature and 0.2 XRP for the trustline.
+Pricing in a stablecoin removes the *"buy XRP to pay"* step. It does not remove
+the *"install a wallet and fund it"* step, which is the actual wall.
+
+So the three barriers, ranked by how much they hurt:
+
+1. **The wallet itself** — install, seed phrase, self-custody. No currency
+   choice touches this. It is also the thing the product least wants to give up,
+   because "your ticket, in your wallet, working even if HubWorld disappears" is
+   the whole pitch.
+2. **Reserves** — ~1 XRP base plus 0.2 per object before anything can be held.
+   The pending `Sponsor` amendment targets exactly this, so like delegation the
+   fix may arrive from the protocol rather than from us. **Watch it.**
+3. **Volatility and unfamiliarity of paying in XRP** — the one stablecoins
+   genuinely solve, and the smallest of the three.
+
+**Fiat rails are a different decision entirely.** Card payment means someone
+takes custody, becomes merchant of record, and handles chargebacks and KYC —
+precisely the role brokered mode exists to avoid. There is no XRPL primitive
+that dodges it. If a fiat tier is ever wanted, scope it as **explicitly
+custodial and separate**, keeping the self-custody path intact, rather than
+quietly making everything custodial.
+
+**Cost if stablecoin pricing is adopted:** the money model is `BigInt` drops
+from the Prisma schema up — `priceDrops`, `platformFeeDrops`, `amountDrops` —
+so this is a real refactor of how price is represented, not a config change.
+The spike de-risks it: the ledger behaviour is proven, so the work is entirely
+in our own types.
+
+**Recommendation: do not start it yet.** Run the mainnet dress rehearsal first
+(section 1) and find out whether Xaman onboarding is a speed bump or a wall for
+a real audience. Barrier 3 is not worth a schema refactor if barrier 1 is what
+actually loses people.
+
 ## 6. What would end HubWorld
 
 Every scaling pressure will push toward one of these. They are listed so the
