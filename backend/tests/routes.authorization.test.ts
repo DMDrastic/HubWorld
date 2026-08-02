@@ -67,6 +67,19 @@ vi.mock('../src/xaman.js', async () => {
   }
 })
 
+// The broker is forced live, because `brokerMode` is read from PLATFORM_SEED and
+// the sell and auction routes answer 503 without it — BEFORE they reach the
+// holder and redemption checks this suite exists to assert. Left to the ambient
+// environment, these tests pass on a developer machine with a seed in `.env` and
+// fail in CI, which has none: the guard is never actually exercised, and the
+// suite reports on the environment rather than on the code. Nothing here brokers
+// a real sale, so no seed is needed — `Wallet.fromSeed` is only reached when a
+// settlement is actually submitted.
+vi.mock('../src/env.js', async () => {
+  const actual = await vi.importActual<typeof import('../src/env.js')>('../src/env.js')
+  return { ...actual, brokerMode: 'live' as const }
+})
+
 const { prisma } = await import('../src/prisma.js')
 const { createApp } = await import('../src/app.js')
 const { createSession } = await import('../src/session.js')
