@@ -552,6 +552,39 @@ CSRF and require token defences.
 `Authorization: Bearer` is still accepted, for curl and scripts. That is not the
 risk being managed; the exposure was only ever JavaScript-readable storage.
 
+### Identity is the cookie's answer, never a snapshot
+
+Because the page holds no credential, **who it thinks it is and who the cookie
+actually belongs to are two different facts**, and they diverged in exactly the
+way that predicts. The frontend asked `/auth/me` twice — at mount, and just
+after a sign-in — and nothing ever asked again. So a cookie that changed
+underneath it (another tab signing in as a different account, a session
+expiring, one revoked) left the header naming one account while every request
+was attributed to another. Both were the server's answers; only the header was
+old. "Sign out" then revoked the *current* session rather than the one on
+screen, which is why it looked like it revoked nothing.
+
+Three rules keep them together, all pinned by tests:
+
+- **A 401 from ANY call retires the identity**, not just from `/auth/me` —
+  `onAuthLost` in `lib/api.ts` announces it once, centrally, so it lands even
+  where the caller swallows the error.
+- **Only a 401 does.** A transport failure carries no status and says nothing
+  about who is signed in; clearing identity there signs someone out because the
+  backend blinked — the same mistake door check-in refuses to make with the
+  ledger.
+- **Revalidate on focus/visibility, never on a timer.** A poll keyed on fetched
+  state is the `GiftPanel` runaway again, so the frontend test bounds
+  `/auth/me` by request COUNT, not by end state.
+
+Server side, **issuing a session revokes the one the browser is about to
+forget** (`issueSession` in `routes/auth.ts`). Setting the cookie replaces that
+token, so if it still names a live session nobody holds it any more — and
+revocation needs the token, so nothing could ever end it. It would stay valid
+for its full 7 days. `/auth/signout` answers `{ revoked }` rather than a bare
+204 for the same reason: a sign-out that ended nothing must not be
+indistinguishable from one that worked.
+
 **The Xaman webhook** is built (`src/routes/webhooks.ts`, `src/payload-store.ts`)
 but only active when `XAMAN_WEBHOOK_SECRET` is set, so dev still works with no
 public tunnel.

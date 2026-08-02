@@ -627,10 +627,16 @@ than any amount of coverage percentage.
 
 Not roadmap items so much as debts that should not be forgotten:
 
-- **Auth identity staleness.** Observed 2026-08-02: the header displayed one
-  signed-in user while requests were attributed to another, and "Sign out"
-  revoked no session. Unexplained and uninvestigated. **Fix this early** — a UI
-  showing the wrong signed-in user is a trust problem, and trust is the pitch.
+- ~~**Auth identity staleness.**~~ **Explained and fixed 2026-08-02.** The
+  header displayed one signed-in user while requests were attributed to another,
+  and "Sign out" revoked no session. No mystery in the end: the page asked
+  `/auth/me` twice — at mount and after a sign-in — and never again, so `me` was
+  a snapshot that could disagree with the cookie every request was actually
+  sending. Sign-out then ended the current session rather than the one on
+  screen. A 401 from any call now retires the identity, focus/visibility
+  revalidates it, and issuing a session revokes the one the browser is
+  replacing — that one used to survive live and unreachable for 7 days. See
+  CLAUDE.md §Sessions.
 - **Credential rotation.** The Supabase password was exposed in a transcript on
   2026-07-30. The Xaman credentials still need rotating, which is also the only
   thing that clears the exhausted payload quota.

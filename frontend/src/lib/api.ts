@@ -72,6 +72,37 @@ type RequestOpts = {
   body?: unknown
 }
 
+/**
+ * Identity is the cookie's answer, and the cookie can change without this page
+ * doing anything: another tab signing in as a different account, a session
+ * expiring, one revoked server-side.
+ *
+ * The page used to ask "who am I?" exactly twice — at mount and just after a
+ * sign-in — and nothing ever revisited it. So the header could name one account
+ * while every request was attributed to whoever the cookie now belonged to.
+ * Both were answers from the server; only the header was old.
+ *
+ * A 401 from ANY call is therefore evidence about identity rather than just
+ * that one call failing, and it is reported here so a single subscriber can act
+ * on it. Note what is NOT treated as evidence: a transport failure carries no
+ * status, says nothing about who is signed in, and must never sign someone out
+ * over a dropped packet.
+ */
+type AuthLostListener = () => void
+const authLostListeners = new Set<AuthLostListener>()
+
+/** Subscribe to "the server says you are not signed in". Returns an unsubscribe. */
+export function onAuthLost(fn: AuthLostListener): () => void {
+  authLostListeners.add(fn)
+  return () => {
+    authLostListeners.delete(fn)
+  }
+}
+
+function reportAuthLost(): void {
+  for (const fn of authLostListeners) fn()
+}
+
 async function request<T>(
   path: string,
   schema: z.ZodType<T>,
@@ -95,6 +126,10 @@ async function request<T>(
   }
 
   if (!res.ok) {
+    // A 401 is the server disagreeing about who is signed in, not merely this
+    // call failing — see onAuthLost. Announced before throwing, so it lands
+    // even where the caller swallows the error.
+    if (res.status === 401) reportAuthLost()
     // The API reports failures as { error, details? } — surface that, not a bare code.
     const body = (await res.json().catch(() => null)) as { error?: string } | null
     throw new ApiError(body?.error ?? `Backend returned ${res.status}`, res.status)
@@ -177,11 +212,19 @@ export function fetchMe(): Promise<User> {
   return request('/auth/me', UserSchema)
 }
 
-export async function signOut(): Promise<void> {
-  await fetch(`${API_BASE}/auth/signout`, {
-    method: 'POST',
-    credentials: 'same-origin',
-  }).catch(() => undefined)
+export const SignOutSchema = z.object({ revoked: z.boolean() })
+
+/**
+ * End the session.
+ *
+ * `revoked: false` means the request carried no live session to end — the
+ * browser was holding a cookie the server had already finished with. This used
+ * to be swallowed along with every transport error, so a sign-out that revoked
+ * nothing was indistinguishable from one that worked. The caller decides what
+ * to say about it; it must not be silent.
+ */
+export function signOut(): Promise<z.infer<typeof SignOutSchema>> {
+  return request('/auth/signout', SignOutSchema, { method: 'POST' })
 }
 
 /** Stub mode only — stands in for a human signing in the Xaman app. */
