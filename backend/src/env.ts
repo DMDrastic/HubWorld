@@ -46,6 +46,18 @@ const EnvSchema = z.object({
   // waiting user. Unset in dev, where there is no public URL to call back to.
   XAMAN_WEBHOOK_SECRET: z.string().min(16).optional(),
 
+  // How Socket.IO shares events between processes.
+  //
+  // 'memory' (the default) keeps rooms in this process only, which is correct
+  // and fast for ONE instance. Run two and it silently half-works: a client on
+  // instance A never sees a bid published from B. That is worse than an outage,
+  // because nothing errors.
+  //
+  // 'postgres' broadcasts via LISTEN/NOTIFY on the database already in use, so
+  // no new service is introduced. Opt-in rather than automatic: single-instance
+  // deployments should not pay for coordination they do not need.
+  REALTIME_ADAPTER: z.enum(['memory', 'postgres']).default('memory'),
+
   // Supabase Storage, for event posters. Render's filesystem is ephemeral, so
   // uploads cannot live on disk. All optional: without them the upload route
   // answers 503 and everything else works, so dev needs no bucket.

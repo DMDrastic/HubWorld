@@ -650,6 +650,29 @@ enum TransferKind {
   BURN
 }
 
+/// Overflow storage for the Socket.IO Postgres adapter.
+///
+/// The adapter broadcasts over LISTEN/NOTIFY, whose payload is capped at 8000
+/// bytes; anything larger is written here and fetched by the receiving process.
+///
+/// In practice this table should stay EMPTY. An auction event is an id, an
+/// amount, a handle and sometimes a tx hash — a couple of hundred bytes. It is
+/// modelled anyway so the schema stays the source of truth for every table in
+/// the database, and so a future event that does grow past the limit finds the
+/// table waiting rather than failing at broadcast time.
+///
+/// Shape is dictated by the adapter, not by us: it queries these exact columns.
+model SocketIoAttachment {
+  id        BigInt   @id @default(autoincrement())
+  // timestamptz, not Prisma's default timestamp: the adapter prunes old rows by
+  // comparing this against now(), and a timezone-less column makes that
+  // comparison depend on the server's zone.
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  payload   Bytes?
+
+  @@map("socket_io_attachments")
+}
+
 // ------------------------------------------------------------- job locking --
 
 /**

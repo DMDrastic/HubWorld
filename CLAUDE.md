@@ -18,6 +18,16 @@ TypeScript end-to-end.
 
 The **read** half is built and runs on real data: `GET /api/events/:slug/auction` and `GET /api/auctions`, consumed by `BidChart` inside `AuctionDialog`. Updates are **pushed** over Socket.IO as bids commit, with a 30s fallback refresh in case the socket never connects. The HTTP fetch stays authoritative — realtime says *something changed*, the API says *what is true* — so one code path decides what counts as price. Vite's proxy needs `ws: true` on `/socket.io`, or the upgrade is proxied as plain HTTP and Socket.IO silently degrades to long polling.
 
+Socket.IO keeps rooms **in this process** unless told otherwise. That is correct
+for one instance and quietly wrong for two: a viewer connected to instance A
+never receives a bid published from B, and nothing errors — the price simply
+stops moving for half the audience. `REALTIME_ADAPTER=postgres` shares events
+over LISTEN/NOTIFY on the database already in use, adding no new service. Turn it
+on **at the same moment** you scale past one instance, not after, because the
+failure mode is silent. Attaching is deliberately non-fatal: realtime is an
+accelerator and the HTTP API stays authoritative, so a broken adapter degrades
+delivery rather than refusing to start.
+
 The **write** half — how a bid is committed on-ledger — is an open decision. See "Bidding: the escrow problem" below. `npm run auction:create` fabricates an auction with bid history for development; those Bid rows are display fixtures with nothing escrowed, and the script refuses to run in production.
 
 The auction lives in a dialog opened from an event row, **not** on the main page,
