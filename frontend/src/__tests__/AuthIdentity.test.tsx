@@ -21,13 +21,13 @@ import App from '@/App'
 
 const HEALTH = { status: 'ok', db: 'connected', uptime: 1, timestamp: '' }
 
-function user(username: string) {
+function user(username: string, role: 'USER' | 'ORGANIZER' | 'ADMIN' = 'USER') {
   return {
     username,
     displayName: null,
     xrplAddress: 'rLNaPoKeeBjZe2qs6x52yVPZpZ8td4dc6w',
     createdAt: new Date().toISOString(),
-    role: 'USER' as const,
+    role,
     ticketsOwned: 0,
   }
 }
@@ -43,11 +43,14 @@ function user(username: string) {
 function mockApi(initial: { me: string | null }) {
   const server = {
     me: initial.me,
+    role: 'ORGANIZER' as 'USER' | 'ORGANIZER' | 'ADMIN',
     /** Set to fail an ordinary authenticated call while /auth/me still answers. */
     doorStatus: 200,
     /** Set to make fetch reject outright — a dead backend, not a dead session. */
     offline: false,
     signOutRevoked: true,
+    /** Resolve this to release a held sign-out, exposing the in-flight window. */
+    holdSignOut: null as null | Promise<void>,
   }
   const calls = { me: 0, signout: 0 }
 
@@ -70,11 +73,14 @@ function mockApi(initial: { me: string | null }) {
 
       if (url.includes('/api/auth/me')) {
         calls.me += 1
-        return server.me ? json(user(server.me)) : json({ error: 'Not signed in' }, 401)
+        return server.me
+          ? json(user(server.me, server.role))
+          : json({ error: 'Not signed in' }, 401)
       }
 
       if (url.includes('/api/auth/signout') && method === 'POST') {
         calls.signout += 1
+        if (server.holdSignOut) await server.holdSignOut
         return json({ revoked: server.signOutRevoked })
       }
 
@@ -200,5 +206,56 @@ describe('signing out reports what it actually did', () => {
 
     await waitFor(() => expect(calls.signout).toBe(1))
     expect(screen.queryByText(/no active session was found/i)).toBeNull()
+  })
+})
+
+/**
+ * Signing out has to take effect on the FIRST frame, not when the server replies.
+ *
+ * Observed by the author on a real organizer account: click "Sign out", then
+ * click "Organize" fast enough, and the organizer screen rendered. Every request
+ * it made was refused — but refusal is not the standard here. Organizer surfaces
+ * are ABSENT for people who cannot use them, because a visible control
+ * advertises a capability and invites someone to probe the endpoint behind it.
+ * A signed-out organizer briefly seeing that screen is the same defect as
+ * showing it to a regular user.
+ *
+ * The cause was `setMe(null)` sitting in a `finally`, so the view stayed signed
+ * in for the whole round trip — a window of however long the network takes.
+ * These tests assert WHILE the request is still in flight, which is the only
+ * moment the bug existed; asserting after it resolves passes either way.
+ */
+describe('signing out takes effect immediately, not on response', () => {
+  it('removes privileged destinations before the request returns', async () => {
+    const { server } = mockApi({ me: 'alpha' })
+    let release!: () => void
+    server.holdSignOut = new Promise<void>((r) => (release = r))
+
+    renderApp()
+    // Organizer, so the privileged destinations are on screen to begin with.
+    expect((await screen.findAllByRole('link', { name: 'Organize' })).length).toBeGreaterThan(0)
+
+    screen.getByRole('button', { name: /sign out/i }).click()
+
+    // The sign-out request has NOT resolved. This is the window the bug lived in.
+    await waitFor(() => expect(screen.queryByRole('link', { name: 'Organize' })).toBeNull())
+    expect(screen.queryByRole('link', { name: 'Tickets' })).toBeNull()
+    expect(screen.queryByRole('link', { name: 'Market' })).toBeNull()
+
+    release()
+  })
+
+  it('stops naming the account before the request returns', async () => {
+    const { server } = mockApi({ me: 'alpha' })
+    let release!: () => void
+    server.holdSignOut = new Promise<void>((r) => (release = r))
+
+    renderApp()
+    expect((await screen.findAllByText('@alpha')).length).toBeGreaterThan(0)
+
+    screen.getByRole('button', { name: /sign out/i }).click()
+
+    await waitFor(() => expect(screen.queryByText('@alpha')).toBeNull())
+    release()
   })
 })
