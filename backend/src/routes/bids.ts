@@ -24,10 +24,11 @@ import { requireAuth } from '../session.js'
 import { publishAuctionEvent } from '../realtime.js'
 import { signedByOtherAccount } from '../signer.js'
 import {
+  accountFunding,
+  bidHeadroom,
   buildBuyOfferTx,
   offerIndexFromTx,
   platformAddress,
-  spendableDrops,
   txSucceeded,
   XAMAN_NETWORK,
 } from '../ledger.js'
@@ -133,19 +134,34 @@ bidsRouter.post('/auctions/:id/bid', requireAuth, async (req, res) => {
 
   // Funds are not locked by a buy offer, so the least we can do is refuse a bid
   // the bidder demonstrably cannot honour right now.
-  let spendable: bigint | null = null
+  let funding: { spendableDrops: bigint; reserveIncDrops: bigint } | null = null
   try {
-    spendable = await spendableDrops(me.xrplAddress)
+    funding = await accountFunding(me.xrplAddress)
   } catch {
     // A ledger hiccup must not block bidding outright; settlement re-checks.
-    spendable = null
+    funding = null
   }
-  if (spendable !== null && spendable < amountDrops) {
-    res.status(400).json({
-      error: 'Your spendable balance is below this bid',
-      spendableDrops: spendable.toString(),
-    })
-    return
+
+  let headroom: ReturnType<typeof bidHeadroom> | null = null
+  if (funding) {
+    headroom = bidHeadroom({ ...funding, amountDrops })
+    if (!headroom.affordable) {
+      // Separated because the two cases need different advice: one is "you do
+      // not have it", the other is "you have it, but the offer itself costs a
+      // reserve you have not left room for" — which is the case that used to
+      // slip through and produce a bid guaranteed to fail at settlement.
+      const shortfall = -headroom.afterBidDrops
+      res.status(400).json({
+        error:
+          funding.spendableDrops < amountDrops
+            ? 'Your spendable balance is below this bid'
+            : 'This bid leaves no room for the reserve the offer itself locks',
+        spendableDrops: funding.spendableDrops.toString(),
+        reserveIncDrops: funding.reserveIncDrops.toString(),
+        shortfallDrops: shortfall.toString(),
+      })
+      return
+    }
   }
 
   let txjson
@@ -188,6 +204,15 @@ bidsRouter.post('/auctions/:id/bid', requireAuth, async (req, res) => {
     qrPng: payload.qrPng,
     mode: xamanMode,
     amountDrops: amountDrops.toString(),
+    // Carried so the bidder sees what the bid leaves them BEFORE they sign.
+    // Omitted entirely when the ledger could not be read, rather than sent as
+    // zero — "we do not know" and "you have nothing left" are different claims.
+    ...(headroom
+      ? {
+          afterBidDrops: headroom.afterBidDrops.toString(),
+          tight: headroom.tight,
+        }
+      : {}),
   })
 })
 
