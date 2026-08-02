@@ -36,13 +36,48 @@ function destinations(me: User | null, hasDoor: boolean): Destination[] {
   return base
 }
 
-function HealthDot({ health }: { health: Health | null }) {
-  const ok = health?.status === 'ok'
+/**
+ * Which ledger this is, shown only when it is NOT mainnet.
+ *
+ * On testnet or devnet the label is a caveat on everything else on screen: the
+ * tickets are not real and the money is not real. That is worth saying plainly
+ * and permanently, not hiding in a tooltip.
+ *
+ * On mainnet it renders nothing, deliberately. Mainnet is simply the product,
+ * and a chip reading "MAINNET" is developer chrome leaking into a consumer UI —
+ * it tells an attendee buying a ticket nothing they need. The operator's check
+ * lives in the health tooltip instead, which names the network in every case
+ * including mainnet, so an absent chip is never ambiguous between "we are on
+ * mainnet" and "this build is too old to say".
+ *
+ * Styled `muted` rather than `destructive`. Nothing is broken on testnet — it
+ * is a fact about the environment, not a fault — and CLAUDE.md is explicit that
+ * borrowing `destructive` for warnings must not spread further.
+ */
+function NetworkBadge({ health }: { health: Health | null }) {
+  // Absent on an older API that predates the field; nothing to claim, so
+  // nothing is shown rather than guessing a default.
+  if (!health?.network || health.network === 'mainnet') return null
+
   return (
     <span
-      className="flex items-center gap-1.5"
-      title={health ? `api ${health.status} · db ${health.db}` : 'connecting'}
+      className="bg-muted text-muted-foreground rounded-lg px-2 py-1 font-mono text-xs"
+      title={`Connected to the XRPL ${health.network}. Tickets and payments here are not real.`}
     >
+      {health.network}
+    </span>
+  )
+}
+
+function HealthDot({ health }: { health: Health | null }) {
+  const ok = health?.status === 'ok'
+  // The network is named here in EVERY case, mainnet included, so the operator
+  // always has one place to confirm it — see NetworkBadge.
+  const detail = health
+    ? `api ${health.status} · db ${health.db}${health.network ? ` · ${health.network}` : ''}`
+    : 'connecting'
+  return (
+    <span className="flex items-center gap-1.5" title={detail}>
       <span className="relative flex size-1.5">
         {ok && (
           <span className="bg-live absolute inline-flex size-full animate-ping rounded-full opacity-60" />
@@ -142,6 +177,7 @@ export function NavBar({
         </nav>
 
         <div className="ml-auto flex items-center gap-2 text-sm">
+          <NetworkBadge health={health} />
           <HealthDot health={health} />
           <ThemeToggle />
           {me ? (
