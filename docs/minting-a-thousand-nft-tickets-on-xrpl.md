@@ -1,34 +1,34 @@
-# What we measured trying to mint 1,000 NFT tickets on XRPL
+# Minting 1,000 NFT tickets on XRPL: measurements and constraints
 
-*Measured 2 August 2026 against XRPL testnet and devnet — rippled 3.3.0-rc5, xrpl.js 5.0.0. Mainnet was on 3.2.1. Every figure below was observed, not derived from documentation.*
+*Measured 2 August 2026 against XRPL testnet and devnet — rippled 3.3.0-rc5, xrpl.js 5.0.0. Mainnet was on 3.2.1. Every figure below was observed rather than derived from documentation.*
 
 ---
 
-We build event ticketing on the XRP Ledger. Tickets are NFTokens held in the attendee's own wallet, resale is settled in brokered mode, and the organizer is the NFT issuer so the native `TransferFee` pays them their royalty automatically.
+HubWorld is event ticketing on the XRP Ledger. Tickets are NFTokens held in the attendee's own wallet, resale settles in brokered mode, and the organizer is the NFT issuer so the native `TransferFee` pays the royalty automatically.
 
-That last decision has a consequence that caps the whole product.
+That last decision caps the product, and this document records what was measured trying to lift the cap.
 
 ## The constraint
 
-`NFTokenMint` mints one NFT per transaction, and **the organizer has to sign every one** — because `TransferFee` pays the *issuer*, and the issuer must be the organizer for the royalty model to work at all.
+`NFTokenMint` mints one NFT per transaction, and the organizer must sign every one — `TransferFee` pays the issuer, and the issuer must be the organizer for the royalty model to function.
 
-A thousand tickets is a thousand signatures on somebody's phone. That is not a UX problem to design around; it's a wall.
+A thousand tickets is therefore a thousand signatures on one person's phone. This is a structural limit rather than an interface problem.
 
-The constraint is a triangle, and only two corners are available at once:
+The constraint forms a triangle, of which only two corners are simultaneously available:
 
-1. **The organizer is the issuer** — required for royalties.
-2. **The platform signs as nobody** — the load-bearing trust claim.
-3. **Unattended bulk minting.**
+1. The organizer is the issuer — required for royalties.
+2. The platform signs as nobody — the load-bearing trust claim.
+3. Unattended bulk minting.
 
-We had (1) + (2), which caps events in the low hundreds. This is what we learned trying to get (3) without giving up the others.
+Holding (1) and (2) caps events in the low hundreds. What follows is an assessment of the routes to (3).
 
 ---
 
-## Attempt 1: Multi-Purpose Tokens
+## Approach 1: Multi-Purpose Tokens
 
-MPTs (XLS-33, activated as `MPTokensV1` in October 2025) look like the obvious answer. One `MPTokenIssuance` covers an entire supply, and the issuance carries a `TransferFee` — so the royalty should survive.
+MPTs (XLS-33, activated as `MPTokensV1` in October 2025) present as the obvious answer. A single `MPTokenIssuance` covers an entire supply, and the issuance carries a `TransferFee`, which suggests the royalty survives.
 
-**It doesn't. The `TransferFee` on an MPT is charged in tokens, not in XRP.**
+It does not. The `TransferFee` on an MPT is charged in tokens rather than in XRP.
 
 With a 5% fee, sending 100 units:
 
@@ -38,27 +38,29 @@ recipient:   0 → 100
 issuer:      unchanged  (the 5 left circulation)
 ```
 
-The reason is structural. An NFT's `TransferFee` applies to the **sale amount**, because `NFTokenAcceptOffer` knows the price. An MPT `Payment` carries no price, so there is nothing to take a percentage *of* except the tokens themselves. An organizer's "royalty" on an MPT resale arrives as **fractions of a ticket**, which is not revenue.
+The behaviour is structural. An NFT's `TransferFee` applies to the sale amount, as `NFTokenAcceptOffer` carries the price. An MPT `Payment` carries no price, leaving no quantity to take a percentage of other than the tokens themselves.
 
-This is the finding we most want other builders to have, because "MPTokenIssuance carries a TransferFee, so royalties work" is an easy and wrong inference. We had it written down as fact in our own docs.
+Consequently, a `TransferFee` on an MPT issuance is settled in token units rather than in the sale currency. An issuer's royalty on a resale arrives as fractions of a ticket. For a revenue model that depends on a royalty denominated in money, MPT does not provide one.
 
-Three more measurements:
+Note that the documented presence of a `TransferFee` field on `MPTokenIssuance` does not imply equivalence with the NFT royalty mechanism. An earlier version of this project's own documentation recorded the opposite as fact.
 
-**There is no atomic swap.** No MPT equivalent of `NFTokenAcceptOffer` + `NFTokenBrokerFee`. A `Payment` moves the ticket one way with nothing coming back, so there is no spread for a broker fee.
+Three further measurements:
 
-**The DEX is not an escape hatch.** `OfferCreate` does not accept an MPT amount — in xrpl.js, `Amount` is `IssuedCurrencyAmount | string` and excludes `MPTAmount`. Submitting one anyway returns **`temDISABLED`**, even with `tfMPTCanTrade` set on the issuance.
+**There is no atomic swap.** No MPT equivalent of `NFTokenAcceptOffer` with `NFTokenBrokerFee` exists. A `Payment` moves the ticket in one direction with nothing returning, so there is no spread from which a broker fee could be taken.
 
-**Holders must opt in, and the issuer cannot do it for them.** On the most permissive issuance possible — no `tfMPTRequireAuth` — a `Payment` to a holder who has not authorised returns **`tecNO_AUTH`**. An `MPTokenAuthorize` submitted by the issuer on the holder's behalf also returns `tecNO_AUTH`. So every buyer signs twice: once to opt in, once to pay.
+**The DEX does not substitute for one.** `OfferCreate` does not accept an MPT amount — in xrpl.js, `Amount` is typed `IssuedCurrencyAmount | string` and excludes `MPTAmount`. Submitting one regardless returns `temDISABLED`, including when `tfMPTCanTrade` is set on the issuance.
 
-**And the headline benefit is narrower than it appears.** One signature creates the *supply*, but the units sit in the issuer's account. Getting one to a buyer is a `Payment` signed by whoever holds them — so 3,000 buyers is still 3,000 issuer signatures unless the whole supply is consigned to a distributor, which means the platform holds the inventory.
+**Holders must opt in, and the issuer cannot opt in on their behalf.** On the most permissive issuance available — without `tfMPTRequireAuth` — a `Payment` to a holder who has not authorised returns `tecNO_AUTH`. An `MPTokenAuthorize` submitted by the issuer for the holder returns `tecNO_AUTH` as well. Every buyer therefore signs twice: once to opt in, once to pay.
 
-Everything MPT breaks is secondary-market machinery. Everything it fixes is primary issuance. For general admission with no resale, that's a reasonable trade. For us it was not.
+The headline benefit is also narrower than it first appears. One signature creates the supply, but the units are held in the issuer's account. Moving one to a buyer requires a `Payment` signed by whoever holds them, so 3,000 buyers remain 3,000 issuer signatures unless the entire supply is consigned to a distributor — which places inventory with the platform.
+
+What MPT breaks is secondary-market machinery; what it solves is primary issuance. For general admission without resale that is a reasonable trade. For a model with royalties and resale it is not.
 
 ---
 
-## Attempt 2: scoped permission delegation
+## Approach 2: scoped permission delegation
 
-`PermissionDelegationV1_1` lets an account authorise another to submit **specific transaction types** on its behalf. Unlike `RegularKey` — which is unscoped, and would also hand over the ability to send payments — this can be narrowed to exactly one thing.
+`PermissionDelegationV1_1` allows an account to authorise another to submit specified transaction types on its behalf. Unlike `RegularKey`, which is unscoped and would also confer the ability to send payments, this can be narrowed to a single transaction type.
 
 The organizer signs one `DelegateSet`:
 
@@ -71,9 +73,9 @@ The organizer signs one `DelegateSet`:
 }
 ```
 
-The platform then mints with `Account` = organizer, `Delegate` = platform, signed with the platform's own key.
+The platform then mints with `Account` set to the organizer and `Delegate` set to the platform, signed with the platform's own key.
 
-**The question that decides everything: who is the issuer?**
+The question that determines whether the model survives is which account ends up as issuer. Observed:
 
 ```
 Issuer     : <the organizer's address>
@@ -81,83 +83,85 @@ TransferFee: 5000 (5%)
 NFTs in the platform's account: 0
 ```
 
-**The organizer.** The royalty model survives completely, and the NFT lands in their wallet, not ours.
+The issuer is the organizer. The royalty model survives intact, and the NFT is delivered to the organizer's wallet rather than the platform's.
 
-The scope is enforced by the ledger, not by our good behaviour. The platform attempting a `Payment` from the organizer's account:
+The scope is enforced by the ledger rather than by the delegate's restraint. A `Payment` attempted by the platform from the organizer's account returns:
 
 ```
 terNO_DELEGATE_PERMISSION
 ```
 
-Revocation is one transaction with an empty `Permissions` array, and takes effect immediately — the next delegated mint is refused with the same code.
+Revocation is a single transaction carrying an empty `Permissions` array and takes effect immediately; the next delegated mint is refused with the same code.
 
-### Two things that will bite you
+### Two implementation facts that are easy to get wrong
 
-**1. The `Sequence` belongs to the delegator; the fee to the delegate.**
+**1. The sequence belongs to the delegator; the fee to the delegate.**
 
-`Sequence` always belongs to `Account`, and on a delegated mint `Account` is the organizer. So the **organizer's** sequence advances while the **platform** signs it and pays the fee. That split is unusual and easy to get backwards.
+`Sequence` always belongs to `Account`, and on a delegated mint `Account` is the organizer. The organizer's sequence therefore advances while the platform signs the transaction and pays the fee. Bulk submission must increment the organizer's sequence.
 
-Getting it wrong does not fail cleanly. Our first bulk implementation used the delegate's sequence and *appeared to work at 100 tickets* — purely because two freshly funded devnet accounts happened to start at the same sequence number. Once the organizer signed the grant, the two diverged and the next run minted **zero**, with `terPRE_SEQ` on every submission. It looked like a network problem.
+The failure mode is not clean. An implementation using the delegate's sequence appeared to work at 100 tickets, because two freshly funded devnet accounts happened to begin at the same sequence number. Once the organizer signed the grant the two diverged, and the following run produced zero tickets, returning `terPRE_SEQ` on every submission. The symptom resembled a network fault.
 
-**2. Never infer success from the sequence advancing.**
+**2. An advancing sequence is not evidence of success.**
 
-A `tec` result **consumes the sequence and the fee** while changing nothing. Our first attempt fired all 1,000 mints at once and reported success; 962 came back `terPRE_SEQ`, rippled holds only a small number of future-sequence transactions per account and dropped the rest, and the tail outlived its `LastLedgerSequence`.
+A `tec` result consumes both the sequence and the fee while changing nothing.
 
-**402 of 1,000 tickets existed. The other 598 silently did not.** An event quietly short by 60% is the worst failure a ticketing product can have.
+Submitting all 1,000 mints at once fails for a related reason: rippled retains only a small number of future-sequence transactions per account and drops the remainder, after which the tail outlives its `LastLedgerSequence`. At 1,000 tickets, 402 existed and 598 silently did not. An event short by 60% without an error is the most damaging failure available to a ticketing system.
 
-The working shape is to submit a wave, **wait for the sequence to actually advance**, then send the next — the sequence only moves when a transaction is really applied. `LastLedgerSequence` must be bounded per wave rather than once for the whole run, and a stalled wave must resume from where the ledger actually got to, because **one dropped transaction blocks every later sequence on that account permanently**.
+The working shape is to submit a wave, wait for the sequence to actually advance, then submit the next — the sequence moves only when a transaction is genuinely applied. Waves of 10 sustain 7–17/s. `LastLedgerSequence` must be bounded per wave rather than once for the whole run, and a stalled wave must resume from the point the ledger actually reached, because a single dropped transaction blocks every later sequence on that account permanently.
 
 ### Results
 
 | Tickets | Wall time | Rate | Organizer signatures | Reserve locked |
 | --- | --- | --- | --- | --- |
-| 100 | 13.3s | 7.5/s | **1** | ~0.8 XRP |
-| 250 | 37.8s | 6.6/s | **1** | ~1.8 XRP |
-| 500 | 51.1s | 9.8/s | **1** | ~4.6 XRP |
-| **1000** | **67.1s** | **14.9/s** | **1** | ~8.0 XRP |
+| 100 | 13.3s | 7.5/s | 1 | ~0.8 XRP |
+| 250 | 37.8s | 6.6/s | 1 | ~1.8 XRP |
+| 500 | 51.1s | 9.8/s | 1 | ~4.6 XRP |
+| 1000 | 67.1s | 14.9/s | 1 | ~8.0 XRP |
 
-Throughput *improves* with scale. NFTs pack into `NFTokenPage`s at up to 32 each, so 1,000 tickets costs the organizer roughly 8 XRP of reserve rather than 200.
+All runs completed with no shortfall. Throughput improves with scale rather than degrading, indicating the limit is network absorption rather than the design.
 
-There is also a quota benefit worth naming: minting no longer touches the wallet-signing provider at all, because the platform signs directly. For us that removed our single largest consumer of a third-party payload quota.
+NFTs pack into `NFTokenPage`s at up to 32 each, so 1,000 tickets costs the organizer roughly 8 XRP of reserve rather than 200. This is a precondition to verify before a run begins rather than a condition to discover at ticket 600. Fees fall to the delegate and were 1 drop per mint on devnet, so even at mainnet rates a thousand tickets costs a fraction of an XRP.
+
+One further consequence: minting no longer touches the wallet-signing provider, because the platform signs directly. For this project that removed the single largest consumer of a third-party payload quota.
 
 ---
 
-## Selling is a separate problem, with two more walls
+## Distribution is a separate problem, with two further walls
 
-Minting a thousand tickets is half a product. Tickets nobody can buy are not tickets.
+Minting a thousand tickets is half a product; tickets that cannot be bought are not tickets.
 
-**Wall 1: unattended selling needs a second, far more dangerous permission.**
+**Wall 1: unattended distribution requires a second and considerably more dangerous permission.**
 
-`NFTokenMint` distributes nothing. Listing requires `NFTokenCreateOffer`, which **can** be delegated — but the two permissions are not equally safe:
+`NFTokenMint` distributes nothing. Listing requires `NFTokenCreateOffer`, which can also be delegated, but the two permissions are not equivalent in risk:
 
-- Minting can only ever create value for the organizer.
-- **Offer creation lets the delegate give the organizer's tickets away.** We measured it: a zero-price offer from the organizer's account to the delegate returns `tesSUCCESS`.
+- Minting can only create value for the organizer.
+- Offer creation allows the delegate to transfer the organizer's tickets away. Measured: a zero-price offer from the organizer's account to the delegate returns `tesSUCCESS`.
 
-Money stays protected either way — a `Payment` is still refused. Inventory does not. So "the platform can mint tickets as you and nothing else" becomes "the platform can mint your tickets and also hand them to anyone" the moment unattended selling is wanted. That is a materially different thing to ask someone to agree to, and we think it should be a separate, time-boxed, plainly-worded grant rather than bundled into setup.
+Funds remain protected in both cases, as a `Payment` is still refused. Inventory does not. The claim "the platform can mint tickets as you and nothing else" therefore becomes "the platform can mint your tickets and also transfer them to anyone" as soon as unattended distribution is required. That is a materially different proposition, and it warrants a separate, time-boxed and explicitly worded grant rather than inclusion in initial setup.
 
 **Wall 2: an open sell offer costs owner reserve.**
 
-Every open `NFTokenOffer` is an owned object costing **0.2 XRP of reserve on the seller**. Listing 1,000 tickets simultaneously locks about **200 XRP**.
+Every open `NFTokenOffer` is an owned object costing 0.2 XRP of reserve on the seller. Listing 1,000 tickets simultaneously locks approximately 200 XRP.
 
-On a 100 XRP account, offers began failing with **`tecINSUFFICIENT_RESERVE`** after ~490 — matching the predicted ceiling of `(100 − 1) / 0.2 ≈ 495`. In a full run, only 453 of 1,000 offers existed, and 453 tickets sold. Silently, again, for the same `tec` reason.
+On a 100 XRP account, offers began failing with `tecINSUFFICIENT_RESERVE` after approximately 490, matching the predicted ceiling of `(100 − 1) / 0.2 ≈ 495`. Across a full run, 453 of 1,000 offers existed and 453 tickets sold — silently, and for the same `tec` reason as above.
 
-**The design consequence:** don't list an event up front. Create the sell offer lazily at checkout, so reserve is only ever held for offers actually open — which also matches how tickets really sell. Or put the reserve on the buyer via buy offers: 0.2 XRP each for one object, rather than 200 XRP on the organizer for a thousand.
-
----
-
-## The alternative that works on mainnet today
-
-`NFTokenMinter` — an `AccountSet` field that has existed since the original NFT amendment — authorises another account to mint NFTs whose **issuer** is you. We tested it on **testnet**, deliberately, because that means it works on mainnet now.
-
-It works. `Issuer` is the organizer, `TransferFee` intact, and the permission is *narrower* than delegation: the minter attempting a `Payment` as the organizer, or a mint with `Account` = organizer, both fail `tefBAD_AUTH`. `ClearFlag` revokes cleanly.
-
-**The price: the minted ticket lands in the minter's account, not the issuer's.** So the platform holds the unsold inventory, and since the seller receives the proceeds, the platform receives the primary sale money too. That is a custody model — the merchant-of-record position many designs exist specifically to avoid.
-
-Worth noting the asymmetry, because it cuts against the obvious reading: under `NFTokenMinter` the platform holds tickets **it minted itself**; under offer-delegation the platform can take tickets **out of the organizer's wallet**. Per permission, `NFTokenMinter` is the safer grant. It is the resulting custody, not the permission, that is the objection.
+The design consequence is that an event should not be listed up front. Creating the sell offer lazily at checkout holds reserve only for offers actually open, which also matches how tickets sell in practice. The alternative is to place the reserve on the buyer through buy offers: 0.2 XRP each for a single object, rather than 200 XRP held against the organizer for a thousand.
 
 ---
 
-## Where the amendment actually stands
+## The alternative available on mainnet today
+
+`NFTokenMinter` is an `AccountSet` field present since the original NFT amendment. It authorises another account to mint NFTs whose issuer is the granting account. It was tested on testnet deliberately, since that establishes it works on mainnet now.
+
+It functions as documented. `Issuer` is the organizer, `TransferFee` is intact, and the permission is narrower than delegation: a `Payment` attempted by the minter as the organizer, and a mint with `Account` set to the organizer, both fail with `tefBAD_AUTH`. `ClearFlag` revokes cleanly.
+
+The cost is that the minted ticket is delivered to the minter's account rather than the issuer's. The platform therefore holds unsold inventory, and because the seller receives the proceeds, the platform also receives the primary sale funds. This is a custody model — the merchant-of-record position that brokered settlement exists to avoid.
+
+The asymmetry is worth stating, as it cuts against the intuitive reading. Under `NFTokenMinter` the platform holds tickets it minted itself; under offer delegation the platform can remove tickets from the organizer's wallet. Considered as a permission, `NFTokenMinter` is the narrower grant. The objection is to the resulting custody, not to the permission.
+
+---
+
+## Amendment status
 
 `PermissionDelegationV1_1`, amendment id:
 
@@ -167,15 +171,15 @@ Worth noting the asymmetry, because it cuts against the obvious reading: under `
 
 | Network | rippled | Status |
 | --- | --- | --- |
-| Devnet | 3.3.0-rc5 | **active** |
-| Testnet | 3.3.0-rc5 | not enabled, no majority |
-| **Mainnet** | **3.2.1** | **not enabled, and zero amendments have majority support** |
+| Devnet | 3.3.0-rc5 | Active |
+| Testnet | 3.3.0-rc5 | Not enabled, no majority |
+| Mainnet | 3.2.1 | Not enabled; no amendment holds majority support |
 
-Amendments activate by validator vote — 80% held continuously for two weeks — and one that crosses that line appears in the ledger's `Amendments` object under `Majorities` with the time it got there. That's roughly a fortnight of warning, and it is the event worth watching for.
+Amendments activate by validator vote — 80% sustained for two weeks — and one crossing that threshold appears in the ledger's `Amendments` object under `Majorities` with the time it arrived. That provides roughly a fortnight of warning and is the event worth monitoring.
 
-Mainnet also runs an older rippled than testnet or devnet, and validators cannot vote for what their software does not implement, so a release has to land before voting can even begin.
+Mainnet also runs an older rippled than testnet or devnet. Validators cannot vote for what their software does not implement, so a release must land before voting can begin.
 
-You can check this yourself without admin access — the `feature` command is admin-only on public servers, but the `Amendments` ledger object is public and amendment ids are identical across networks:
+This is verifiable without admin access. The `feature` command is admin-only on public servers, but the `Amendments` ledger object is public and amendment ids are identical across networks:
 
 ```
 ledger_entry index=7DB0788C020F02780A673DC74757F23823FA3014C1866E72CC4CD8B226CD6EF4
@@ -185,17 +189,19 @@ Read the ids from `feature` on devnet, then look for them on mainnet.
 
 ---
 
-## Takeaways
+## Summary of findings
 
-1. **MPT `TransferFee` is charged in tokens, not the sale currency.** If your model depends on a royalty in money, MPTs do not carry it.
-2. **On a delegated transaction the sequence belongs to the delegator and the fee to the delegate.** Assume the opposite and you will mint nothing while thinking you minted everything.
-3. **`tec` consumes the sequence and the fee.** An advancing sequence proves *inclusion*, never *success*. Check engine results.
-4. **Open offers cost reserve.** You cannot list a large inventory at once; create offers at the point of sale.
-5. **Delegating `NFTokenCreateOffer` is a much bigger trust ask than delegating `NFTokenMint`.** Treat them as different decisions.
-6. **Amendment availability differs sharply across networks.** Devnet activation tells you nothing about when you can ship.
+1. MPT `TransferFee` is charged in tokens rather than the sale currency. A model requiring a royalty denominated in money does not survive the move to MPT.
+2. On a delegated transaction the sequence belongs to the delegator and the fee to the delegate. The opposite assumption mints nothing while reporting success.
+3. A `tec` result consumes the sequence and the fee. An advancing sequence demonstrates inclusion, never success; engine results must be checked.
+4. Open offers cost reserve, so a large inventory cannot be listed at once. Offers should be created at the point of sale.
+5. Delegating `NFTokenCreateOffer` is a substantially greater trust concession than delegating `NFTokenMint`, and the two warrant separate decisions.
+6. Amendment availability differs sharply across networks. Devnet activation carries no information about shipping dates.
 
-All of this is testnet and devnet. Nothing here has run on mainnet with real money, and we'd treat every number as provisional until it has.
+All measurements were taken on testnet and devnet. Nothing recorded here has run on mainnet with real funds, and every figure should be treated as provisional until it has.
 
 ---
 
-*Reproduction scripts for each measurement are in our repository under `backend/scripts/` — `delegation-spike.ts`, `delegation-scale-spike.ts`, `full-event-sim.ts`, `authorized-minter-spike.ts`, `mpt-spike.ts`, `mpt-fee-spike.ts`, `mpt-optin-spike.ts` and `mpt-amendment-check.ts`. They are dev-only, imported by nothing, and run against faucet-funded throwaway wallets.*
+*Reproduction scripts for each measurement are in the HubWorld repository under `backend/scripts/` — `delegation-spike.ts`, `delegation-scale-spike.ts`, `full-event-sim.ts`, `authorized-minter-spike.ts`, `mpt-spike.ts`, `mpt-fee-spike.ts`, `mpt-optin-spike.ts` and `mpt-amendment-check.ts`. They are dev-only, imported by nothing, and run against faucet-funded throwaway wallets.*
+
+*Measurements were run and this document drafted with Claude Code. Every figure was verified against the ledger.*
