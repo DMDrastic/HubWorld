@@ -22,6 +22,7 @@
  * Anyone who wants a tidy wallet can burn their own in Xaman.
  */
 import { prisma } from '../src/prisma.js'
+import { NETWORK } from '../src/network.js'
 import { env } from '../src/env.js'
 
 const SLUG = 'station-square-live'
@@ -104,6 +105,7 @@ async function main() {
 
   const event = await prisma.event.create({
     data: {
+      network: NETWORK,
       slug: SLUG,
       title: TITLE,
       venue: 'Station Square',

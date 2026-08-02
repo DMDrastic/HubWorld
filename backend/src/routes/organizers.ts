@@ -15,6 +15,7 @@
 import { Router } from 'express'
 import { z } from 'zod'
 import { prisma } from '../prisma.js'
+import { NETWORK } from '../network.js'
 import { env } from '../env.js'
 import { issuesOf, slugSchema } from '../schemas.js'
 import { requireAdmin, requireAuth, requireOrganizer } from '../session.js'
@@ -246,6 +247,7 @@ organizersRouter.post('/events', requireAuth, requireOrganizer, async (req, res)
   const event = await prisma.event.create({
     data: {
       slug,
+      network: NETWORK,
       title: data.title,
       venue: data.venue ?? null,
       description: data.description ?? null,

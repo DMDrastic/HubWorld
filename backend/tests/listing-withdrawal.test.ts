@@ -59,6 +59,7 @@ vi.mock('../src/env.js', async () => {
 })
 
 const { prisma } = await import('../src/prisma.js')
+const { NETWORK } = await import('../src/network.js')
 const { createApp } = await import('../src/app.js')
 const { createSession } = await import('../src/session.js')
 
@@ -109,6 +110,7 @@ async function mkWithdrawnListing() {
   })
   const event = await prisma.event.create({
     data: {
+      network: NETWORK,
       slug: `${STAG}${uniq}`,
       title: 'Withdrawal Test Event',
       startsAt: new Date(Date.now() + 86_400_000),
@@ -122,6 +124,7 @@ async function mkWithdrawnListing() {
   })
   const ticket = await prisma.ticket.create({
     data: {
+      network: NETWORK,
       nfTokenId: `${'B'.repeat(58)}${uniq}`.slice(0, 64).toUpperCase(),
       eventId: event.id,
       ownerId: seller.id,
@@ -131,6 +134,7 @@ async function mkWithdrawnListing() {
   })
   const listing = await prisma.listing.create({
     data: {
+      network: NETWORK,
       ticketId: ticket.id,
       sellerId: seller.id,
       sellerAddress: seller.xrplAddress,

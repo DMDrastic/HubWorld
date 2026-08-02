@@ -16,6 +16,7 @@
 import { Router } from 'express'
 import { z } from 'zod'
 import { prisma } from '../prisma.js'
+import { NETWORK } from '../network.js'
 import { xamanMode } from '../env.js'
 import { tryGetPayload, xaman, SIGNIN_TTL_MINUTES } from '../xaman.js'
 import { trackPayload } from '../payload-store.js'
@@ -114,6 +115,7 @@ mintRouter.post('/events/:slug/mint', requireAuth, requireOrganizer, async (req,
   await prisma.mintRequest.create({
     data: {
       payloadUuid: payload.uuid,
+      network: NETWORK,
       eventId: event.id,
       requestedById: req.userId!,
       seat: body.data.seat ?? null,
@@ -270,12 +272,15 @@ mintRouter.get('/mint/:uuid', requireAuth, async (req, res) => {
   // The unique nfTokenId also makes a duplicate poll a no-op rather than a
   // second ticket.
   const ticket = await prisma.$transaction(async (tx) => {
-    const existing = await tx.ticket.findUnique({ where: { nfTokenId: nfTokenId! } })
+    const existing = await tx.ticket.findUnique({
+      where: { network_nfTokenId: { network: NETWORK, nfTokenId: nfTokenId! } },
+    })
     if (existing) return existing
 
     const created = await tx.ticket.create({
       data: {
         nfTokenId: nfTokenId!,
+        network: NETWORK,
         eventId: request.eventId,
         // Freshly minted: the issuer holds it until it is gifted or sold.
         ownerId: issuer.id,
@@ -290,6 +295,7 @@ mintRouter.get('/mint/:uuid', requireAuth, async (req, res) => {
     await tx.transfer.create({
       data: {
         ticketId: created.id,
+        network: NETWORK,
         fromAddress: null, // a mint has no sender
         toAddress: issuer.xrplAddress,
         txHash: status.txid!,

@@ -19,6 +19,7 @@
 import { Router } from 'express'
 import { z } from 'zod'
 import { prisma } from '../prisma.js'
+import { NETWORK } from '../network.js'
 import { brokerMode, xamanMode } from '../env.js'
 import { tryGetPayload, xaman, SIGNIN_TTL_MINUTES } from '../xaman.js'
 import { trackPayload } from '../payload-store.js'
@@ -129,7 +130,10 @@ listingsRouter.post('/tickets/:nfTokenId/list', requireAuth, async (req, res) =>
   const priceDrops = BigInt(body.data.priceDrops)
 
   const [ticket, me] = await Promise.all([
-    prisma.ticket.findUnique({ where: { nfTokenId }, include: { event: true } }),
+    prisma.ticket.findUnique({
+      where: { network_nfTokenId: { network: NETWORK, nfTokenId } },
+      include: { event: true },
+    }),
     prisma.user.findUnique({ where: { id: req.userId! } }),
   ])
 
@@ -214,6 +218,7 @@ listingsRouter.post('/tickets/:nfTokenId/list', requireAuth, async (req, res) =>
   const listing = await prisma.listing.create({
     data: {
       ticketId: ticket.id,
+      network: NETWORK,
       sellerId: me.id,
       sellerAddress: me.xrplAddress,
       brokerAddress,
@@ -716,11 +721,14 @@ listingsRouter.get('/listings/:id', requireAuth, async (req, res) => {
         },
       })
 
-      const already = await tx.transfer.findUnique({ where: { txHash: result.hash } })
+      const already = await tx.transfer.findUnique({
+        where: { network_txHash: { network: NETWORK, txHash: result.hash } },
+      })
       if (!already) {
         await tx.transfer.create({
           data: {
             ticketId: listing.ticketId,
+            network: NETWORK,
             fromAddress: listing.sellerAddress,
             toAddress: listing.buyerAddress!,
             txHash: result.hash,
