@@ -15,15 +15,32 @@
  */
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+/**
+ * `brokerSale` RECORDS rather than throws, and that distinction matters.
+ *
+ * The first version threw unconditionally, on the theory that reaching it at all
+ * meant scoping had failed. That was wrong, and it made this suite flaky in a way
+ * that only showed up in CI: `settleDueAuctions` sweeps EVERY due auction in the
+ * database, not just this file's fixtures. Run alone it saw only its own rows and
+ * passed; run alongside `settlement.integration.test.ts` it legitimately picked
+ * up that suite's auction, reached the broker, and threw — failing the CONTROL
+ * test, which is the one that is supposed to settle.
+ *
+ * So the guarantee is asserted precisely instead: brokerSale must never be called
+ * with the FOREIGN fixture's offer index. That holds no matter what else is in
+ * the database.
+ *
+ * It resolves `telLOCAL_ERROR` because `classifyResult` treats `tel*` as
+ * transient — "safe to retry as-is" — so a foreign auction this sweep happens to
+ * touch is left for its own suite rather than having a bidder demoted.
+ */
+const brokerSale = vi.fn()
+
 vi.mock('../src/ledger.js', async () => {
   const actual = await vi.importActual<typeof import('../src/ledger.js')>('../src/ledger.js')
   return {
     ...actual,
-    // Nothing here should reach the network. If scoping fails, settlement would
-    // try to broker a foreign auction — and this throwing is how we would know.
-    brokerSale: () => {
-      throw new Error('brokerSale must not be reached for a foreign-network auction')
-    },
+    brokerSale: (...a: unknown[]) => brokerSale(...a),
     spendableDrops: async () => 10_000_000_000n,
     brokerCancelOffers: async () => undefined,
   }
@@ -49,7 +66,11 @@ async function cleanup() {
   await prisma.user.deleteMany({ where: { username: { startsWith: TAG } } })
 }
 
-beforeEach(cleanup)
+beforeEach(async () => {
+  brokerSale.mockReset()
+  brokerSale.mockResolvedValue({ hash: 'test-not-submitted', succeeded: false, result: 'telLOCAL_ERROR' })
+  await cleanup()
+})
 afterEach(cleanup)
 afterAll(async () => {
   await cleanup()
@@ -161,18 +182,28 @@ describe('the settlement sweep only settles this network', () => {
         buyOfferIndex: `offer-${uniq}`,
       },
     })
-    return auction
+    return { auction, buyOfferIndex: `offer-${uniq}` }
   }
 
   it('ignores a due auction belonging to another network', async () => {
     // Settlement SUBMITS a transaction. Brokering an auction from another
-    // ledger means matching offers that do not exist here — the fee is spent
-    // to discover it. The mocked brokerSale throws if this is reached.
-    const foreign = await dueAuction(OTHER, 'ee')
+    // ledger means matching offers that do not exist here, so the fee is spent
+    // to discover that. This is the assertion that actually guards it.
+    const { auction: foreign, buyOfferIndex } = await dueAuction(OTHER, 'ee')
 
     const results = await settleDueAuctions()
 
     expect(results.map((r) => r.auctionId)).not.toContain(foreign.id)
+
+    // The guarantee that matters: no broker submission was even attempted for
+    // this ticket. Asserted on THIS fixture's offer index rather than on
+    // brokerSale being uncalled at all, because the sweep is global and may
+    // legitimately settle another suite's auction in the same run.
+    const brokeredForeign = brokerSale.mock.calls.some(
+      ([p]) => (p as { buyOfferIndex?: string } | undefined)?.buyOfferIndex === buyOfferIndex,
+    )
+    expect(brokeredForeign).toBe(false)
+
     // Untouched, not merely unsettled.
     const after = await prisma.auction.findUniqueOrThrow({ where: { id: foreign.id } })
     expect(after.status).toBe('LIVE')
@@ -181,7 +212,7 @@ describe('the settlement sweep only settles this network', () => {
   it('does pick up the identical auction on this network', async () => {
     // The control. Without it the test above passes just as well when the
     // sweep is broken, or when the fixture was never due in the first place.
-    const mine = await dueAuction(NETWORK, 'ff')
+    const { auction: mine } = await dueAuction(NETWORK, 'ff')
 
     const results = await settleDueAuctions()
 
