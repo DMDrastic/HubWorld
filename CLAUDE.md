@@ -673,9 +673,20 @@ production networks; a `BatchV1_1` successor is the replacement. More decisively
 tickets is 125 signatures. An 8× improvement, not a solution.
 
 **MPTs are the only path that actually reaches thousands.** Multi-Purpose Tokens
-(XLS-33) activated as `MPTokensV1` in October 2025, and `MPTokenIssuance` carries
-a `TransferFee`, so the royalty survives. One issuance transaction covers the
-entire supply, whatever its size.
+(XLS-33) activated as `MPTokensV1` in October 2025. One issuance transaction
+covers the entire supply, whatever its size — **measured on testnet 2026-08-02:
+3,000 tickets created in ONE organizer signature** (`scripts/mpt-spike.ts`).
+That is the organizer bottleneck genuinely removed.
+
+**The royalty does NOT survive, and an earlier version of this document was
+wrong to say it did.** `MPTokenIssuance` does carry a `TransferFee`, but it is
+charged **in tokens, not in XRP**. Measured: with a 5% fee, sending 100 units
+cost the sender 105 and delivered 100, and the 5 never appeared in the issuer's
+holdings — they left circulation. The NFT `TransferFee` is charged on the SALE
+AMOUNT because `NFTokenAcceptOffer` knows the price; an MPT `Payment` carries no
+price, so there is nothing to take a percentage *of* except the tickets
+themselves. An organizer's "royalty" on an MPT resale is therefore paid in
+fractions of a ticket, which is not revenue.
 
 The catch is that MPT units are fungible — which is *honest* for general
 admission, where there is no meaningful difference between ticket #447 and #448,
@@ -683,14 +694,30 @@ and wrong for reserved seating, where `seat` means something. So **tiers are the
 natural seam**: general admission becomes an MPT issuance, reserved seating stays
 NFTs. Not two products bolted together; the right primitive for each.
 
-**What MPT would cost, stated before anyone starts it:** the brokered settlement
-does not transfer. `NFTokenAcceptOffer` with `NFTokenBrokerFee` — moving ticket
-and XRP atomically with our fee taken from the spread, neither party able to
-settle alone — is NFT-specific machinery. Resale, the platform fee and the whole
-auction mechanism would need redesigning for MPT-backed tickets. Redemption gets
-fuzzier too: a fungible unit cannot be individually marked used, only counted, so
-`already_used` versus `no_ticket` stops being the crisp distinction the door
-depends on.
+**What MPT costs, now measured rather than predicted** (`scripts/mpt-spike.ts`,
+testnet, 2026-08-02):
+
+- **There is no atomic swap.** `NFTokenAcceptOffer` with `NFTokenBrokerFee` —
+  moving ticket and XRP together with our fee taken from the spread, neither
+  party able to settle alone — is NFT-specific machinery with no MPT equivalent.
+  An MPT `Payment` moves the ticket one way and nothing back, so there is no
+  spread a broker fee could come from.
+- **The DEX is not an escape hatch.** `OfferCreate` does not accept an MPT
+  amount: `Amount` in xrpl.js is `IssuedCurrencyAmount | string` and excludes
+  `MPTAmount`, and submitting one anyway returns **`temDISABLED`** on testnet
+  even with `tfMPTCanTrade` set on the issuance.
+- **Redemption cannot be answered on-ledger.** The `MPToken` object carries an
+  `MPTAmount` count and no per-unit identity, so a holder of 2 units admitted
+  once is indistinguishable from one admitted twice. `already_used` versus
+  `no_ticket` has to become an off-ledger per-account record, and that record
+  is wrong the moment somebody buys two tickets.
+- **Every attendee costs an extra signature.** A holder must submit
+  `MPTokenAuthorize` to opt in before they can be sent any units — so MPT *adds*
+  a payload per attendee against the Xaman quota.
+
+So resale, the platform fee, the royalty and the whole auction mechanism do not
+port. What DOES port is primary sale and admission, which is the honest scope of
+an MPT tier. See `ROADMAP.md`.
 
 **So, today: Hubworld suits events in the tens to low hundreds.** That is a
 consequence of refusing delegation, not an oversight, and the honest thing is to

@@ -122,12 +122,76 @@ deliberately, and **state the ceiling before ticket 200 rather than letting an
 organizer discover it** — a sales conversation is a much better place to find
 this than a mint queue.
 
-**Build the MPT tier seam only when a real customer with real money demands
-thousands.** Fungible general admission as an MPT issuance, reserved seating
-staying NFTs, is the right shape — but doing it speculatively costs the brokered
-settlement, the platform fee, the whole auction mechanism, and the crisp
-`already_used` versus `no_ticket` distinction the door depends on. That is most
-of the product, traded for demand that may never arrive.
+**Superseded in part by the MPT spike below** — thousands-scale is wanted, so
+the question was investigated rather than deferred. The conclusion is narrower
+and more actionable than "wait for a customer".
+
+## 5a. The MPT spike, run 2026-08-02 — results
+
+`scripts/mpt-spike.ts` and `scripts/mpt-fee-spike.ts`, against testnet with
+faucet wallets. Both are kept as evidence and are imported by nothing.
+
+**Q1 — does one issuance cover the whole supply, with a royalty? HALF YES.**
+3,000 tickets were created in **one** organizer signature. **The organizer
+bottleneck — the only thing actually preventing thousands-scale — is genuinely
+removed.** But the royalty does not come with it: `TransferFee` on an MPT is
+charged **in tokens, not XRP**. Sending 100 units with a 5% fee cost the sender
+105 and delivered 100; the 5 left circulation and never reached the issuer. A
+royalty paid in fractions of a ticket is not revenue. `CLAUDE.md` previously
+claimed the royalty survived; it has been corrected.
+
+**Q2 — can a unit be resold with a fee captured, atomically? NO.** There is no
+MPT equivalent of `NFTokenAcceptOffer` + `NFTokenBrokerFee`. A `Payment` moves
+the ticket one way with nothing coming back, so there is no spread to take a
+broker fee from. The DEX is not an escape hatch either: `OfferCreate` rejects an
+MPT amount with **`temDISABLED`** even with `tfMPTCanTrade` set.
+
+**Q3 — can the door distinguish "already admitted" from "no ticket"? NO, not
+on-ledger.** The `MPToken` object carries a count and no per-unit identity.
+Redemption would have to become an off-ledger per-account record, which is
+wrong as soon as somebody holds two units.
+
+**Unbudgeted cost found:** every attendee must submit `MPTokenAuthorize` to opt
+in before receiving units, so MPT **adds** a payload per attendee against the
+Xaman quota — the constraint in section 2.
+
+### What this means
+
+Everything MPT breaks is **secondary-market machinery**. Everything it fixes is
+the primary-issuance bottleneck. That is a clean seam, and it points at a
+specific product rather than a vague tier:
+
+> **An MPT tier is viable for large general admission if and only if that
+> segment ships with primary sale and admission only — no resale, no auction,
+> no royalty.**
+
+This is more coherent than it first sounds. A royalty exists to pay the
+organizer on **resale**; with no secondary market there is nothing to pay a
+royalty *on*, so losing it costs nothing in that segment. The organizer sells at
+face value and keeps it. The pieces that break are precisely the pieces that
+segment would not use.
+
+So the shape is:
+
+- **Large GA (thousands)** — MPT. Primary sale, door admission, off-ledger
+  redemption tracking. No secondary market.
+- **Scarce / reserved / anything with a resale market** — NFTs, exactly as
+  today, with brokered settlement, royalties and auctions intact.
+
+**The open question is no longer technical, it is product:** is a
+thousands-capacity GA ticket worth selling without resale? If yes, this is
+buildable and the ceiling lifts. If the secondary market is essential at that
+scale, then thousands-scale is **not** feasible on XRPL today at any reasonable
+effort, and that should be said plainly rather than discovered late.
+
+### If it proceeds, do these first
+
+- Re-verify `temDISABLED` against current `rippled` — MPT DEX support may be
+  gated by an amendment rather than absent, which would change Q2's answer.
+- Design the off-ledger redemption record for multi-unit holders before writing
+  any issuance code; it is the part with no obvious right answer.
+- Count the added `MPTokenAuthorize` payload into the quota model from
+  section 2.
 
 ## 6. What would end HubWorld
 
