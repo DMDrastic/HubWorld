@@ -1,6 +1,6 @@
 import { Router } from 'express'
 import { prisma } from '../prisma.js'
-import { COMMIT_SHA } from '../env.js'
+import { COMMIT_SHA, env } from '../env.js'
 
 export const healthRouter = Router()
 
@@ -16,6 +16,16 @@ export const healthRouter = Router()
  * inferring it — which only works when the release changes behaviour visibly.
  * It is 'unknown' rather than absent when unset, so the field's shape never
  * depends on configuration.
+ *
+ * `network` answers "is this thing pointed at real money?". That question was
+ * previously unanswerable from outside the process: it had to be inferred from
+ * the repo's default and a Render dashboard nobody can check in a hurry. Since
+ * mainnet is the setting where a mistake costs real XRP, being able to read it
+ * back in one request is worth a field.
+ *
+ * Both are safe to expose. `XRPL_NETWORK` is not a secret — every payload
+ * already carries it to Xaman as `force_network`, and it names a public ledger.
+ * Nothing here reveals a key, a seed or a credential.
  */
 healthRouter.get('/health', async (_req, res) => {
   let db: 'connected' | 'unavailable' = 'unavailable'
@@ -31,6 +41,7 @@ healthRouter.get('/health', async (_req, res) => {
     status: db === 'connected' ? 'ok' : 'degraded',
     db,
     commit: COMMIT_SHA,
+    network: env.XRPL_NETWORK,
     uptime: Math.round(process.uptime()),
     timestamp: new Date().toISOString(),
   })

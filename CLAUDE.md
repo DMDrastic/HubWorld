@@ -532,7 +532,7 @@ Hubworld out of the funds-custody path. Changing this changes who mints.
 
 | Route | Purpose |
 | --- | --- |
-| `GET /api/health` | liveness + db status + running commit |
+| `GET /api/health` | liveness + db status + running commit + ledger |
 | `POST /api/auth/signin` | create Xaman SignIn payload → `{uuid, qrPng, next}` |
 | `GET /api/auth/signin/:uuid` | poll → `pending` / `needs_username` / `authenticated` / `rejected` / `expired` |
 | `POST /api/auth/claim` | bind an @handle to a freshly-verified address |
@@ -1005,7 +1005,7 @@ be moved in Xaman as a collectible; Hubworld just stops presenting it as a ticke
 
 ## Health check
 
-`GET /api/health` → `{ status, db, commit, uptime, timestamp }`
+`GET /api/health` → `{ status, db, commit, network, uptime, timestamp }`
 
 Always returns HTTP 200 so the UI can render a status even when Postgres is
 down; a dead database shows as `status: "degraded"`, `db: "unavailable"`. Check
@@ -1017,8 +1017,15 @@ which gives no answer at all for a release that changes nothing observable.
 Compare it against `git log` to know exactly what is running:
 
 ```sh
-curl -s https://hubworld.app/api/health | jq -r .commit
+curl -s https://hubworld.app/api/health | jq -r '.commit, .network'
 ```
+
+**`network` answers "is this pointed at real money?"** — previously unanswerable
+from outside the process, inferable only from the repo's default and a dashboard
+nobody checks in a hurry. It reads `env.XRPL_NETWORK` directly and is pinned by
+a test that fails if it is ever hardcoded, because a field claiming `testnet`
+while running mainnet is worse than no field. Exposing it is safe: every payload
+already sends it to Xaman as `force_network`, and it names a public ledger.
 
 The Dockerfile bakes it from `ARG COMMIT_SHA`, so the value describes the code
 in the image and cannot drift from it. Render injects `RENDER_GIT_COMMIT` into

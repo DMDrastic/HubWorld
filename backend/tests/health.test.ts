@@ -16,12 +16,12 @@ import request from 'supertest'
 import { z } from 'zod'
 
 const { createApp } = await import('../src/app.js')
-const { COMMIT_SHA } = await import('../src/env.js')
+const { COMMIT_SHA, env } = await import('../src/env.js')
 
 const app = createApp()
 
 describe('GET /api/health', () => {
-  it('reports the commit alongside the existing fields', async () => {
+  it('reports the commit and network alongside the existing fields', async () => {
     const res = await request(app).get('/api/health')
 
     expect(res.status).toBe(200)
@@ -29,9 +29,19 @@ describe('GET /api/health', () => {
       status: expect.stringMatching(/^(ok|degraded)$/),
       db: expect.stringMatching(/^(connected|unavailable)$/),
       commit: expect.any(String),
+      network: expect.stringMatching(/^(testnet|devnet|mainnet)$/),
       uptime: expect.any(Number),
       timestamp: expect.any(String),
     })
+  })
+
+  it('reports the network the process is ACTUALLY using', async () => {
+    // The point of the field is answering "is this pointed at real money?"
+    // without trusting a dashboard. A hardcoded 'testnet' would answer that
+    // question wrongly in the one case where being wrong costs real XRP, so
+    // this asserts it tracks the parsed config rather than a literal.
+    const res = await request(app).get('/api/health')
+    expect(res.body.network).toBe(env.XRPL_NETWORK)
   })
 
   it("says 'unknown' rather than omitting the field when unset", async () => {

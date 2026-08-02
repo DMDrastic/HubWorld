@@ -10,6 +10,8 @@ export const HealthSchema = z.object({
   db: z.enum(['connected', 'unavailable']),
   /** Which build is serving, or 'unknown'. Optional so an older API still parses. */
   commit: z.string().optional(),
+  /** Which ledger it is pointed at. Optional for the same reason. */
+  network: z.enum(['testnet', 'devnet', 'mainnet']).optional(),
   uptime: z.number(),
   timestamp: z.string(),
 })
