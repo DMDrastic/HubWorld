@@ -118,7 +118,7 @@ npm run build            # tsc -> dist/
 npm start                # run the build
 npm run typecheck
 npm run prisma:generate
-npm run prisma:migrate -- --name <description>
+npm run prisma:migrate -- --name <description>   # needs a real terminal, see below
 
 # frontend/ — http://localhost:5173
 npm install
@@ -398,6 +398,30 @@ credentials still need rotating.
   in that file gets recycled onto an unrelated process, so the hint names a live
   PID that is not Postgres. **Verify with `ps -p <pid>` before deleting it** —
   removing a live cluster's `postmaster.pid` corrupts data.
+- **`prisma migrate dev` needs an interactive terminal.** It refuses to run from
+  a non-TTY ("environment is non-interactive, which is not supported"), which
+  includes agent shells, `zsh -c` and CI. That is Prisma's design, not a repo
+  defect. It works normally in your own terminal: the local role has `CREATEDB`,
+  so Prisma creates and drops its own shadow database automatically and no
+  `shadowDatabaseUrl` needs configuring. From a non-TTY use
+  `prisma migrate diff` plus `prisma migrate deploy` instead.
+- **A malformed `--shadow-database-url` will operate on your REAL database, and
+  it is easy to malform.** `DATABASE_URL` ends in `?schema=public`, so appending
+  a suffix to it yields `...hubworld_dev?schema=public_myshadow` — still the
+  live database, merely a different *schema* inside it. Prisma then replays
+  migration history there, and any migration mixing schema-qualified with
+  unqualified names (`20260727024342_bids_as_buy_offers` does, on two lines)
+  resolves half its statements against `public` — the real tables. That run
+  reports a confusing enum-cast failure which looks like broken migration
+  history and is not. **The shadow must be a separate DATABASE**, e.g.
+  `postgresql://…@localhost:5432/hubworld_shadow?schema=public`, created and
+  dropped around the run. Verified 2026-08-02: with a correct shadow URL the
+  full history replays cleanly and
+  `migrate diff --from-migrations … --to-schema-datamodel` returns an empty
+  diff, so **the recorded history is sound and must not be "fixed"** — editing
+  an applied migration changes its checksum, which is stored in
+  `_prisma_migrations` in every environment including Supabase, and would make
+  `migrate dev` offer to reset the database.
 - `backend/.env` is gitignored; `backend/.env.example` is the template.
 - Vite proxies `/api` to `localhost:4000` in dev, so the browser stays
   same-origin and CORS never fires. The `cors` middleware exists for deployed
