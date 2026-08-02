@@ -80,3 +80,68 @@ describe('NavBar destinations when signed in', () => {
     expect(screen.getAllByRole('link', { name: 'Door' }).length).toBeGreaterThan(0)
   })
 })
+
+/**
+ * Which ledger is this?
+ *
+ * The label is a caveat, not decoration: on testnet the tickets are not real
+ * and the money is not real, and anyone looking at the page deserves to know
+ * that without asking. On mainnet it is deliberately absent, because mainnet is
+ * simply the product and a "MAINNET" chip is developer chrome in a consumer UI.
+ *
+ * The dangerous failure is the inverse of the usual one. A missing badge is a
+ * cosmetic miss; a badge reading "testnet" while the app is pointed at mainnet
+ * would tell someone their real money is play money. That case is pinned first.
+ */
+function withNetwork(network: Health['network']): Health {
+  return { ...HEALTH, network }
+}
+
+describe('the network label', () => {
+  it('never claims testnet while running mainnet', () => {
+    render(
+      <NavBar me={null} health={withNetwork('mainnet')} route="/" hasDoor={false} onSignOut={vi.fn()} />,
+    )
+    expect(screen.queryByText('testnet')).toBeNull()
+    expect(screen.queryByText('devnet')).toBeNull()
+  })
+
+  it.each(['testnet', 'devnet'] as const)('shows %s, because nothing there is real', (net) => {
+    render(
+      <NavBar me={null} health={withNetwork(net)} route="/" hasDoor={false} onSignOut={vi.fn()} />,
+    )
+    expect(screen.queryByText(net)).not.toBeNull()
+  })
+
+  it('shows no chip on mainnet, which is just the product', () => {
+    render(
+      <NavBar me={null} health={withNetwork('mainnet')} route="/" hasDoor={false} onSignOut={vi.fn()} />,
+    )
+    expect(screen.queryByText('mainnet')).toBeNull()
+  })
+
+  it('still names the network in the health tooltip on mainnet', () => {
+    // So an absent chip is never ambiguous between "we are on mainnet" and
+    // "this build is too old to know". The operator always has one place.
+    render(
+      <NavBar me={null} health={withNetwork('mainnet')} route="/" hasDoor={false} onSignOut={vi.fn()} />,
+    )
+    // Matched on the health dot's own format, so this asserts the tooltip
+    // rather than incidentally matching the chip's longer description.
+    expect(screen.queryByTitle(/db connected · mainnet/)).not.toBeNull()
+  })
+
+  it('claims nothing when the API is too old to say', () => {
+    // HEALTH has no `network` field at all — an API from before it existed.
+    // Guessing a default here is exactly how a mainnet deploy gets mislabelled.
+    nav(null)
+    for (const net of ['testnet', 'devnet', 'mainnet']) {
+      expect(screen.queryByText(net)).toBeNull()
+    }
+  })
+
+  it('claims nothing while health is still loading', () => {
+    render(<NavBar me={null} health={null} route="/" hasDoor={false} onSignOut={vi.fn()} />)
+    expect(screen.queryByText('testnet')).toBeNull()
+  })
+})
