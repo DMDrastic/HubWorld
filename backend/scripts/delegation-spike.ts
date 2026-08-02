@@ -1,195 +1,174 @@
 /**
- * SPIKE: can an organizer delegate ONLY `NFTokenMint` to HubWorld, and does the
- * resulting NFT still have the ORGANIZER as its issuer?
+ * Exercises `src/delegation.ts` against a real ledger.
  *
- * This is the corner of the minting triangle we wrote off. `CLAUDE.md` says the
- * organizer must be the issuer because `TransferFee` pays the issuer, and that
- * HubWorld cannot sign as anyone — so the organizer taps once per ticket and the
- * product caps out in the low hundreds. `PermissionDelegationV1_1` offers scoped
- * delegation, unlike `RegularKey`, which is unscoped and would also hand over
- * the ability to send payments.
+ * Originally a spike with hand-written transactions; it now drives the SHIPPED
+ * builders, so it verifies the code that would actually run rather than a
+ * parallel implementation that happens to agree. The unit tests pin the shape
+ * of those transactions; this pins that the ledger accepts them and does what
+ * we claim.
  *
- * THE QUESTION THAT DECIDES IT: after a delegated mint, is `Issuer` the
- * organizer or the delegate? If it is the delegate, the royalty model collapses
- * and this whole path is dead. Everything else here is secondary.
+ * THE QUESTION THAT DECIDES THE DESIGN: after a delegated mint, is `Issuer` the
+ * organizer or the delegate? If it is the delegate, `TransferFee` pays Hubworld,
+ * the organizer never sees their royalty, and the whole path is dead.
  *
- * Runs on DEVNET, where PermissionDelegationV1_1 is already active (it is still
- * pending on testnet and absent from mainnet). Faucet-funded throwaway wallets;
- * touches no repo credentials and no database.
+ * Must run against **devnet** — `PermissionDelegationV1_1` is active there,
+ * pending on testnet, absent from mainnet:
  *
- *   npx tsx scripts/delegation-spike.ts
+ *   XRPL_NETWORK=devnet npx tsx scripts/delegation-spike.ts
+ *
+ * Faucet-funded throwaway wallets. Touches no repo credentials and no database.
  */
-import { Client, Wallet } from 'xrpl'
+import type { Wallet } from 'xrpl'
+import { ledger, disconnectLedger, buildMintTx } from '../src/ledger.js'
+import {
+  asDelegatedMint,
+  buildDelegateMintTx,
+  buildRevokeMintTx,
+  delegationAvailable,
+  hasMintPermission,
+} from '../src/delegation.js'
+import { env } from '../src/env.js'
 
-const DEVNET = 'wss://s.devnet.rippletest.net:51233'
-
-/** 5% royalty, the same shape an organizer sets today via royaltyBps. */
-const TRANSFER_FEE = 5000
+const TRANSFER_FEE_BPS = 500 // 5%, as an organizer would set via royaltyBps
 const TAXON = 70_001
 
 function head(s: string) {
   console.log(`\n${'='.repeat(72)}\n${s}\n${'='.repeat(72)}`)
 }
 
-async function submit(client: Client, signer: Wallet, tx: object, label: string) {
+async function submit(signer: Wallet, tx: object, label: string) {
+  const client = await ledger()
   try {
     const prepared = await client.autofill(tx as never)
     const res = await client.submitAndWait(signer.sign(prepared).tx_blob)
     const meta = res.result.meta
     const code = typeof meta === 'object' ? meta.TransactionResult : String(meta)
     console.log(`  ${label}: ${code}`)
-    return { code, res }
+    return code
   } catch (e) {
     const msg = (e as Error).message
-    console.log(`  ${label}: THREW — ${msg.slice(0, 200)}`)
-    return { code: 'threw', res: null }
+    // A terNO_DELEGATE_PERMISSION arrives as a throw once the payload expires;
+    // the preliminary result is the informative part.
+    console.log(`  ${label}: ${msg.includes('terNO_DELEGATE') ? 'terNO_DELEGATE_PERMISSION' : msg.slice(0, 120)}`)
+    return 'failed'
   }
-}
-
-async function xrpBalance(client: Client, address: string): Promise<number> {
-  const r = await client.request({
-    command: 'account_info',
-    account: address,
-    ledger_index: 'validated',
-  })
-  return Number(r.result.account_data.Balance) / 1_000_000
 }
 
 async function main() {
-  const client = new Client(DEVNET)
-  await client.connect()
+  if (env.XRPL_NETWORK !== 'devnet') {
+    console.error(
+      `XRPL_NETWORK is "${env.XRPL_NETWORK}". PermissionDelegationV1_1 is only active on devnet.\n` +
+        'Re-run with: XRPL_NETWORK=devnet npx tsx scripts/delegation-spike.ts',
+    )
+    process.exit(1)
+  }
 
-  const info = await client.request({ command: 'server_info' })
-  console.log(`devnet rippled: ${info.result.info.build_version}`)
+  const client = await ledger()
 
-  head('Wallets')
-  const { wallet: organizer } = await client.fundWallet()
-  const { wallet: hubworld } = await client.fundWallet()
-  console.log(`  organizer (issuer, delegator): ${organizer.classicAddress}`)
-  console.log(`  hubworld  (delegate, signer) : ${hubworld.classicAddress}`)
-
-  // ------------------------------------------------------------ delegate ----
-  head('1. Organizer grants HubWorld the NFTokenMint permission ONLY')
-  const grant = await submit(
-    client,
-    organizer,
-    {
-      TransactionType: 'DelegateSet',
-      Account: organizer.classicAddress,
-      Authorize: hubworld.classicAddress,
-      Permissions: [{ Permission: { PermissionValue: 'NFTokenMint' } }],
-    },
-    'DelegateSet (NFTokenMint only)',
-  )
-  if (grant.code !== 'tesSUCCESS') {
-    console.log('\n  Delegation was not granted — everything below is moot.')
-    await client.disconnect()
+  head('0. Is the amendment actually usable here?')
+  const available = await delegationAvailable()
+  console.log(`  delegationAvailable(): ${available}`)
+  if (!available) {
+    console.log('  Refusing to continue — the gate the routes will use says no.')
+    await disconnectLedger()
     return
   }
 
-  // ---------------------------------------------------------- the test ----
-  head('2. HubWorld mints AS the organizer — signed with HubWorld\'s key')
-  const orgBefore = await xrpBalance(client, organizer.classicAddress)
-  const hubBefore = await xrpBalance(client, hubworld.classicAddress)
+  head('Wallets')
+  const { wallet: organizer } = await client.fundWallet()
+  const { wallet: platform } = await client.fundWallet()
+  console.log(`  organizer (issuer)  : ${organizer.classicAddress}`)
+  console.log(`  platform  (delegate): ${platform.classicAddress}`)
 
-  const mint = await submit(
-    client,
-    hubworld, // signed by HubWorld...
-    {
-      TransactionType: 'NFTokenMint',
-      Account: organizer.classicAddress, // ...but the account is the organizer
-      Delegate: hubworld.classicAddress,
-      NFTokenTaxon: TAXON,
-      TransferFee: TRANSFER_FEE,
-      Flags: 8, // tfTransferable
-      URI: Buffer.from('ipfs://hubworld-delegation-spike').toString('hex').toUpperCase(),
-    },
-    'NFTokenMint by delegate',
-  )
-
-  head('3. THE ANSWER: who is the issuer?')
-  if (mint.code === 'tesSUCCESS') {
-    const nfts = await client.request({
-      command: 'account_nfts',
-      account: organizer.classicAddress,
-      ledger_index: 'validated',
-    })
-    const list = nfts.result.account_nfts
-    console.log(`  NFTs now in the ORGANIZER's account: ${list.length}`)
-    if (list.length > 0) {
-      const n = list[0]!
-      console.log(`    NFTokenID  : ${n.NFTokenID}`)
-      console.log(`    Issuer     : ${n.Issuer ?? organizer.classicAddress} ${
-        (n.Issuer ?? organizer.classicAddress) === organizer.classicAddress
-          ? '  <-- ORGANIZER. Royalty model survives.'
-          : '  <-- NOT the organizer. Royalty model collapses.'
-      }`)
-      console.log(`    TransferFee: ${n.TransferFee} (${(n.TransferFee ?? 0) / 1000}%)`)
-    }
-    const hubNfts = await client.request({
-      command: 'account_nfts',
-      account: hubworld.classicAddress,
-      ledger_index: 'validated',
-    })
-    console.log(`  NFTs in HUBWORLD's account: ${hubNfts.result.account_nfts.length} (expect 0)`)
-  } else {
-    console.log('  Mint failed, so there is nothing to inspect.')
+  const pair = {
+    organizerAddress: organizer.classicAddress,
+    platformAddress: platform.classicAddress,
   }
 
-  head('4. Who paid the transaction fee?')
-  const orgAfter = await xrpBalance(client, organizer.classicAddress)
-  const hubAfter = await xrpBalance(client, hubworld.classicAddress)
-  console.log(`  organizer: ${orgBefore.toFixed(6)} -> ${orgAfter.toFixed(6)}  (${(orgAfter - orgBefore).toFixed(6)})`)
-  console.log(`  hubworld : ${hubBefore.toFixed(6)} -> ${hubAfter.toFixed(6)}  (${(hubAfter - hubBefore).toFixed(6)})`)
+  head('1. Before any grant, do we believe we have permission?')
+  console.log(`  hasMintPermission(): ${await hasMintPermission(pair)}  (expect false)`)
 
-  // ------------------------------------------------------------- scope ----
-  head('5. Is the permission really scoped? HubWorld tries to send the organizer\'s XRP')
+  head('2. Organizer grants NFTokenMint — and only that')
+  const grant = buildDelegateMintTx(pair)
+  console.log(`  permissions in the grant: ${JSON.stringify(grant.Permissions)}`)
+  if ((await submit(organizer, grant, 'DelegateSet')) !== 'tesSUCCESS') {
+    await disconnectLedger()
+    return
+  }
+  console.log(`  hasMintPermission(): ${await hasMintPermission(pair)}  (expect true)`)
+
+  head('3. Platform mints AS the organizer')
+  const mint = buildMintTx({
+    issuerAddress: organizer.classicAddress,
+    taxon: TAXON,
+    royaltyBps: TRANSFER_FEE_BPS,
+    uri: 'ipfs://hubworld-delegated-mint',
+  })
+  const delegated = asDelegatedMint(mint, platform.classicAddress)
+  console.log(`  Account=${delegated.Account}`)
+  console.log(`  Delegate=${delegated.Delegate}`)
+  await submit(platform, delegated, 'NFTokenMint (signed by platform)')
+
+  head('4. THE ANSWER: who issued it?')
+  const nfts = await client.request({
+    command: 'account_nfts',
+    account: organizer.classicAddress,
+    ledger_index: 'validated',
+  })
+  const list = nfts.result.account_nfts
+  console.log(`  NFTs in the ORGANIZER's account: ${list.length}`)
+  if (list.length > 0) {
+    const n = list[0]!
+    const issuer = n.Issuer ?? organizer.classicAddress
+    console.log(`    Issuer     : ${issuer}`)
+    console.log(`    TransferFee: ${n.TransferFee} (${(n.TransferFee ?? 0) / 1000}%)`)
+    console.log(
+      issuer === organizer.classicAddress
+        ? '    >> ORGANIZER. The royalty reaches them; the model survives.'
+        : '    >> NOT the organizer. The royalty model collapses.',
+    )
+  }
+  const held = await client.request({
+    command: 'account_nfts',
+    account: platform.classicAddress,
+    ledger_index: 'validated',
+  })
+  console.log(`  NFTs in the PLATFORM's account: ${held.result.account_nfts.length} (expect 0)`)
+
+  head('5. Is the grant really scoped? Platform tries to spend the organizer\'s XRP')
   await submit(
-    client,
-    hubworld,
+    platform,
     {
       TransactionType: 'Payment',
       Account: organizer.classicAddress,
-      Delegate: hubworld.classicAddress,
-      Destination: hubworld.classicAddress,
+      Delegate: platform.classicAddress,
+      Destination: platform.classicAddress,
       Amount: '1000000',
     },
     'Payment as organizer (must FAIL)',
   )
-  console.log('  >> A failure here is the point: this is what RegularKey would have allowed.')
+  console.log('  >> Refusal is the point: this is exactly what RegularKey would have allowed.')
 
-  // -------------------------------------------------------- revocation ----
-  head('6. Revocation')
+  head('6. Revocation takes effect immediately')
+  await submit(organizer, buildRevokeMintTx(pair), 'DelegateSet (revoke)')
+  console.log(`  hasMintPermission(): ${await hasMintPermission(pair)}  (expect false)`)
   await submit(
-    client,
-    organizer,
-    {
-      TransactionType: 'DelegateSet',
-      Account: organizer.classicAddress,
-      Authorize: hubworld.classicAddress,
-      Permissions: [],
-    },
-    'DelegateSet with empty Permissions',
-  )
-  await submit(
-    client,
-    hubworld,
-    {
-      TransactionType: 'NFTokenMint',
-      Account: organizer.classicAddress,
-      Delegate: hubworld.classicAddress,
-      NFTokenTaxon: TAXON,
-      TransferFee: TRANSFER_FEE,
-      Flags: 8,
-    },
+    platform,
+    asDelegatedMint(
+      buildMintTx({ issuerAddress: organizer.classicAddress, taxon: TAXON, royaltyBps: TRANSFER_FEE_BPS }),
+      platform.classicAddress,
+    ),
     'mint after revocation (must FAIL)',
   )
 
   head('Done — devnet, throwaway wallets')
-  await client.disconnect()
+  // The websocket keeps the event loop alive; without this the script hangs and
+  // its output is never flushed, which looks exactly like a crash.
+  await disconnectLedger()
 }
 
-main().catch((e) => {
+main().catch(async (e) => {
   console.error('SPIKE FAILED:', e)
+  await disconnectLedger()
   process.exit(1)
 })
