@@ -40,15 +40,33 @@ authRouter.post('/auth/signin', async (req, res) => {
   if (typeof priorUuid === 'string' && priorUuid.length > 0) {
     const prior = await prisma.signInRequest.findUnique({ where: { payloadUuid: priorUuid } })
     if (prior && prior.status === 'PENDING' && !prior.consumedAt && prior.expiresAt > new Date()) {
-      res.status(200).json({
-        uuid: prior.payloadUuid,
-        next: `https://xumm.app/sign/${prior.payloadUuid}`,
-        qrPng: `https://xumm.app/sign/${prior.payloadUuid}_q.png`,
-        expiresAt: prior.expiresAt.toISOString(),
-        mode: xamanMode,
-        reused: true,
-      })
-      return
+      // `status` is OUR record, and it only becomes SIGNED when a poll happens
+      // to observe it. Sign in, close the tab before the next poll, and the row
+      // still says PENDING — so this used to hand the same payload back, Xaman
+      // refused an already-signed payload, and sign-in stayed broken until the
+      // TTL expired. Switching between accounts hits it every time.
+      //
+      // So the reuse is confirmed against Xaman rather than against ourselves.
+      // Anything short of positive evidence that it is still unsigned falls
+      // through and mints a fresh payload: spending one more slot is a bounded
+      // cost, while handing back a dead payload is a sign-in the user cannot
+      // complete and cannot diagnose. That includes 'unavailable' (a 429), where
+      // by definition we know nothing about it.
+      const live = await tryGetPayload(prior.payloadUuid)
+      const reusable =
+        live !== 'unavailable' && live !== null && !live.signed && !live.cancelled && !live.expired
+
+      if (reusable) {
+        res.status(200).json({
+          uuid: prior.payloadUuid,
+          next: `https://xumm.app/sign/${prior.payloadUuid}`,
+          qrPng: `https://xumm.app/sign/${prior.payloadUuid}_q.png`,
+          expiresAt: prior.expiresAt.toISOString(),
+          mode: xamanMode,
+          reused: true,
+        })
+        return
+      }
     }
   }
 
