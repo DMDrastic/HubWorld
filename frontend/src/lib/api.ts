@@ -8,6 +8,8 @@ import { z } from 'zod'
 export const HealthSchema = z.object({
   status: z.enum(['ok', 'degraded']),
   db: z.enum(['connected', 'unavailable']),
+  /** Which build is serving, or 'unknown'. Optional so an older API still parses. */
+  commit: z.string().optional(),
   uptime: z.number(),
   timestamp: z.string(),
 })

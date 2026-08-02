@@ -2,6 +2,18 @@ import 'dotenv/config'
 import { z } from 'zod'
 
 /**
+ * An optional value where an EMPTY string means "not set".
+ *
+ * Docker's `ARG X=""` defines the variable as empty rather than leaving it
+ * unset, and shell templating that expands to nothing does the same. Without
+ * this, such a value is present-but-invalid and fails the parse below, which
+ * exits the process.
+ */
+function emptyAsAbsent<T extends z.ZodTypeAny>(schema: T) {
+  return z.preprocess((v) => (v === '' ? undefined : v), schema.optional())
+}
+
+/**
  * Every environment variable the backend reads passes through this schema.
  * Parsed once at startup so a misconfigured deploy fails loudly here rather
  * than as an undefined halfway through a request.
@@ -79,6 +91,25 @@ const EnvSchema = z.object({
   //
   // Unset in dev, where Vite serves the app on :5173 and proxies /api here.
   WEB_DIST: z.string().min(1).optional(),
+
+  // Which build is running, reported by GET /api/health.
+  //
+  // Nothing used to say. Confirming that a deploy had actually shipped meant
+  // inferring it from whether some endpoint's behaviour had changed, which only
+  // works when the release happens to change behaviour observably.
+  //
+  // Baked in by the Dockerfile from a build arg. Render also injects
+  // RENDER_GIT_COMMIT into every build and runtime, so that is read as a
+  // fallback and a Render deploy needs no configuration at all. Neither is
+  // required: locally there is no build, and 'unknown' is an honest answer.
+  //
+  // Empty is treated as absent. `ARG COMMIT_SHA=""` with no --build-arg sets
+  // the variable to an empty string rather than leaving it unset, and a bare
+  // `.min(7).optional()` would reject that and EXIT AT STARTUP — a build that
+  // refuses to boot because it does not know its own name. Not knowing which
+  // build is running must never stop it running.
+  COMMIT_SHA: emptyAsAbsent(z.string().min(7)),
+  RENDER_GIT_COMMIT: emptyAsAbsent(z.string().min(7)),
 })
 
 const parsed = EnvSchema.safeParse(process.env)
@@ -94,6 +125,15 @@ if (!parsed.success) {
 
 export const env = parsed.data
 export type Env = typeof env
+
+/**
+ * The commit this process was built from, or 'unknown'.
+ *
+ * An explicit COMMIT_SHA wins over Render's injected value, so a build can name
+ * itself accurately even when the host guesses differently. Deliberately never
+ * throws or exits: not knowing which build is running must not stop it running.
+ */
+export const COMMIT_SHA: string = env.COMMIT_SHA ?? env.RENDER_GIT_COMMIT ?? 'unknown'
 
 /**
  * 'live' only when both Xaman credentials are present. Everything downstream

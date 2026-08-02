@@ -532,7 +532,7 @@ Hubworld out of the funds-custody path. Changing this changes who mints.
 
 | Route | Purpose |
 | --- | --- |
-| `GET /api/health` | liveness + db status |
+| `GET /api/health` | liveness + db status + running commit |
 | `POST /api/auth/signin` | create Xaman SignIn payload → `{uuid, qrPng, next}` |
 | `GET /api/auth/signin/:uuid` | poll → `pending` / `needs_username` / `authenticated` / `rejected` / `expired` |
 | `POST /api/auth/claim` | bind an @handle to a freshly-verified address |
@@ -1005,8 +1005,31 @@ be moved in Xaman as a collectible; Hubworld just stops presenting it as a ticke
 
 ## Health check
 
-`GET /api/health` → `{ status, db, uptime, timestamp }`
+`GET /api/health` → `{ status, db, commit, uptime, timestamp }`
 
 Always returns HTTP 200 so the UI can render a status even when Postgres is
 down; a dead database shows as `status: "degraded"`, `db: "unavailable"`. Check
 the `db` field, not the status code.
+
+**`commit` answers "which build is live?"** Nothing did, so confirming a deploy
+had shipped meant probing an endpoint for a behaviour change and inferring it —
+which gives no answer at all for a release that changes nothing observable.
+Compare it against `git log` to know exactly what is running:
+
+```sh
+curl -s https://hubworld.app/api/health | jq -r .commit
+```
+
+The Dockerfile bakes it from `ARG COMMIT_SHA`, so the value describes the code
+in the image and cannot drift from it. Render injects `RENDER_GIT_COMMIT` into
+builds, so `--build-arg COMMIT_SHA=$RENDER_GIT_COMMIT` is all a host needs;
+absent that, the backend reads `RENDER_GIT_COMMIT` at runtime, then falls back
+to `'unknown'`. The field is always present — a client must never have to tell
+"absent" from "not built with one".
+
+**Reporting the build must never stop the build running.** `ARG COMMIT_SHA=""`
+sets the variable to an EMPTY string rather than leaving it unset, and env
+parsing exits the process on a bad value — so a plain `.min(7).optional()` would
+have made an image built without `--build-arg` refuse to boot because it did not
+know its own name. `emptyAsAbsent` in `env.ts` treats empty as unset;
+`health.test.ts` pins it, and reverting it reproduces the startup failure.
