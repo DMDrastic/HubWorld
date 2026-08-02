@@ -297,7 +297,13 @@ export function DoorPanel() {
           <div className="flex flex-col items-center gap-3">
             {(!result || result.state === 'pending') && (
               <>
-                <QrCode src={phase.payload.qrPng} alt="Check-in QR code" className="size-48" />
+                <QrCode
+                  src={phase.payload.qrPng}
+                  alt="Check-in QR code"
+                  className="size-48"
+                  next={phase.payload.next}
+                  mode={phase.payload.mode}
+                />
                 <p className="text-muted-foreground text-center text-sm">
                   Ask them to scan this and sign.
                 </p>
