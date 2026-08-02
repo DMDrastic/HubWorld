@@ -12,7 +12,7 @@
  */
 import { Gift, Repeat2, ScanLine, Wallet } from 'lucide-react'
 import { SignIn } from '@/components/SignIn'
-import type { AuthUser } from '@/lib/api'
+import type { AuthUser, Health } from '@/lib/api'
 
 const FEATURES = [
   {
@@ -43,7 +43,33 @@ const STEPS = [
   ['Walk in', 'At the door, scan and sign. Your ticket is checked against the ledger and marked used.'],
 ] as const
 
-export function Landing({ onAuthenticated }: { onAuthenticated: (u: AuthUser) => void }) {
+/**
+ * What the badge claims, given what we actually know.
+ *
+ * This used to read "Live on XRPL testnet" as a hardcoded string, which was
+ * true on the day it was written and would have become a lie the moment
+ * XRPL_NETWORK changed — on the first page every visitor sees, telling someone
+ * holding a real ticket that it is play money.
+ *
+ * "Live on the XRP Ledger" is true on every network, so it is what gets said
+ * whenever we are not positively sure otherwise, including when health has not
+ * loaded yet. The qualifier is added ONLY when the server has told us it is a
+ * test network — the one case where a visitor genuinely needs the caveat.
+ */
+function liveOn(network: Health['network']): string {
+  return network === 'testnet' || network === 'devnet'
+    ? `Live on XRPL ${network}`
+    : 'Live on the XRP Ledger'
+}
+
+export function Landing({
+  onAuthenticated,
+  network,
+}: {
+  onAuthenticated: (u: AuthUser) => void
+  /** From /api/health. Undefined until it loads, or on an API too old to say. */
+  network?: Health['network']
+}) {
   return (
     <div className="space-y-24 pb-16">
       {/* Hero. The aurora and grid are pinned to the top of the page and masked
@@ -65,7 +91,7 @@ export function Landing({ onAuthenticated }: { onAuthenticated: (u: AuthUser) =>
                 <span className="bg-live absolute inline-flex size-full animate-ping rounded-full opacity-70" />
                 <span className="bg-live relative inline-flex size-1.5 rounded-full" />
               </span>
-              Live on XRPL testnet
+              {liveOn(network)}
             </span>
 
             <h1 className="text-gradient text-5xl leading-[1.02] font-semibold tracking-[-0.03em] text-balance sm:text-6xl">

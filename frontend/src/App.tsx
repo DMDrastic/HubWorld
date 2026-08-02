@@ -268,7 +268,7 @@ export default function App() {
           (me ? (
             <Hub me={me} onOpenAuction={openAuctionBySlug} />
           ) : (
-            <Landing onAuthenticated={handleAuthenticated} />
+            <Landing onAuthenticated={handleAuthenticated} network={health?.network} />
           ))}
 
         {route === '/events' && (
