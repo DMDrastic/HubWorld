@@ -326,6 +326,66 @@ secondary market and the door's precision permanently.
 - Count the added `MPTokenAuthorize` payload into the quota model from
   section 2.
 
+## 5b-i. Delegated minting at real event sizes — measured 2026-08-02
+
+`scripts/delegation-scale-spike.ts`, devnet, driving the shipped builders.
+
+| tickets | wall time | rate | organizer signatures | reserve locked on organizer |
+| --- | --- | --- | --- | --- |
+| 100 | 13.3s | 7.5/s | **1** | ~0.8 XRP |
+| 250 | 37.8s | 6.6/s | **1** | ~1.8 XRP |
+| 500 | 51.1s | 9.8/s | **1** | ~4.6 XRP |
+| **1000** | **67.1s** | **14.9/s** | **1** | ~8.0 XRP |
+
+All complete, none short. **Throughput improves with scale** rather than
+degrading, so there is no ceiling anywhere near a thousand — the limit is
+whatever the network will absorb, not the design.
+
+**A thousand-ticket event mints in about a minute, and the organizer signs
+once.** That is the ceiling in `CLAUDE.md` removed, not merely raised.
+
+### Two implementation facts that are easy to get catastrophically wrong
+
+**1. The SEQUENCE belongs to the delegator, the FEE to the delegate.** On a
+delegated mint `Account` is the organizer, so it is the ORGANIZER's sequence
+that advances — measured directly — while the platform signs it and pays the
+fee. Anything doing bulk submission must increment the organizer's sequence.
+
+Getting this wrong does not fail cleanly. An earlier run used the delegate's
+sequence and *appeared* to work at 100 tickets purely because two freshly funded
+accounts happened to start at the same number. Once the organizer signed the
+grant the two diverged, and the next run produced **zero** tickets with
+`terPRE_SEQ` on every submission.
+
+**2. Fire-and-forget does not work.** Submitting all N at once, rippled holds
+only a small number of future-sequence transactions per account and drops the
+rest: at 1,000 tickets, **402 existed and 598 silently did not**, with the tail
+outliving its `LastLedgerSequence`. An event quietly short by 60% is the worst
+failure a ticketing product can have.
+
+The working shape is to submit a wave, **wait for the sequence to actually
+advance**, then submit the next — the sequence only moves when a transaction is
+really applied. Waves of 10 sustain 7–17/s. `LastLedgerSequence` must be bounded
+per wave, not once for the whole run, and a stalled wave must resume from where
+the ledger actually got to, because a single dropped transaction blocks every
+later sequence on that account permanently.
+
+### Prerequisites this surfaces
+
+- **The organizer needs ~8 XRP of spare reserve for 1,000 tickets** (NFTs pack
+  into `NFTokenPage`s). That is a precondition to check before starting a mint
+  run, not a surprise to discover at ticket 600.
+- Fees are the delegate's: 1 drop per mint on devnet, so even at mainnet rates a
+  thousand tickets is a fraction of an XRP. The broker account must stay funded.
+
+### Minting does not make an event auctionable, by design
+
+Confirmed at every size: `auction-policy.ts` requires `minted >= ticketCount`
+**and** `organizerHolds === 0`. After a mint run the organizer holds everything,
+so the event is correctly **not** auctionable — the tickets have to reach
+holders first. An organizer cannot auction their own stock, which is the rule
+working exactly as intended.
+
 ## 5c. Onboarding: stablecoins work, but they solve the smaller problem
 
 The worry is that asking a normal person to install Xaman, keep a seed phrase
