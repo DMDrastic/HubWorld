@@ -36,6 +36,26 @@ delivery rather than refusing to start.
 
 The **write** half — how a bid is committed on-ledger — is an open decision. See "Bidding: the escrow problem" below. `npm run auction:create` fabricates an auction with bid history for development; those Bid rows are display fixtures with nothing escrowed, and the script refuses to run in production.
 
+**`npm run demo:seed` builds a whole demonstrable state in one command** — a
+sold-out event whose tickets are all held by attendees (not the organizer, or
+the auction rules correctly refuse it), one ACTIVE marketplace listing, and one
+LIVE auction with a late-clustering bid history plus one ghosted pending bid
+above the leader. `-- --clean` rebuilds it. Same fixture caveat and the same
+production refusal, plus a mainnet refusal.
+
+Two properties of that seeder are load-bearing rather than cosmetic. It creates
+**no backing sell offer** for the auction, so if the auction is left to close
+the sweep hits the `no-sell-offer` path and parks it — it can never submit a
+broker transaction against fabricated offer indexes and burn a fee discovering
+they are fiction. And it corrects `Event.status` by calling `evaluateSoldOut`
+rather than writing `SOLD_OUT` itself, because a seeder that asserts the enum is
+doing exactly what the rest of the system refuses to trust.
+
+Bid times are spaced by `1 - (1 - u) ** 2.6`, **not** `u ** 2.6`. With `u`
+uniform the density of mapped times goes as `1/f'(u)`, and `u ** 2.6` is flattest
+near `u = 0`, so it piles bids up at the START — the opposite of the late rush
+the velocity strip exists to show. `auction:create` still has the original form.
+
 The auction lives in a dialog opened from an event row, **not** on the main page,
 and only events with a live auction are clickable — a control that opens an empty
 window is worse than no control. `hasLiveAuction(slug)` is the placeholder for a

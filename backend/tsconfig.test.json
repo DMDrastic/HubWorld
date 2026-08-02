@@ -22,6 +22,7 @@
     "scripts/create-auction.ts",
     "scripts/create-event.ts",
     "scripts/demo-reset.ts",
+    "scripts/demo-seed.ts",
     "scripts/grant-role.ts",
     "scripts/ledger-sync.ts",
     "scripts/purge-test-data.ts",
