@@ -1,4 +1,4 @@
-import { Router } from 'express'
+import { Router, type Request, type Response } from 'express'
 import { z } from 'zod'
 import { prisma } from '../prisma.js'
 import { env, xamanMode } from '../env.js'
@@ -18,6 +18,27 @@ export const authRouter = Router()
 
 // Same lifetime we ask Xaman to enforce, so the two clocks cannot disagree.
 const SIGNIN_TTL_MS = SIGNIN_TTL_MINUTES * 60 * 1000
+
+/**
+ * Issue a session, retiring whatever session this browser is about to forget.
+ *
+ * Setting the cookie replaces the previous token in the browser, so if that
+ * token still names a live session, nobody holds it any more — and a token
+ * nobody holds can never be revoked, because revocation needs the token. It
+ * stays valid for the full 7 days on any other copy of it.
+ *
+ * That is also half of the account-switching confusion: signing in as a second
+ * account left the first account's session live and unreachable, so "sign out"
+ * could only ever end the newest one.
+ */
+async function issueSession(req: Request, res: Response, userId: string) {
+  const previous = tokenFrom(req)
+  if (previous) await revokeSession(previous)
+
+  const { token, expiresAt } = await createSession(userId)
+  setSessionCookie(res, token, expiresAt)
+  return expiresAt
+}
 
 const UuidParams = z.object({ uuid: z.string().uuid() })
 
@@ -204,7 +225,6 @@ authRouter.get('/auth/signin/:uuid', async (req, res) => {
     return
   }
 
-  const { token, expiresAt } = await createSession(user.id)
   await prisma.signInRequest.update({
     where: { id: request.id },
     data: { consumedAt: new Date() },
@@ -212,7 +232,7 @@ authRouter.get('/auth/signin/:uuid', async (req, res) => {
 
   // The token goes into an httpOnly cookie and is NOT returned in the body.
   // Handing it to JavaScript is exactly the exposure we are closing.
-  setSessionCookie(res, token, expiresAt)
+  const expiresAt = await issueSession(req, res, user.id)
 
   res.json({
     state: 'authenticated',
@@ -287,8 +307,7 @@ authRouter.post('/auth/claim', async (req, res) => {
     data: { userId: user.id, consumedAt: new Date() },
   })
 
-  const { token, expiresAt } = await createSession(user.id)
-  setSessionCookie(res, token, expiresAt)
+  const expiresAt = await issueSession(req, res, user.id)
 
   res.status(201).json({
     state: 'authenticated',
@@ -324,12 +343,20 @@ authRouter.get('/auth/me', requireAuth, async (req, res) => {
   res.json({ ...rest, ticketsOwned: _count.ticketsOwned })
 })
 
-/** POST /api/auth/signout */
+/**
+ * POST /api/auth/signout
+ *
+ * Reports whether a live session was actually ended. Idempotent either way, but
+ * the client must be able to tell the difference: signing out and revoking
+ * nothing means the browser was carrying a session this account never held, and
+ * a UI that renders that as success is exactly how "sign out did nothing" goes
+ * unnoticed.
+ */
 authRouter.post('/auth/signout', async (req, res) => {
   const token = tokenFrom(req)
-  if (token) await revokeSession(token)
+  const revoked = token ? await revokeSession(token) : false
   clearSessionCookie(res)
-  res.status(204).end()
+  res.status(200).json({ revoked })
 })
 
 // ------------------------------------------------------------- dev only ----

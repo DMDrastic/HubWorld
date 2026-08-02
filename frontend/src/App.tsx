@@ -8,6 +8,7 @@ import {
   fetchMe,
   lookupUser,
   isOrganizer,
+  onAuthLost,
   purgeLegacyToken,
   signOut,
   type AuthUser,
@@ -130,13 +131,17 @@ export default function App() {
     }
   }, [])
 
-  // Restore an existing session. The cookie is unreadable from here, so the
-  // only way to know is to ask; a 401 simply means not signed in.
+  // Ask the server who this browser is. The cookie is unreadable from here, so
+  // asking is the only way to know; a 401 simply means not signed in.
+  //
+  // Only a 401 clears the identity. A transport failure carries no status and
+  // says nothing about who is signed in — clearing `me` there would sign
+  // someone out because the backend blinked.
   const restore = useCallback(async () => {
     try {
       setMe(await fetchMe())
-    } catch {
-      setMe(null)
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 401) setMe(null)
     }
   }, [])
 
@@ -147,19 +152,62 @@ export default function App() {
     void restore()
   }, [load, restore])
 
+  // Any 401, from any call, means the session this page has been assuming is
+  // gone. Without this the header kept naming an account whose requests were
+  // all being refused — or worse, attributed to whoever the cookie now named.
+  useEffect(() => onAuthLost(() => setMe(null)), [])
+
+  // The cookie can also change while this tab is not looking: signing in as a
+  // different account in another tab is the ordinary way it happens, and this
+  // tab is never told. So re-ask on the way back rather than trusting a snapshot
+  // taken at mount.
+  //
+  // Deliberately event-driven, not polled. `restore` is stable, so this
+  // subscribes once and cannot become a request loop the way a poll keyed on
+  // fetched state would — see the GiftPanel note in CLAUDE.md.
+  useEffect(() => {
+    const revalidate = () => {
+      if (document.visibilityState !== 'visible') return
+      void restore()
+    }
+    window.addEventListener('focus', revalidate)
+    document.addEventListener('visibilitychange', revalidate)
+    return () => {
+      window.removeEventListener('focus', revalidate)
+      document.removeEventListener('visibilitychange', revalidate)
+    }
+  }, [restore])
+
   // Stable identity: SignIn's polling effect depends on this, and a new
   // function each render would restart the poll loop continuously.
-  const handleAuthenticated = useCallback((_user: AuthUser) => {
-    // The cookie is already set by the response that told us this. Re-fetch
-    // through /auth/me so the view uses one canonical shape.
-    void fetchMe()
-      .then(setMe)
-      .catch(() => setMe(null))
-  }, [])
+  const handleAuthenticated = useCallback(
+    (_user: AuthUser) => {
+      // The cookie is already set by the response that told us this. Re-fetch
+      // through /auth/me so the view uses one canonical shape — and through
+      // `restore`, so a network blip on this one call cannot undo a sign-in
+      // that genuinely succeeded.
+      void restore()
+    },
+    [restore],
+  )
 
+  // The local view is cleared whatever happens — continuing to render a session
+  // we just tried to end is the failure being fixed here. But a sign-out that
+  // ended nothing is reported rather than shown as success, because that is the
+  // symptom of a cookie belonging to someone other than the account on screen.
   const handleSignOut = useCallback(async () => {
-    await signOut()
-    setMe(null)
+    try {
+      const { revoked } = await signOut()
+      setError(
+        revoked ? null : 'Signed out here, but no active session was found to end on the server.',
+      )
+    } catch (err) {
+      setError(
+        err instanceof ApiError ? `Sign-out failed: ${err.message}` : 'Sign-out could not reach the backend.',
+      )
+    } finally {
+      setMe(null)
+    }
   }, [])
 
   // A fresh mint changes both the event's minted count and the issuer's

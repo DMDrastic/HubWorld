@@ -43,13 +43,22 @@ export async function resolveSession(token: string) {
   return session
 }
 
-export async function revokeSession(token: string) {
-  await prisma.session
-    .update({
-      where: { tokenHash: hashToken(token) },
+/**
+ * Revoke a session, reporting whether one was actually live to revoke.
+ *
+ * The boolean is the point. "Already gone" is not an error, but it is also not
+ * the same outcome, and swallowing the difference is what let a sign-out that
+ * revoked nothing look exactly like one that worked.
+ */
+export async function revokeSession(token: string): Promise<boolean> {
+  const result = await prisma.session
+    .updateMany({
+      where: { tokenHash: hashToken(token), revokedAt: null },
       data: { revokedAt: new Date() },
     })
-    .catch(() => undefined) // already gone is not an error
+    .catch(() => ({ count: 0 }))
+
+  return result.count > 0
 }
 
 /**
