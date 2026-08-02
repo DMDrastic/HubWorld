@@ -653,9 +653,27 @@ Not roadmap items so much as debts that should not be forgotten:
   revalidates it, and issuing a session revokes the one the browser is
   replacing — that one used to survive live and unreachable for 7 days. See
   CLAUDE.md §Sessions.
-- **Credential rotation.** The Supabase password was exposed in a transcript on
-  2026-07-30. The Xaman credentials still need rotating, which is also the only
-  thing that clears the exhausted payload quota.
+- ~~**Credential rotation.**~~ **Done 2026-08-02.** Both exposed secrets are
+  rotated and verified: Xaman (which also cleared the exhausted payload quota —
+  `POST /auth/signin` returns 201 `mode: live` on local and production) and the
+  Supabase password exposed in a transcript on 2026-07-30.
+
+  **Rotating a database credential requires SUSPENDING the service first, and
+  this is not optional.** Render keeps the old container running until the new
+  one is healthy — correct for zero-downtime, exactly wrong when the credential
+  itself is what changed. The old container kept authenticating with the dead
+  password roughly four times a minute (the settlement sweep runs every 15s
+  *inside* the process), which permanently re-tripped Supabase's pooler circuit
+  breaker: `FATAL: (ECIRCUITBREAKER) too many authentication failures`. Two
+  deploys failed on that alone, with a correct password and a correct connection
+  string. The only sequence that works is **suspend → wait ~10 min for the
+  breaker → resume**. Verify the credential with a direct `psql` connection
+  before resuming, rather than spending a deploy cycle finding out.
+
+  Two other traps hit on the way: Render's value box must hold the bare string
+  (no `DATABASE_URL=` prefix, no quotes, or Prisma reports P1012 "must start with
+  the protocol"), and `SUPABASE_URL` is the Storage endpoint — unrelated to the
+  password, and breaking it only shows up as 503s on poster upload.
 - **No `--warning` design token.** The bid headroom notice borrows `destructive`
   at lower emphasis. Fine once; do not let it spread.
 - **Single broker key.** `PLATFORM_SEED` cannot move anyone's ticket, but it is
