@@ -1,5 +1,11 @@
 # HubWorld
 
+This file records what HubWorld **is** and why each decision was made.
+**`ROADMAP.md` records what to do next, in what order, and what would be a
+mistake** — including the Xaman quota and vendor-concentration risk, the
+minting ceiling as a market segment rather than a defect, and the two changes
+that would end the product.
+
 ## Stack
 
 TypeScript end-to-end.
