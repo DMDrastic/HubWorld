@@ -610,6 +610,30 @@ React → GET /auth/signin/:uuid (every 2s) → Express → Xaman: payload statu
 React ← authenticated + token             ←
 ```
 
+### On a phone, the QR is replaced by a deep link
+
+A QR is an instruction to a SECOND device, so on a phone it is a dead end — you
+cannot scan the screen you are reading. Xaman returns a universal link alongside
+every QR (`body.next.always`, surfaced as `next` on all seven signing endpoints),
+and `QrCode` renders it instead of the code below the `sm` breakpoint.
+
+**`DoorPanel` deliberately passes no `next`, and that must not be "fixed".** The
+door inverts the assumption every other flow makes: its payload is signed by the
+ATTENDEE while the code is displayed on the STAFF device for their phone to scan.
+A door volunteer holds a phone, so a link there opens Xaman on the staff device
+and has the wrong person sign — admitting nobody, or the wrong person if that
+volunteer happens to hold a ticket for the event.
+
+Stub mode gets no link either: it returns `hubworld-stub://sign/<uuid>`, which
+opens nothing.
+
+**The round trip is verified on real hardware** (iPhone 12, Safari, 2026-08-02):
+tapping through to Xaman, signing, and returning to the browser completes the
+sign-in. That is not a given — the poll lives on the page, so the tab has to
+survive being backgrounded for the signature to be noticed. The link therefore
+opens in the SAME tab; `target="_blank"` would background the page holding the
+poll behind Xaman's return, and `QrCode.test.tsx` pins that.
+
 Signing a `SignIn` payload is what proves wallet ownership — it is the only
 trustworthy way to bind an @handle to an r-address. A wallet with no account
 resolves to `needs_username`, and `POST /auth/claim` mints the `User`.
