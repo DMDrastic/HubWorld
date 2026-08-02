@@ -142,7 +142,13 @@ export function BidForm({
         )}
         {(bid === null || bid.state === 'pending') && (
           <>
-            <QrCode src={phase.payload.qrPng} alt="Xaman bid QR code" className="size-40" />
+            <QrCode
+              src={phase.payload.qrPng}
+              alt="Xaman bid QR code"
+              className="size-40"
+              next={phase.payload.next}
+              mode={phase.payload.mode}
+            />
             <p className="text-muted-foreground text-center text-sm">{MESSAGES.pending}</p>
           </>
         )}

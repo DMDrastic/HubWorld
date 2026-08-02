@@ -297,6 +297,16 @@ export function DoorPanel() {
           <div className="flex flex-col items-center gap-3">
             {(!result || result.state === 'pending') && (
               <>
+                {/* DELIBERATELY NO `next`, and this must stay that way.
+                    
+                    Everywhere else in the app the QR is for the device showing
+                    it, so on a phone a deep link is strictly better. The door is
+                    the exact opposite: this payload is signed by the ATTENDEE,
+                    and the code is displayed on the STAFF device for their phone
+                    to scan. A door volunteer is holding a phone, so offering the
+                    link here would open Xaman on the STAFF's device and have the
+                    wrong person sign — admitting nobody at best, and the wrong
+                    person if that volunteer happens to hold a ticket. */}
                 <QrCode src={phase.payload.qrPng} alt="Check-in QR code" className="size-48" />
                 <p className="text-muted-foreground text-center text-sm">
                   Ask them to scan this and sign.

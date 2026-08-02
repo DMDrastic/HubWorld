@@ -379,7 +379,12 @@ export function SellPanel({ onChanged }: { onChanged: () => void }) {
             {phase.payload !== null &&
               (listing === null || NEEDS_SIGNATURE.has(listing.state)) && (
                 <>
-                  <QrCode src={phase.payload.qrPng} alt="Xaman signing QR code" />
+                  <QrCode
+                    src={phase.payload.qrPng}
+                    alt="Xaman signing QR code"
+                    next={phase.payload.next}
+                    mode={phase.payload.mode}
+                  />
                   <p className="text-muted-foreground text-center text-sm">
                     Scan in Xaman to sign.
                   </p>

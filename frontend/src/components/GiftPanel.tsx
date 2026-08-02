@@ -352,7 +352,12 @@ export function GiftPanel({ onChanged }: { onChanged: () => void }) {
 
             {phase.payload !== null && (giftState === null || NEEDS_SIGNATURE.has(giftState.state)) && (
               <>
-                <QrCode src={phase.payload!.qrPng} alt="Xaman signing QR code" />
+                <QrCode
+                  src={phase.payload!.qrPng}
+                  alt="Xaman signing QR code"
+                  next={phase.payload!.next}
+                  mode={phase.payload!.mode}
+                />
                 <p className="text-muted-foreground text-center text-sm">
                   Scan in Xaman to sign.
                 </p>

@@ -191,7 +191,12 @@ export function MintPanel({
 
         {phase.kind === 'awaiting' && (
           <div className="flex flex-col items-center gap-3">
-            <QrCode src={phase.payload.qrPng} alt="Xaman mint QR code" />
+            <QrCode
+              src={phase.payload.qrPng}
+              alt="Xaman mint QR code"
+              next={phase.payload.next}
+              mode={phase.payload.mode}
+            />
             <p className="text-muted-foreground text-center text-sm">
               {phase.signed
                 ? 'Signed — waiting for the ledger to validate…'

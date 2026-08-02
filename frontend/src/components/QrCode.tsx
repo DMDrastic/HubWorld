@@ -1,16 +1,47 @@
 /**
- * A Xaman QR code, on a plate that keeps it scannable.
+ * How a signature is requested — a QR to scan, a deep link to tap, or both.
  *
- * Every signing flow in the app renders one of these, and each one used to sit
- * directly on the card with a hairline border. That is fine on a light surface
- * and a problem on a dark one: a scanner needs dark-on-light contrast and a
- * clear margin — the "quiet zone" — around the symbol. A code flush against a
- * dark card can simply fail to read, and the failure looks like Xaman being
- * broken rather than like a styling bug.
+ * The plate under the QR is white in BOTH themes, deliberately. A scanner needs
+ * dark-on-light contrast and a clear margin (the "quiet zone"), and a code flush
+ * against a dark card can simply fail to read — a failure that looks like Xaman
+ * being broken rather than like a styling bug. It is one of the few places in the
+ * app that ignores the palette, because the constraint belongs to the scanner
+ * rather than to the design.
  *
- * So the plate is white in BOTH themes, deliberately. It is one of the few
- * places in the app that ignores the palette, because the constraint here is
- * an optical one belonging to the scanner, not a design choice.
+ * ---------------------------------------------------------------------------
+ * THE MOBILE PROBLEM, WHICH THIS EXISTS TO SOLVE
+ *
+ * A QR is an instruction to a SECOND device. On a desktop that is exactly right:
+ * the phone holding the keys scans the screen. On a phone it is a dead end — you
+ * cannot scan the screen you are reading, and until this component was given
+ * `next`, every signing flow in the app did precisely that. Sign-in, minting,
+ * gifting, listing, buying, bidding and door check-in were all unusable on a
+ * phone, which is the device most attendees actually hold.
+ *
+ * Xaman returns both forms for every payload, and the backend has always passed
+ * the deep link through as `next` (`body.next.always`). The frontend simply
+ * dropped it. So:
+ *
+ *   - narrow screens get the LINK, and no QR. An unscannable QR is not a
+ *     fallback, it is noise that makes the screen look broken.
+ *   - wider screens get the QR, with the link offered quietly underneath —
+ *     useful when someone happens to be browsing on the phone that will sign.
+ *
+ * Chosen with CSS rather than by sniffing the user agent: the question is "is
+ * there room for a QR", which is what a media query actually answers, and it
+ * stays correct in a resized window or a split view.
+ *
+ * THE ONE PLACE THAT MUST NOT PASS `next`: the door.
+ *
+ * All of the above assumes the QR is for the device SHOWING it — true for
+ * sign-in, minting, gifting, listing, buying and bidding, where you are the one
+ * signing. Door check-in inverts that: the payload is signed by the ATTENDEE and
+ * the code is displayed on the STAFF device for their phone to scan. A door
+ * volunteer is holding a phone, so a link there would open Xaman on the STAFF's
+ * device and have the wrong person sign. `DoorPanel` therefore passes no `next`
+ * and says why at the call site. Leaving `next` optional is what makes that
+ * refusal expressible.
+ * ---------------------------------------------------------------------------
  */
 import { cn } from '@/lib/utils'
 
@@ -18,15 +49,50 @@ export function QrCode({
   src,
   alt,
   className,
+  next,
+  mode,
 }: {
   src: string
   alt: string
   /** Sizing for the image itself, e.g. `size-44`. The plate follows it. */
   className?: string
+  /**
+   * Xaman's universal deep link for this payload. Omit it and the component
+   * behaves exactly as before — QR only, at every width.
+   */
+  next?: string
+  /**
+   * Stub mode returns `hubworld-stub://sign/<uuid>`, which opens nothing. A
+   * button that visibly does nothing is worse than no button, so the link is
+   * withheld unless we are talking to real Xaman.
+   */
+  mode?: 'live' | 'stub'
 }) {
+  const deepLink = mode === 'stub' ? undefined : next
+
   return (
-    <div className="rounded-xl bg-white p-3">
-      <img src={src} alt={alt} className={cn('size-44 rounded-md', className)} />
+    <div className="flex flex-col items-center gap-3">
+      {/* Hidden below `sm` when there is a link to tap instead — see above. */}
+      <div className={cn('rounded-xl bg-white p-3', deepLink && 'hidden sm:block')}>
+        <img src={src} alt={alt} className={cn('size-44 rounded-md', className)} />
+      </div>
+
+      {deepLink && (
+        <a
+          href={deepLink}
+          // Xaman leaves the browser to sign. Same tab, because the polling loop
+          // lives on this page and must be the thing still running to notice the
+          // signature when the user comes back.
+          className={cn(
+            'bg-primary text-primary-foreground inline-flex items-center justify-center rounded-xl px-4 py-2.5 text-sm font-medium transition-opacity hover:opacity-90',
+            // The primary action on a phone; a quiet secondary offer on desktop,
+            // where the QR is the better route.
+            'w-full sm:w-auto sm:bg-transparent sm:px-0 sm:py-0 sm:text-xs sm:font-normal sm:text-muted-foreground sm:underline sm:underline-offset-4 sm:hover:text-foreground',
+          )}
+        >
+          Open in Xaman
+        </a>
+      )}
     </div>
   )
 }

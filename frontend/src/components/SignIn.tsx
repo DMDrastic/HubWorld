@@ -140,7 +140,12 @@ export function SignIn({ onAuthenticated }: { onAuthenticated: (u: AuthUser) => 
 
         {phase.kind === 'awaiting' && (
           <div className="flex flex-col items-center gap-3">
-            <QrCode src={phase.payload.qrPng} alt="Xaman sign-in QR code" />
+            <QrCode
+              src={phase.payload.qrPng}
+              alt="Xaman sign-in QR code"
+              next={phase.payload.next}
+              mode={phase.payload.mode}
+            />
             <p className="text-muted-foreground flex items-center gap-2 text-center text-sm">
               <span className="relative flex size-1.5">
                 <span className="bg-primary absolute inline-flex size-full animate-ping rounded-full opacity-70" />
