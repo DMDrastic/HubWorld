@@ -20,6 +20,7 @@ import { prisma } from './prisma.js'
 import { brokerCancelOffers, brokerSale, platformFeeDrops, spendableDrops } from './ledger.js'
 import { publishAuctionEvent } from './realtime.js'
 import { withLock } from './job-lock.js'
+import { classifyResult, describeResult } from './tx-result.js'
 
 /** Bid statuses backed by a live buy offer on-ledger. */
 export const COMMITTED_BID_STATUSES = ['COMMITTED', 'OUTBID'] as const
@@ -197,6 +198,26 @@ export async function settleAuction(auctionId: string): Promise<SettlementOutcom
     if (result === null) return { kind: 'broker-busy' }
 
     if (!result.succeeded) {
+      const kind = classifyResult(result.result)
+
+      // ONLY a genuine payer fault justifies demoting this bidder.
+      //
+      // Every failure used to land here, which meant a problem on OUR side —
+      // offers naming different brokers, an unfunded broker account, a
+      // malformed transaction — would march down the bid list marking one
+      // innocent bidder LOST after another until the auction had none left.
+      // Each of those is a real person who bid in good faith and can pay.
+      if (kind !== 'counterparty') {
+        console.error(
+          `[settlement] auction ${auction.id}: NOT demoting bid ${bid.id} — ` +
+            `${describeResult(result.result)}. Leaving the auction for the next sweep.`,
+        )
+        // No bid is touched, so nothing good is thrown away. The auction keeps
+        // its state and retries once the underlying problem is fixed, which is
+        // the same shape as `broker-busy` above.
+        return { kind: 'failed', reason: `Settlement blocked: ${describeResult(result.result)}` }
+      }
+
       // This bidder cannot pay after all. Demote and fall through to the next —
       // an auction with a flaky top bidder should still sell to the runner-up.
       await prisma.bid.update({
@@ -204,7 +225,7 @@ export async function settleAuction(auctionId: string): Promise<SettlementOutcom
         data: {
           status: 'LOST',
           buyTxHash: result.hash,
-          failureReason: `Settlement failed: ${result.result}`,
+          failureReason: `Settlement failed: ${describeResult(result.result)}`,
         },
       })
       continue

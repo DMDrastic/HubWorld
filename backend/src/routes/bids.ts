@@ -164,6 +164,14 @@ bidsRouter.post('/auctions/:id/bid', requireAuth, async (req, res) => {
     }
   }
 
+  // A bid must name the SAME broker as the auction's sell offer, or settlement
+  // has two offers no single account can match. That offer was created when the
+  // auction opened, possibly under a different platform key.
+  const auctionListing = await prisma.listing.findFirst({
+    where: { auctionId: auction.id },
+    select: { brokerAddress: true },
+  })
+
   let txjson
   try {
     txjson = buildBuyOfferTx({
@@ -171,7 +179,7 @@ bidsRouter.post('/auctions/:id/bid', requireAuth, async (req, res) => {
       ownerAddress: auction.ticket.ownerAddress,
       nfTokenId: auction.ticket.nfTokenId,
       amountDrops,
-      brokerAddress: platformAddress(),
+      brokerAddress: auctionListing?.brokerAddress ?? platformAddress(),
     })
   } catch (err) {
     res.status(400).json({ error: err instanceof Error ? err.message : 'Could not build the bid' })

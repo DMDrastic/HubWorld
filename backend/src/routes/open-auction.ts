@@ -157,6 +157,9 @@ openAuctionRouter.post('/tickets/:nfTokenId/auction', requireAuth, async (req, r
   }
 
   const platformBps = ticket.event.platformBps
+  // Recorded on the Listing below: only this account can settle these offers.
+  const brokerAddress = platformAddress()
+
   let sellAmount: bigint
   let txjson
   try {
@@ -167,7 +170,7 @@ openAuctionRouter.post('/tickets/:nfTokenId/auction', requireAuth, async (req, r
       ownerAddress: me.xrplAddress,
       nfTokenId,
       amountDrops: sellAmount,
-      brokerAddress: platformAddress(),
+      brokerAddress,
     })
   } catch (err) {
     res.status(400).json({ error: err instanceof Error ? err.message : 'Could not open the auction' })
@@ -204,6 +207,7 @@ openAuctionRouter.post('/tickets/:nfTokenId/auction', requireAuth, async (req, r
         ticketId: ticket.id,
         sellerId: me.id,
         sellerAddress: me.xrplAddress,
+        brokerAddress,
         priceDrops: sellAmount,
         platformFeeDrops: platformFeeDrops(reserveDrops, platformBps),
         listPayloadUuid: payload.uuid,

@@ -460,6 +460,74 @@ Minting and offer creation both sustain ~20/s: 1,000 mints in 52s, 1,000 offer
 transactions in 48s, buyer accepts at 15–26/s. Speed was never the problem —
 reserve and permissions are.
 
+## 5b-iii. `NFTokenMinter` — the same ceiling lifted, available TODAY, at a price
+
+Measured on **testnet** 2026-08-02 (`scripts/authorized-minter-spike.ts`), which
+is the point: `NFTokenMinter` has existed since the original NFT amendment, so
+unlike `PermissionDelegationV1_1` it works on **mainnet right now**.
+
+| | Result |
+| --- | --- |
+| `AccountSet` authorising Hubworld as minter | `tesSUCCESS` **on testnet** |
+| Hubworld mints with `Issuer` = organizer | `tesSUCCESS` |
+| **Issuer on the resulting NFT** | **the ORGANIZER**, `TransferFee` 5% intact |
+| **Who holds the ticket** | **HUBWORLD** — 1 in ours, 0 in theirs |
+| Hubworld sends a `Payment` as the organizer | `tefBAD_AUTH` |
+| Hubworld mints with `Account` = organizer | `tefBAD_AUTH` |
+| Revocation via `ClearFlag` | works — next mint `tecNO_PERMISSION` |
+
+The permission is **narrower than delegation**: it authorises exactly one thing,
+minting-as-issuer, and nothing else even resembles working.
+
+### The price: it is a custody model
+
+The minted ticket lands in **Hubworld's** account, not the organizer's. So
+Hubworld holds the unsold inventory, and because the seller receives the
+proceeds, **Hubworld receives the primary sale money too**. That is the
+merchant-of-record role, and it is exactly the funds-custody position `CLAUDE.md`
+says brokered mode exists to avoid.
+
+There is no clever way around it. Handing the tickets to the organizer after
+minting costs a signature per ticket from them, which is the bottleneck we were
+removing.
+
+### So the fork is now clean
+
+| | `NFTokenMinter` | `PermissionDelegation` |
+| --- | --- | --- |
+| **Available** | **mainnet, today** | devnet only |
+| Organizer signatures | 1 | 1 |
+| Royalty to organizer | yes | yes |
+| Who holds unsold tickets | **Hubworld** | organizer |
+| Who receives primary proceeds | **Hubworld** | organizer |
+| Extra permission to sell | none needed | `NFTokenCreateOffer` — can give tickets away |
+| Reserve for open offers | Hubworld's problem | organizer's, ~200 XRP per 1,000 |
+| Permission breadth | very narrow | mint is narrow, selling is not |
+
+**Neither is free.** One asks Hubworld to hold inventory and money; the other
+asks the organizer to let Hubworld move tickets out of their wallet, and is not
+shippable yet.
+
+### Recommendation
+
+**Decide this as a business question, not a technical one**, because the
+technical work is comparable either way:
+
+- If Hubworld is willing to be **merchant of record** for primary sale — holding
+  funds, remitting to organizers, with the chargeback and KYC posture that
+  implies — then `NFTokenMinter` lifts the ceiling **today** and needs no
+  amendment. Resale still works exactly as now, with the organizer's royalty
+  intact, because they remain the issuer.
+- If **"funds never rest with Hubworld" is non-negotiable**, wait for
+  `PermissionDelegationV1_1`, and treat the selling grant as a separate,
+  time-boxed, plainly-worded permission with revocation surfaced in the UI.
+
+Worth noting the asymmetry in what can go wrong. Under `NFTokenMinter`, Hubworld
+holds tickets **it minted itself** and the organizer never possessed. Under
+offer-delegation, Hubworld can take tickets **out of the organizer's wallet**.
+Per-permission, `NFTokenMinter` is the safer grant; it is the resulting custody,
+not the permission, that is the objection.
+
 ## 5c. Onboarding: stablecoins work, but they solve the smaller problem
 
 The worry is that asking a normal person to install Xaman, keep a seed phrase

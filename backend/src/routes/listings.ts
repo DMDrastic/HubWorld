@@ -186,13 +186,17 @@ listingsRouter.post('/tickets/:nfTokenId/list', requireAuth, async (req, res) =>
 
   const fee = platformFeeDrops(priceDrops, ticket.event.platformBps)
 
+  // Resolved ONCE and recorded on the Listing, because this address is baked
+  // into the offer's `Destination` and only this account can ever settle it.
+  const brokerAddress = platformAddress()
+
   let txjson
   try {
     txjson = buildSellOfferTx({
       ownerAddress: me.xrplAddress,
       nfTokenId,
       amountDrops: priceDrops,
-      brokerAddress: platformAddress(),
+      brokerAddress,
     })
   } catch (err) {
     res.status(400).json({ error: err instanceof Error ? err.message : 'Could not build listing' })
@@ -212,6 +216,7 @@ listingsRouter.post('/tickets/:nfTokenId/list', requireAuth, async (req, res) =>
       ticketId: ticket.id,
       sellerId: me.id,
       sellerAddress: me.xrplAddress,
+      brokerAddress,
       priceDrops,
       // Frozen at listing time: changing platformBps later must not alter the
       // terms a buyer has already been shown.
@@ -321,7 +326,11 @@ listingsRouter.post('/listings/:id/buy', requireAuth, async (req, res) => {
         .nfTokenId,
       // The ledger requires buy >= sell + brokerFee.
       amountDrops: listing.priceDrops + listing.platformFeeDrops,
-      brokerAddress: platformAddress(),
+      // The LISTING's broker, not whatever is configured now. Both offers must
+      // name the same `Destination` or the pair can never be brokered — and if
+      // the platform key has rotated since the seller listed, "now" is a
+      // different account from the one their offer already names.
+      brokerAddress: listing.brokerAddress ?? platformAddress(),
     })
   } catch (err) {
     res.status(400).json({ error: err instanceof Error ? err.message : 'Could not build bid' })

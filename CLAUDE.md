@@ -835,6 +835,26 @@ broker account must stay funded or sales stop settling.
 `platformBps` later cannot alter terms a buyer has already been shown. Fee
 arithmetic floors, so rounding never favours the platform.
 
+**`Listing.brokerAddress` is frozen for a harder reason.** Both offers carry
+`Destination` = the broker, so ONLY that account can ever match them. Resolving
+the broker globally at each step is correct only while `PLATFORM_SEED` has never
+changed — the moment it rotates, a buyer's offer names the new account while the
+seller's already names the old one. Both transactions still succeed; the pair
+simply becomes unsettleable, and nothing records which key it needed. So the
+address is snapshotted on the Listing and every later step reads it from there,
+including auction bids, which must match the sell offer created when the auction
+opened.
+
+Rows written before that column carry null and fall back to the current address.
+**Run `npm run broker:backfill` (dry run; `-- --apply` to write) before ANY
+platform key rotation** — rotating first makes the fallback wrong and the answer
+is not recoverable from our own data.
+
+The column is also the prerequisite for ever having more than one broker. Every
+sale platform-wide is serialised behind the broker's single sequence, so one
+stuck transaction halts all of them; sharding is impossible while offers do not
+record which broker they name.
+
 ## Check-in at the door
 
 `src/routes/redemption.ts`. This is what makes an NFT a ticket rather than a
