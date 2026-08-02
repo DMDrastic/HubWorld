@@ -7,6 +7,7 @@
  * is why the backend checks spendable balance before issuing the payload.
  */
 import { useEffect, useState } from 'react'
+import { AlertTriangle } from 'lucide-react'
 import { QrCode } from '@/components/QrCode'
 import {
   ApiError,
@@ -115,6 +116,30 @@ export function BidForm({
         <div className="text-sm font-medium">
           Bidding {dropsToXrp(phase.payload.amountDrops)} XRP
         </div>
+        {/*
+          Shown BEFORE the QR, because the only useful moment for this is while
+          the bid can still be changed. Funds are not locked, so a bid with
+          almost nothing behind it is one ordinary payment away from failing at
+          settlement — at which point the auction goes to the runner-up and the
+          bidder is told nothing beyond having lost.
+        */}
+        {phase.payload.tight && phase.payload.afterBidDrops !== undefined && (
+          <p
+            role="status"
+            className="border-destructive/40 bg-destructive/10 text-destructive flex items-start gap-2 rounded-md border px-3 py-2 text-left text-xs"
+          >
+            {/* There is no warning tone in the system, so this borrows the
+                destructive one at lower emphasis. The icon is not decoration:
+                the same reasoning as the door verdicts, that meaning should not
+                rest on hue alone. */}
+            <AlertTriangle className="mt-px size-4 shrink-0" aria-hidden="true" />
+            <span>
+              This leaves {dropsToXrp(phase.payload.afterBidDrops)} XRP spendable. Your bid
+              is not held in escrow, so if your balance falls below it before the auction
+              closes, the sale cannot settle and the ticket goes to the next bidder.
+            </span>
+          </p>
+        )}
         {(bid === null || bid.state === 'pending') && (
           <>
             <QrCode src={phase.payload.qrPng} alt="Xaman bid QR code" className="size-40" />

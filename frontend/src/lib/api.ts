@@ -544,6 +544,11 @@ export const BidCreatedSchema = z.object({
   qrPng: z.string(),
   mode: z.enum(['live', 'stub']),
   amountDrops: z.string(),
+  // What the bid leaves spendable, once the reserve its own offer locks is
+  // accounted for. Both optional: when the ledger could not be read the server
+  // omits them, and "we do not know" must not render as "you have nothing left".
+  afterBidDrops: z.string().optional(),
+  tight: z.boolean().optional(),
 })
 
 export const BidStateSchema = z.object({

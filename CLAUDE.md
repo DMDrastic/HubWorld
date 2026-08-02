@@ -188,6 +188,21 @@ money after bidding and settlement then fails with `tecINSUFFICIENT_FUNDS`. So
 settlement, falling back to the next-highest bid. Note that spendable is *not*
 the balance — reserves are withheld per owned object (`spendableFrom`).
 
+**The bid must also pay for its own offer.** An `NFTokenCreateOffer` is an owned
+object, so placing the bid raises the bidder's reserve by one increment (0.2 XRP)
+and spendable *drops the moment the bid exists*. A bid of exactly the current
+spendable balance is therefore not merely tight, it is arithmetically guaranteed
+to be unsettleable — short by exactly the increment when settlement reads the
+balance. `spendable < amount` accepted precisely that bid; `bidHeadroom` is the
+rule that does not, and `spendable.test.ts` pins the boundary.
+
+Above that floor it is the bidder's money and their call, so leaving little
+behind is a **warning, not a refusal**: under a tenth of the bid remaining is
+reported as `tight` on the 201 and shown on the signing screen, before the QR is
+scanned, since that is the last moment the bid can still be changed. Both fields
+are omitted when the ledger could not be read — "we do not know" must not render
+as "you have nothing left".
+
 The compensating benefit is real: losing costs nothing, needs no refund, and
 requires no transaction from the loser. The originally planned "cancellation
 reaper" is not needed.

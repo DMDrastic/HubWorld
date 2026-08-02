@@ -300,6 +300,20 @@ export async function brokerSale(params: {
  * from the ledger rather than hardcoded.
  */
 export async function spendableDrops(address: string): Promise<bigint> {
+  return (await accountFunding(address)).spendableDrops
+}
+
+/**
+ * Spendable balance AND the per-object reserve increment, in one round trip.
+ *
+ * The increment matters to anything deciding whether a bid can be honoured,
+ * because placing the buy offer is itself an owned object — see `bidHeadroom`.
+ * Split out rather than folded into `spendableDrops` so existing callers that
+ * only want the balance keep their simpler signature.
+ */
+export async function accountFunding(
+  address: string,
+): Promise<{ spendableDrops: bigint; reserveIncDrops: bigint }> {
   const c = await ledger()
 
   const [info, state] = await Promise.all([
@@ -309,14 +323,19 @@ export async function spendableDrops(address: string): Promise<bigint> {
 
   const v = state.result.info.validated_ledger
 
-  return spendableFrom({
-    balanceDrops: BigInt(info.result.account_data.Balance),
-    ownerCount: info.result.account_data.OwnerCount ?? 0,
-    // server_info reports reserves in XRP. Defaults match the current network
-    // values but are only a fallback — the ledger is the authority.
-    reserveBaseXrp: v?.reserve_base_xrp ?? 1,
-    reserveIncXrp: v?.reserve_inc_xrp ?? 0.2,
-  })
+  // server_info reports reserves in XRP. Defaults match the current network
+  // values but are only a fallback — the ledger is the authority.
+  const reserveIncXrp = v?.reserve_inc_xrp ?? 0.2
+
+  return {
+    spendableDrops: spendableFrom({
+      balanceDrops: BigInt(info.result.account_data.Balance),
+      ownerCount: info.result.account_data.OwnerCount ?? 0,
+      reserveBaseXrp: v?.reserve_base_xrp ?? 1,
+      reserveIncXrp,
+    }),
+    reserveIncDrops: BigInt(Math.round(reserveIncXrp * 1_000_000)),
+  }
 }
 
 /**
@@ -338,6 +357,40 @@ export function spendableFrom(params: {
     toDrops(params.reserveBaseXrp) + BigInt(params.ownerCount) * toDrops(params.reserveIncXrp)
   const spendable = params.balanceDrops - reserve
   return spendable > 0n ? spendable : 0n
+}
+
+/**
+ * What a bid leaves behind, and whether it can survive to settlement.
+ *
+ * Two things make this more than `spendable >= amount`:
+ *
+ * 1. **The offer pays for itself.** An `NFTokenCreateOffer` is an owned object,
+ *    so creating it raises the account's reserve by one increment and spendable
+ *    DROPS the moment the bid exists. A bid of exactly the current spendable
+ *    balance is therefore not merely tight, it is arithmetically guaranteed to
+ *    be unsettleable: by the time settlement reads the balance it is short by
+ *    the increment. Checking `spendable < amount` accepted exactly that bid.
+ * 2. **Funds are not locked.** Nothing stops the bidder spending afterwards, and
+ *    settlement re-reads spendable and falls through to the runner-up. So a bid
+ *    that only just fits is a bid one coffee away from losing an auction it won.
+ *
+ * `tight` is a warning, never a refusal — it is the bidder's money and their
+ * call. The threshold is a tenth of the bid: below that, an ordinary movement in
+ * their balance is enough to break the commitment.
+ */
+export function bidHeadroom(params: {
+  spendableDrops: bigint
+  reserveIncDrops: bigint
+  amountDrops: bigint
+}): { affordable: boolean; afterBidDrops: bigint; tight: boolean } {
+  // What remains once the bid AND the reserve its own offer locks are accounted.
+  const afterBidDrops = params.spendableDrops - params.reserveIncDrops - params.amountDrops
+  const affordable = afterBidDrops >= 0n
+  return {
+    affordable,
+    afterBidDrops,
+    tight: affordable && afterBidDrops * 10n < params.amountDrops,
+  }
 }
 
 // ------------------------------------------------------------------ gifting --
