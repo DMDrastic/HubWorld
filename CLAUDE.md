@@ -585,6 +585,17 @@ What code can do is spend the quota more slowly, which is now done:
 - `POST /auth/signin` **reuses an outstanding unsigned sign-in** rather than
   minting one per click, tracked by a short-lived `hubworld_signin` cookie. Six
   clicks used to cost six payloads.
+
+  **Reuse is confirmed against Xaman, never against our own row.**
+  `SignInRequest.status` only becomes `SIGNED` when a poll observes it, so
+  signing and then closing the tab left it reading `PENDING` — and the next
+  attempt handed back a payload Xaman had already resolved and would refuse.
+  Sign-in then stayed broken until the TTL expired, which made switching between
+  accounts fail every time. Only positive evidence that a payload is still
+  unsigned permits reuse; signed, cancelled, expired, unknown, or a 429 all mint
+  a fresh one. Spending one more slot is bounded; handing back a dead payload is
+  a sign-in the user can neither complete nor diagnose. Reading a payload does
+  not consume quota — only creating one does.
 - `SIGNIN_TTL_MINUTES` is **3**, not 10. A QR is scanned within a minute or
   abandoned, so a long TTL bought nothing.
 - `cancelAbandonedPayloads` still runs on the sweep as hygiene — an abandoned
