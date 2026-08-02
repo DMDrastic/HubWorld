@@ -196,6 +196,24 @@ export default function App() {
   // ended nothing is reported rather than shown as success, because that is the
   // symptom of a cookie belonging to someone other than the account on screen.
   const handleSignOut = useCallback(async () => {
+    // Cleared BEFORE the request, not after it.
+    //
+    // This used to sit in a `finally`, so the view stayed signed in for the
+    // whole round trip. The nav kept offering Organize, Tickets, Market and
+    // Door, and a quick click in that window rendered a privileged screen to
+    // someone who had just signed out. The server refused every call it made,
+    // but refusal is not the standard this app holds itself to: those surfaces
+    // are ABSENT for people who cannot use them, because a visible control
+    // advertises a capability and invites someone to probe the endpoint behind
+    // it. A signed-out organizer briefly seeing the organizer screen is the
+    // same defect as showing it to a regular user.
+    //
+    // Clearing first also fails in the safe direction. The worst case is
+    // showing signed-out UI while a session is momentarily still live on the
+    // server — which is precisely what `revoked` reports below — rather than
+    // showing signed-in UI for a session that is already gone.
+    setMe(null)
+
     try {
       const { revoked } = await signOut()
       setError(
@@ -205,8 +223,6 @@ export default function App() {
       setError(
         err instanceof ApiError ? `Sign-out failed: ${err.message}` : 'Sign-out could not reach the backend.',
       )
-    } finally {
-      setMe(null)
     }
   }, [])
 
