@@ -14,6 +14,13 @@
  */
 import { prisma } from '../src/prisma.js'
 import { accountNfts, disconnectLedger, ledger } from '../src/ledger.js'
+import {
+  WATCHED,
+  classifyAmendment,
+  describeAmendment,
+  isNewsworthy,
+  readLedgerAmendments,
+} from '../src/amendments.js'
 
 const APPLY = process.argv.includes('--apply')
 
@@ -177,6 +184,29 @@ async function main() {
     }
   }
 
+  // ---- amendments we are waiting on -------------------------------------
+  //
+  // Not drift, so it does not write anything even under --apply. It is reported
+  // here because this is the job already run against the ledger, and the event
+  // worth catching — an amendment gaining majority, which starts a two-week
+  // clock — otherwise goes unnoticed until somebody checks by hand.
+  let amendmentLines: string[] = []
+  try {
+    const state = await readLedgerAmendments()
+    for (const a of WATCHED) {
+      const status = classifyAmendment(a.id, state)
+      amendmentLines.push(`  ${describeAmendment(a.name, status)}`)
+      amendmentLines.push(`      ${a.why}`)
+      // Only a change of state is a finding. `pending` is the steady state and
+      // reporting it every run trains people to skim the output.
+      if (isNewsworthy(status)) {
+        note('amendment', describeAmendment(a.name, status))
+      }
+    }
+  } catch (err) {
+    amendmentLines.push(`  could not read amendments: ${(err as Error).message.slice(0, 80)}`)
+  }
+
   // ---- report -----------------------------------------------------------
   console.log(APPLY ? 'ledger sync — APPLYING\n' : 'ledger sync — dry run (use --apply to fix)\n')
 
@@ -194,6 +224,12 @@ async function main() {
       for (const f of list) console.log(`  ${f.fixed ? '[fixed]' : '[found]'} ${f.detail}`)
       console.log()
     }
+  }
+
+  if (amendmentLines.length > 0) {
+    console.log('amendments being watched')
+    for (const line of amendmentLines) console.log(line)
+    console.log()
   }
 
   const fixed = findings.filter((f) => f.fixed).length
