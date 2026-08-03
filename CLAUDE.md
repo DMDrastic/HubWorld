@@ -153,6 +153,56 @@ npm run test:watch
 
 ## Tests
 
+### End-to-end: Playwright, in `frontend/e2e`
+
+```sh
+npm run e2e          # frontend/ — starts its own stack
+npm run e2e:ui       # pick and watch individual specs
+```
+
+**Deliberately NOT part of `npm test`.** Vitest globs `src/**/*.test.tsx`, so the
+fast loop stays fast and unaffected.
+
+These exist only for what jsdom structurally cannot answer, not to restate unit
+coverage:
+
+- **Viewport.** Whether the QR is actually GONE below the `sm` breakpoint is a
+  question about layout in a browser. jsdom has no viewport, so the mobile
+  deep-link work had to be checked by hand on a phone.
+- **The SPA fallback.** Loading `/tickets` directly and refreshing is a
+  documented deploy hazard that nothing tested; it is a fact about a server
+  answering an HTTP request, and jsdom never makes one.
+- **Cookies** (`httpOnly`, `SameSite=Lax`) and **timing** — the sign-out bug
+  lived in the window of a network round trip.
+
+**Playwright rather than Cypress** because device emulation is the actual gap:
+real device descriptors, touch and device pixel ratio. `cy.viewport()` is
+CSS-only, which is precisely the fidelity we would have been buying it for.
+
+**The backend runs in STUB MODE, on its own ports (4100/5273).** Stub mode is
+what makes signing flows testable without a phone, and it means the suite costs
+NOTHING against the Xaman payload quota. Its own ports mean a run cannot fight
+the dev servers or — worse — quietly pass against a LIVE-mode backend that was
+already running, where the stub endpoints 404.
+
+Two traps worth knowing, both already paid for:
+
+- **`XAMAN_API_KEY=''` does not select stub mode; it stops the server booting.**
+  The schema is `.min(1).optional()`, so empty is present-but-invalid and env
+  parsing exits. Credentials are excluded instead by pointing
+  `DOTENV_CONFIG_PATH` at a file that does not exist, so `dotenv/config` loads
+  nothing and `playwright.config.ts` supplies the whole environment.
+- **Playwright matches accessible names by SUBSTRING.** `name: 'Hub'` matches the
+  "HubWorld" brand link, and `name: 'Events'` matches EventList's "All events"
+  heading — which only appears when no auction is live, so a loose match passes
+  or fails depending on whether a demo auction happened to be running. Use
+  `exact: true`.
+
+Because stub mode withholds the deep link on purpose, the two device specs
+intercept the sign-in response and hand back a LIVE payload. The component, CSS,
+browser and viewport are all real; only the response is faked.
+
+
 **Vitest**, installed separately in each folder (no workspace). Backend tests
 live in `tests/` and are typechecked by `tsconfig.test.json` — the build's
 `rootDir` is `src`, so without that second config they would never be checked.
