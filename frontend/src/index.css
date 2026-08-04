@@ -279,3 +279,53 @@
     transition-duration: 0.01ms !important;
     }
 }
+
+/* ---------------------------------------------------------------- the mark --
+
+   The two nodes arrive along the orbit on load.
+
+   Each travels only its OWN HALF, and that is the constraint the whole thing is
+   built around: one node is drawn behind the hub and the other in front, which
+   is what gives the mark its depth. A full orbit would carry each of them
+   through the diamond on the wrong side — the back node passing in front, the
+   front node vanishing behind — and the illusion collapses. Half each keeps the
+   layering honest for every frame.
+
+   The animation ENDS at the resting position rather than starting there, so the
+   reduced-motion rule above (which collapses duration to 0.01ms) lands the nodes
+   exactly where they belong instead of stranding them mid-orbit. */
+@keyframes hw-orbit-in {
+  from {
+    offset-distance: 0%;
+    opacity: 0;
+  }
+  25% {
+    opacity: 1;
+  }
+  to {
+    offset-distance: 100%;
+    opacity: 1;
+  }
+}
+
+.hw-node {
+  /* fill-box so the anchor is the circle's own centre rather than the whole
+     view box, which would fling it off the path. */
+  transform-box: fill-box;
+  transform-origin: center;
+  offset-rotate: 0deg;
+  /* Rest position, so a browser without offset-path support — or reduced
+     motion — shows a correct static mark rather than a broken one. */
+  offset-distance: 100%;
+  animation: hw-orbit-in 1.15s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* Behind the hub: sweeps the TOP arc, right to left. */
+.hw-node-back {
+  offset-path: path('M89,62.2 A46,23 0 0 1 11,37.8');
+}
+
+/* In front of the hub: sweeps the BOTTOM arc, left to right. */
+.hw-node-front {
+  offset-path: path('M12.3,36.8 A46,23 0 0 0 87.7,63.2');
+}

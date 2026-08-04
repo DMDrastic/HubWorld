@@ -9,6 +9,7 @@
  * open-in-new-tab all keep working, and the router only intercepts plain left
  * clicks.
  */
+import { useEffect, useState } from 'react'
 import { Moon, Sun } from 'lucide-react'
 import { isOrganizer, type Health, type User } from '@/lib/api'
 import { useLinkHandler, type Route } from '@/lib/router'
@@ -113,17 +114,61 @@ function ThemeToggle() {
 }
 
 /** The mark: a ring of destinations around a centre — the hub-world idea. */
+/**
+ * The HubWorld mark: two nodes orbiting a hub.
+ *
+ * The layer order is the whole trick — back half of the orbit, then the
+ * diamond, then the front half — so the ring passes behind and in front of the
+ * hub. Flatten it and the mark loses its dimensionality.
+ *
+ * It carries its own gradient rather than inheriting `currentColor`, so the
+ * tinted container the old placeholder sat in is gone: a gradient inside a
+ * gradient-ringed plate was two competing treatments of the same idea.
+ *
+ * The gradient id is namespaced. `favicon.svg` defines its own `hw`, and an
+ * inline SVG sharing a document with another `id="hw"` would silently take
+ * whichever the browser resolved first.
+ *
+ * The orbit replays when the tab is returned to. A CSS animation fires once per
+ * element, so the nodes are re-keyed to remount them — the cheapest honest way
+ * to restart it, and it costs nothing while the tab is hidden because the event
+ * only fires on the way back. Guarded on `visible` because visibilitychange
+ * fires in BOTH directions, and replaying on the way out would animate a mark
+ * nobody is looking at.
+ */
 function Mark() {
+  const [run, setRun] = useState(0)
+
+  useEffect(() => {
+    const replay = () => {
+      if (document.visibilityState === 'visible') setRun((n) => n + 1)
+    }
+    document.addEventListener('visibilitychange', replay)
+    return () => document.removeEventListener('visibilitychange', replay)
+  }, [])
+
   return (
-    <span className="from-primary/25 to-primary/5 ring-primary/25 text-primary flex size-7 items-center justify-center rounded-lg bg-linear-to-br ring-1">
-      <svg viewBox="0 0 24 24" className="size-4" fill="none" aria-hidden>
-        <circle cx="12" cy="12" r="3" fill="currentColor" />
-        <circle cx="12" cy="4" r="1.8" fill="currentColor" opacity=".55" />
-        <circle cx="20" cy="12" r="1.8" fill="currentColor" opacity=".55" />
-        <circle cx="12" cy="20" r="1.8" fill="currentColor" opacity=".55" />
-        <circle cx="4" cy="12" r="1.8" fill="currentColor" opacity=".55" />
-      </svg>
-    </span>
+    <svg viewBox="0 0 100 100" className="size-11 shrink-0" aria-hidden>
+      <defs>
+        <linearGradient id="hw-nav" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stopColor="#4f8cff" />
+          <stop offset="1" stopColor="#7a5cff" />
+        </linearGradient>
+      </defs>
+      <g transform="rotate(-18 50 50)">
+        <ellipse cx="50" cy="50" rx="46" ry="23" fill="none" stroke="url(#hw-nav)" strokeWidth="5.5" />
+        <g key={`back-${run}`} className="hw-node hw-node-back">
+          <circle r="7" fill="#ffffff" stroke="#1e40af" strokeWidth="2" />
+        </g>
+      </g>
+      <rect x="32" y="32" width="36" height="36" rx="9" transform="rotate(45 50 50)" fill="url(#hw-nav)" />
+      <g transform="rotate(-18 50 50)">
+        <path d="M4,50 A46,23 0 0 0 96,50" fill="none" stroke="url(#hw-nav)" strokeWidth="5.5" />
+        <g key={`front-${run}`} className="hw-node hw-node-front">
+          <circle r="8" fill="#ffffff" stroke="#1e40af" strokeWidth="2" />
+        </g>
+      </g>
+    </svg>
   )
 }
 
