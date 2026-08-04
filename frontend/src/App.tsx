@@ -26,6 +26,7 @@ import { NavBar } from '@/components/NavBar'
 import { Landing } from '@/components/Landing'
 import { SignInRequired } from '@/components/SignInRequired'
 import { Hub } from '@/components/Hub'
+import { Footer } from '@/components/Footer'
 import { EventList } from '@/components/EventList'
 import { EventImagePanel } from '@/components/EventImagePanel'
 import { useRoute } from '@/lib/router'
@@ -393,6 +394,8 @@ export default function App() {
           </section>
         )}
       </main>
+
+      <Footer health={health} />
 
       {auctionEvent && (
         <Suspense fallback={null}>
