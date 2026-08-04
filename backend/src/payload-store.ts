@@ -93,8 +93,27 @@ function toStatus(row: {
  * per payload keeps the safety net while removing the hammering — many viewers
  * polling one payload still cost at most one Xaman request per interval, versus
  * one per poller per 2.5s.
+ *
+ * THE INTERVAL IS SHORT ON PURPOSE, and 10s was wrong.
+ *
+ * The saving here is per PAYLOAD, not per viewer: whatever the window, N people
+ * watching one auction collapse to one request per window. Sign-in is the
+ * opposite shape — one person, watching their own payload — so a long window
+ * saves almost nothing and costs exactly what it is set to. Observed on
+ * production with the webhook enabled but its URL never registered in the Xaman
+ * console: signing took about five seconds to be noticed, which is the average
+ * of a 10s window, and it had been roughly two before.
+ *
+ * At 1.5s a lone poller (the client polls every 2s) refreshes on essentially
+ * every poll, so sign-in is as immediate as it was without a webhook, while a
+ * crowded auction is still capped at one request per 1.5s no matter how many
+ * people are watching. The 429 this was built to prevent stays prevented.
+ *
+ * Note this window is the ONLY thing standing between a lost callback and a
+ * signature nobody notices, so it should not grow without someone measuring
+ * what it costs a person waiting on it.
  */
-const REFRESH_THROTTLE_MS = 10_000
+const REFRESH_THROTTLE_MS = 1_500
 
 /**
  * What a poll route sees.

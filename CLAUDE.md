@@ -765,9 +765,22 @@ correctly. The secret in the path is a doorbell, not the boundary.
 All 16 poll sites go through `tryGetPayload`, so caching there fixed every flow
 without touching a single route. Terminal states (signed/cancelled/expired) are
 cached permanently — they cannot change again. While pending, webhook mode
-refreshes at most once per 10s per payload rather than once per poll per viewer,
+refreshes at most once per **1.5s** per payload rather than once per poll per viewer,
 because a pure-webhook design loses signatures when a callback is dropped. The
 sweep also reconciles any payload left non-terminal for over a minute.
+
+**That window is deliberately shorter than the client's 2s poll, and 10s was
+wrong.** The saving is per PAYLOAD, not per viewer: N people watching one auction
+collapse to one request per window whatever it is set to. Sign-in is the opposite
+shape — one person watching their own payload — so a long window saves nothing
+and costs its full length. Measured on production with the webhook enabled but
+its URL never registered in the Xaman console: signing took ~5s to be noticed,
+the average of a 10s window, against ~2s before. At 1.5s a lone poller refreshes
+on essentially every poll while a crowded auction stays capped.
+
+**Setting `XAMAN_WEBHOOK_SECRET` without registering the URL is the worst of both
+worlds** — throttled polling and no push. If the console entry is not done, the
+variable is better left unset.
 
 Configure in the Xaman console as
 `https://<host>/api/webhooks/xaman/<XAMAN_WEBHOOK_SECRET>`.
