@@ -203,6 +203,35 @@ intercept the sign-in response and hand back a LIVE payload. The component, CSS,
 browser and viewport are all real; only the response is faked.
 
 
+### Tests have their own database
+
+```sh
+npm run db:test:setup             # create + migrate hubworld_test
+npm run db:test:setup -- --reset  # drop and rebuild if the schema drifts
+```
+
+`vitest.config.ts` points `DATABASE_URL` at **`hubworld_test`**, derived from the
+dev URL by swapping the database name (or `TEST_DATABASE_URL` if you set one).
+It is set in the config rather than a setup file because `src/env.ts` reads the
+variable at import time, and dotenv never overwrites an already-set variable, so
+this wins over `.env` without touching it.
+
+**CI never had this problem** — it already points at a `hubworld_test` service
+container, so the swap is a no-op there. This only makes local match CI.
+
+It fixes three separate things, all measured rather than assumed:
+
+- **The dev server was deleting fixtures mid-test.** Its settlement sweep runs
+  every 15s against the same database. Full-suite failures went from **2/10 with
+  the server running** to **0/6 after**, with the server still running.
+- **Stryker's four concurrent workers collided the same way**, which is why
+  `src/ledger.ts` could not be mutated. It now can.
+- The confusing failures that trained everyone to re-run instead of investigate.
+
+`tests/global-setup.ts` fails fast with the command to run if the database is
+missing or unmigrated, rather than a Prisma trace about a database you did not
+know was supposed to exist.
+
 ### Mutation testing: `npm run mutate` (backend)
 
 Stryker grades the TESTS, not the code — it mutates the source and reports which
