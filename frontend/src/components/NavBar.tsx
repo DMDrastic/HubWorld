@@ -9,6 +9,7 @@
  * open-in-new-tab all keep working, and the router only intercepts plain left
  * clicks.
  */
+import { useEffect, useState } from 'react'
 import { Moon, Sun } from 'lucide-react'
 import { isOrganizer, type Health, type User } from '@/lib/api'
 import { useLinkHandler, type Route } from '@/lib/router'
@@ -127,10 +128,27 @@ function ThemeToggle() {
  * The gradient id is namespaced. `favicon.svg` defines its own `hw`, and an
  * inline SVG sharing a document with another `id="hw"` would silently take
  * whichever the browser resolved first.
+ *
+ * The orbit replays when the tab is returned to. A CSS animation fires once per
+ * element, so the nodes are re-keyed to remount them — the cheapest honest way
+ * to restart it, and it costs nothing while the tab is hidden because the event
+ * only fires on the way back. Guarded on `visible` because visibilitychange
+ * fires in BOTH directions, and replaying on the way out would animate a mark
+ * nobody is looking at.
  */
 function Mark() {
+  const [run, setRun] = useState(0)
+
+  useEffect(() => {
+    const replay = () => {
+      if (document.visibilityState === 'visible') setRun((n) => n + 1)
+    }
+    document.addEventListener('visibilitychange', replay)
+    return () => document.removeEventListener('visibilitychange', replay)
+  }, [])
+
   return (
-    <svg viewBox="0 0 100 100" className="size-7 shrink-0" aria-hidden>
+    <svg viewBox="0 0 100 100" className="size-9 shrink-0" aria-hidden>
       <defs>
         <linearGradient id="hw-nav" x1="0" y1="0" x2="1" y2="1">
           <stop offset="0" stopColor="#4f8cff" />
@@ -139,14 +157,14 @@ function Mark() {
       </defs>
       <g transform="rotate(-18 50 50)">
         <ellipse cx="50" cy="50" rx="46" ry="23" fill="none" stroke="url(#hw-nav)" strokeWidth="5.5" />
-        <g className="hw-node hw-node-back">
+        <g key={`back-${run}`} className="hw-node hw-node-back">
           <circle r="7" fill="#ffffff" stroke="#1e40af" strokeWidth="2" />
         </g>
       </g>
       <rect x="32" y="32" width="36" height="36" rx="9" transform="rotate(45 50 50)" fill="url(#hw-nav)" />
       <g transform="rotate(-18 50 50)">
         <path d="M4,50 A46,23 0 0 0 96,50" fill="none" stroke="url(#hw-nav)" strokeWidth="5.5" />
-        <g className="hw-node hw-node-front">
+        <g key={`front-${run}`} className="hw-node hw-node-front">
           <circle r="8" fill="#ffffff" stroke="#1e40af" strokeWidth="2" />
         </g>
       </g>
