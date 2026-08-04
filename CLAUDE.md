@@ -203,6 +203,43 @@ intercept the sign-in response and hand back a LIVE payload. The component, CSS,
 browser and viewport are all real; only the response is faked.
 
 
+### Mutation testing: `npm run mutate` (backend)
+
+Stryker grades the TESTS, not the code — it mutates the source and reports which
+changes the suite fails to notice. A surviving mutant is a line no test actually
+constrains. This automates the discipline stated below rather than replacing it.
+
+**It earned its place on the first run.** `auction-policy.test.ts` reimplemented
+the sold-out rule *inside the test file* — "Mirrors evaluateSoldOut's decision" —
+and tested the copy, so `src/auction-policy.ts` had 78 mutants and no coverage.
+Deleting `organizerHolds === 0` from the shipped source left every test passing.
+With that half gone an organizer holding their whole allocation counts as sold
+out and can auction their own stock. `auction-policy.real.test.ts` imports the
+module and fails on exactly that deletion.
+
+**A mirror in a test file is documentation that cannot fail.** If a test
+reimplements the thing it is testing, it is testing nothing.
+
+Scope is deliberate: pure policy modules only. `src/ledger.ts` holds all the
+money math and is the most valuable target, but it also holds 11 network call
+sites, so its mutants drag in the DB-backed suites — which Stryker runs
+concurrently against the same Postgres, the fixture collision measured at ~20%
+failures. **A separate test database is the prerequisite for mutating
+`ledger.ts`.**
+
+`thresholds.break` is a ratchet at 75 against a current 79.42. Raise it as
+survivors get killed; lowering it to make a run pass is the one move that makes
+the whole thing worthless.
+
+Two mechanical notes. `tsconfigFile` points at a file that does not exist ON
+PURPOSE — Stryker's tsconfig preprocessor calls `ts.parseConfigFileTextToJson`,
+which **TypeScript 7 removed**, so any run dies the moment it finds a tsconfig;
+naming an absent one skips the preprocessor, and the sandbox never needs it.
+And `vitest.config.ts` exists mainly to EXCLUDE `.stryker-tmp`: Stryker copies
+the project per run and only cleans up on success, so a crashed run leaves
+working copies of every suite on disk — one turned 313 tests into 925 with 131
+failing.
+
 **Vitest**, installed separately in each folder (no workspace). Backend tests
 live in `tests/` and are typechecked by `tsconfig.test.json` — the build's
 `rootDir` is `src`, so without that second config they would never be checked.

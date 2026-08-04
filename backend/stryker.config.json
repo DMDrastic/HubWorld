@@ -1,0 +1,82 @@
+{
+  "$schema": "./node_modules/@stryker-mutator/core/schema/stryker-schema.json",
+  "_comment": [
+    "Mutation testing: it grades the TESTS, not the code.",
+    "",
+    "Stryker changes the source \u2014 flips > to >=, alters constants, deletes lines \u2014",
+    "and reports which changes the suite fails to notice. A surviving mutant is a",
+    "line no test actually constrains. This automates the discipline the repo",
+    "already states: verified by mutation, not by going green. Two tests written",
+    "this week passed for the wrong reason and were caught by hand; this finds that",
+    "class mechanically.",
+    "",
+    "SCOPE IS DELIBERATE. Every mutant re-runs the suite, so the DB-backed suites",
+    "against real Postgres would make a full run punishing and mostly uninformative",
+    "\u2014 those tests are about wiring, and a mutant there usually fails loudly.",
+    "",
+    "What is in scope is the arithmetic that decides who gets paid, plus the pure",
+    "policy modules. Per CLAUDE.md, a wrong constant here 'is not a crash, it is a",
+    "silently wrong royalty found on mainnet' \u2014 precisely where a test that cannot",
+    "fail is most expensive.",
+    "",
+    "  npm run mutate            everything in scope",
+    "  npm run mutate -- --mutate src/tx-result.ts    one file, fast"
+  ],
+  "packageManager": "npm",
+  "testRunner": "vitest",
+  "reporters": [
+    "html",
+    "clear-text",
+    "progress"
+  ],
+  "htmlReporter": {
+    "fileName": "reports/mutation/index.html"
+  },
+  "coverageAnalysis": "perTest",
+  "mutate": [
+    "src/tx-result.ts",
+    "src/gift-policy.ts",
+    "src/auction-policy.ts",
+    "src/schemas.ts",
+    "src/signer.ts",
+    "src/amendments.ts",
+    "src/image-upload.ts",
+    "src/door-access.ts"
+  ],
+  "_thresholds_comment": [
+    "high/low are advisory colour bands. `break` is the one that matters: below it",
+    "the run exits non-zero. Set just under the current score (79.42) so it is a",
+    "ratchet \u2014 a regression fails, and the number rises as survivors get killed.",
+    "Never lower it to make a run pass; that is the one move that makes this",
+    "worthless."
+  ],
+  "thresholds": {
+    "high": 90,
+    "low": 75,
+    "break": 75
+  },
+  "timeoutMS": 20000,
+  "concurrency": 4,
+  "tempDirName": ".stryker-tmp",
+  "cleanTempDir": true,
+  "tsconfigFile": "tsconfig.stryker-absent.json",
+  "_tsconfig_comment": [
+    "Points at a file that does not exist ON PURPOSE, and this is a workaround.",
+    "Stryker's TSConfigPreprocessor rewrites tsconfig paths for the sandbox by",
+    "calling ts.parseConfigFileTextToJson, which TypeScript 7 REMOVED. Every",
+    "Stryker version through 9.6.1 still calls it, so any run dies with",
+    "'ts.parseConfigFileTextToJson is not a function' the moment it finds a",
+    "tsconfig. Naming one that is absent skips the preprocessor entirely, which is",
+    "harmless here: the sandbox runs vitest through its own esbuild transform and",
+    "never consults tsconfig. Delete this the day Stryker supports TS 7."
+  ],
+  "_scope_comment": [
+    "src/ledger.ts is the most valuable target and is deliberately NOT here yet.",
+    "All the money math lives in it \u2014 platformFeeDrops, spendableFrom, bidHeadroom,",
+    "auctionSellAmountDrops \u2014 but so do 11 network call sites, so its mutants pull",
+    "in the DB-backed suites. Stryker runs those concurrently against the same",
+    "Postgres, which is the fixture collision already measured at ~20% failures",
+    "when anything else touches that database. A separate test database is the",
+    "prerequisite; add ledger.ts the day that exists."
+  ]
+}
