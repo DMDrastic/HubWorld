@@ -1,0 +1,4 @@
+
+# Stryker
+/reports/
+/.stryker-tmp/

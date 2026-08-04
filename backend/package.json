@@ -19,6 +19,7 @@
     "event:create": "tsx scripts/create-event.ts",
     "test": "vitest run",
     "test:watch": "vitest",
+    "mutate": "stryker run",
     "platform:setup": "tsx scripts/setup-platform-account.ts",
     "auction:create": "tsx scripts/create-auction.ts",
     "broker:match": "tsx scripts/broker-match.ts",
@@ -48,6 +49,8 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@stryker-mutator/core": "^9.6.1",
+    "@stryker-mutator/vitest-runner": "^9.6.1",
     "@types/cookie-parser": "^1.4.10",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
