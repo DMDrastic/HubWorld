@@ -148,7 +148,7 @@ function Mark() {
   }, [])
 
   return (
-    <svg viewBox="0 0 100 100" className="size-9 shrink-0" aria-hidden>
+    <svg viewBox="0 0 100 100" className="size-11 shrink-0" aria-hidden>
       <defs>
         <linearGradient id="hw-nav" x1="0" y1="0" x2="1" y2="1">
           <stop offset="0" stopColor="#4f8cff" />
