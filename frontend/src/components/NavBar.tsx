@@ -139,12 +139,16 @@ function Mark() {
       </defs>
       <g transform="rotate(-18 50 50)">
         <ellipse cx="50" cy="50" rx="46" ry="23" fill="none" stroke="url(#hw-nav)" strokeWidth="5.5" />
-        <circle cx="11" cy="37.8" r="7" fill="#ffffff" stroke="#1e40af" strokeWidth="2" />
+        <g className="hw-node hw-node-back">
+          <circle r="7" fill="#ffffff" stroke="#1e40af" strokeWidth="2" />
+        </g>
       </g>
       <rect x="32" y="32" width="36" height="36" rx="9" transform="rotate(45 50 50)" fill="url(#hw-nav)" />
       <g transform="rotate(-18 50 50)">
         <path d="M4,50 A46,23 0 0 0 96,50" fill="none" stroke="url(#hw-nav)" strokeWidth="5.5" />
-        <circle cx="87.7" cy="63.2" r="8" fill="#ffffff" stroke="#1e40af" strokeWidth="2" />
+        <g className="hw-node hw-node-front">
+          <circle r="8" fill="#ffffff" stroke="#1e40af" strokeWidth="2" />
+        </g>
       </g>
     </svg>
   )
