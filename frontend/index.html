@@ -12,6 +12,32 @@
     />
     <title>HubWorld — every ticket you hold, in one hub</title>
 
+    <!-- iOS home-screen icon. Apple applies its own rounding, so the artwork is
+         a full-bleed square rather than a pre-rounded one. -->
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+
+    <!--
+      Link previews. Without these, sharing hubworld.app anywhere — LinkedIn,
+      Slack, X, iMessage — unfurls as a bare URL, which reads as a link nobody
+      has bothered with.
+
+      og:image must be an ABSOLUTE url; every unfurler fetches it from its own
+      servers, where a relative path resolves to nothing.
+    -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="HubWorld" />
+    <meta property="og:title" content="HubWorld — every ticket you hold, in one hub" />
+    <meta
+      property="og:description"
+      content="Event ticketing on the XRP Ledger. Your tickets live in your own wallet — gift them, resell them, bid on a sold-out night, and walk in by signing at the door."
+    />
+    <meta property="og:url" content="https://hubworld.app/" />
+    <meta property="og:image" content="https://hubworld.app/og.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="HubWorld — event ticketing on the XRP Ledger" />
+    <meta name="twitter:card" content="summary_large_image" />
+
     <!--
       Theme, applied before first paint.
 
