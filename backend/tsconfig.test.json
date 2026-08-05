@@ -25,6 +25,7 @@
     "scripts/demo-seed.ts",
     "scripts/grant-role.ts",
     "scripts/ledger-sync.ts",
+    "scripts/payload-report.ts",
     "scripts/purge-test-data.ts",
     "scripts/settle-auctions.ts",
     "scripts/simulate-auction.ts"

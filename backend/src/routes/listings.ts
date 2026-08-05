@@ -22,7 +22,6 @@ import { prisma } from '../prisma.js'
 import { NETWORK } from '../network.js'
 import { brokerMode, xamanMode } from '../env.js'
 import { tryGetPayload, xaman, SIGNIN_TTL_MINUTES } from '../xaman.js'
-import { trackPayload } from '../payload-store.js'
 import { issuesOf } from '../schemas.js'
 import { requireAuth } from '../session.js'
 import {
@@ -208,12 +207,11 @@ listingsRouter.post('/tickets/:nfTokenId/list', requireAuth, async (req, res) =>
   }
 
   const payload = await xaman.createPayload(txjson as unknown as Record<string, unknown>, {
+    flow: 'LISTING_CREATE',
+    userId: me.id,
     expireMinutes: LIST_TTL_MINUTES,
     forceNetwork: XAMAN_NETWORK,
   })
-  // Registered before it can resolve, so a webhook callback finds it and
-  // reconciliation can spot one whose callback never arrived.
-  await trackPayload(payload.uuid)
 
   const listing = await prisma.listing.create({
     data: {
@@ -343,12 +341,11 @@ listingsRouter.post('/listings/:id/buy', requireAuth, async (req, res) => {
   }
 
   const payload = await xaman.createPayload(txjson as unknown as Record<string, unknown>, {
+    flow: 'LISTING_BUY',
+    userId: me.id,
     expireMinutes: LIST_TTL_MINUTES,
     forceNetwork: XAMAN_NETWORK,
   })
-  // Registered before it can resolve, so a webhook callback finds it and
-  // reconciliation can spot one whose callback never arrived.
-  await trackPayload(payload.uuid)
 
   await prisma.listing.update({
     where: { id: listing.id },
@@ -412,11 +409,8 @@ listingsRouter.post('/listings/:id/cancel', requireAuth, async (req, res) => {
       ownerAddress: listing.sellerAddress,
       offerIndex: listing.offerIndex,
     }) as unknown as Record<string, unknown>,
-    { expireMinutes: LIST_TTL_MINUTES, forceNetwork: XAMAN_NETWORK },
+    { flow: 'LISTING_CANCEL', userId: req.userId, expireMinutes: LIST_TTL_MINUTES, forceNetwork: XAMAN_NETWORK },
   )
-  // Registered before it can resolve, so a webhook callback finds it and
-  // reconciliation can spot one whose callback never arrived.
-  await trackPayload(payload.uuid)
 
   await prisma.listing.update({
     where: { id: listing.id },

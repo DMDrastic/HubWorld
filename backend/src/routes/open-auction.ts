@@ -28,7 +28,6 @@ import { prisma } from '../prisma.js'
 import { NETWORK } from '../network.js'
 import { brokerMode, xamanMode } from '../env.js'
 import { xaman } from '../xaman.js'
-import { trackPayload } from '../payload-store.js'
 import { issuesOf } from '../schemas.js'
 import { requireAuth } from '../session.js'
 import { canAuction } from '../auction-policy.js'
@@ -182,12 +181,11 @@ openAuctionRouter.post('/tickets/:nfTokenId/auction', requireAuth, async (req, r
   }
 
   const payload = await xaman.createPayload(txjson as unknown as Record<string, unknown>, {
+    flow: 'AUCTION_OPEN',
+    userId: me.id,
     expireMinutes: OFFER_TTL_MINUTES,
     forceNetwork: XAMAN_NETWORK,
   })
-  // Registered before it can resolve, so a webhook callback finds it and
-  // reconciliation can spot one whose callback never arrived.
-  await trackPayload(payload.uuid)
 
   const now = Date.now()
   const endsAt = new Date(now + body.data.minutes * 60_000)

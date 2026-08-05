@@ -221,6 +221,7 @@ describe('unauthenticated requests are refused', () => {
     ['get', '/api/tickets/mine'],
     ['get', '/api/organizers/me'],
     ['get', '/api/admin/organizer-applications'],
+    ['get', '/api/admin/payload-usage'],
     ['get', '/api/listings/mine'],
     ['get', '/api/door/events'],
     ['get', '/api/gifts'],
@@ -396,6 +397,41 @@ describe('issuing admission is gated on the organizer role', () => {
 })
 
 // ----------------------------------------------------------------- admin --
+
+describe('quota consumption is operator-only', () => {
+  /**
+   * The response profiles the whole platform's usage — how many people signed
+   * in, minted, bid. That is commercially sensitive and belongs to nobody but
+   * the operator, so ORGANIZER is not enough. An organizer is a customer.
+   */
+  it('refuses an organizer', async () => {
+    const organizer = await mkUser('pu-org', 'ORGANIZER')
+
+    const res = await request(app)
+      .get('/api/admin/payload-usage')
+      .set('authorization', as(organizer))
+
+    expect(res.status).toBe(403)
+  })
+
+  it('answers an admin, and never claims to know the remaining quota', async () => {
+    const admin = await mkUser('pu-adm', 'ADMIN')
+
+    const res = await request(app)
+      .get('/api/admin/payload-usage')
+      .set('authorization', as(admin))
+
+    expect(res.status).toBe(200)
+    expect(res.body).toMatchObject({ signer: 'xaman' })
+    expect(typeof res.body.created).toBe('number')
+    // Xaman owns the limit and exposes no endpoint for it. A local estimate
+    // would drift while looking authoritative, and a wrong number that gets
+    // believed is worse than an absent one — so there must not be one.
+    expect(res.body).not.toHaveProperty('remaining')
+    expect(res.body).not.toHaveProperty('limit')
+  })
+})
+
 
 describe('promotion to organizer is reviewed, never self-declared', () => {
   it('refuses an organizer reading the review queue', async () => {

@@ -44,6 +44,39 @@ enum XrplNetwork {
   MAINNET
 }
 
+/**
+ * Which product flow spent a signing payload.
+ *
+ * The Xaman application has a quota on payloads CREATED, and creations cannot be
+ * reclaimed — cancelling a resolved payload returns 404 and it still counts. So
+ * the quota is consumed by USERS doing things, not by tickets existing, and the
+ * question that decides whether the unit economics work is *"how many payloads
+ * does one attendee cost us, end to end?"*. That was unanswerable: every
+ * creation looked identical once made.
+ *
+ * These are the eleven creation sites, one member each. A twelfth flow cannot be
+ * added without appearing here, because `PayloadOptions.flow` is required — so
+ * the compiler, not a reviewer, is what keeps this list complete.
+ *
+ * DOOR_CHECKIN is deliberately separate from SIGNIN even though both submit the
+ * same `SignIn` pseudo-transaction. They have opposite cost curves: sign-in is
+ * once per person per week, check-in is once per person per event, and lumping
+ * them together would hide whichever grows.
+ */
+enum PayloadFlow {
+  SIGNIN
+  DOOR_CHECKIN
+  MINT
+  GIFT_OFFER
+  GIFT_ACCEPT
+  GIFT_CANCEL
+  LISTING_CREATE
+  LISTING_BUY
+  LISTING_CANCEL
+  AUCTION_OPEN
+  AUCTION_BID
+}
+
 // ---------------------------------------------------------------- identity --
 
 model User {
@@ -75,6 +108,7 @@ model User {
   applicationsReviewed OrganizerApplication[] @relation("Reviewer")
   staffFor             EventStaff[]           @relation("StaffMember")
   staffGranted         EventStaff[]           @relation("StaffGrantedBy")
+  payloads             XamanPayload[]
 
   @@index([xrplAddress])
 }
@@ -794,6 +828,45 @@ model JobLock {
 model XamanPayload {
   uuid String @id
 
+  /// What this payload was for. See `PayloadFlow`.
+  ///
+  /// NULLABLE, and the null case is a signal rather than sloppiness: a row is
+  /// normally written by the signer wrapper at creation, where the flow is
+  /// always known and required by the type. The only writers that can create a
+  /// row without one are `refreshPayload` and `cancelAbandonedPayloads`, whose
+  /// upserts have a defensive create branch for a uuid they were merely handed.
+  /// A null therefore means a payload resolved that we have no record of
+  /// creating, which is worth being able to see rather than papering over with
+  /// a fake enum member.
+  flow PayloadFlow?
+
+  /// The network the DEPLOYMENT was pointed at, not the payload's ledger.
+  ///
+  /// A `SignIn` payload is never submitted anywhere, so it has no ledger of its
+  /// own — but it still spent quota against this deployment's application, and
+  /// "what did the mainnet rehearsal cost" has to be separable from testnet
+  /// noise. That is a fact about the process, so it is recorded even for the
+  /// network-free flows. This is not the identity rule being broken; `User` and
+  /// `SignInRequest` remain network-free.
+  network XrplNetwork
+
+  /// Which signer implementation created it: `xaman`, `stub`, or `unknown` for
+  /// rows that predate this column.
+  ///
+  /// `stub` costs NOTHING against the quota, and the e2e suite creates them by
+  /// the dozen — counting those as spend would make every reported figure
+  /// wrong in the direction that hides a real problem. A string rather than an
+  /// enum because `unknown` must be expressible for the backfill, and because a
+  /// second signer (Crossmark, GemWallet) should be recordable without a
+  /// migration; the seam exists precisely so one could be added.
+  signer String
+
+  /// Who it was created for, where that is known. Null for SIGNIN (there is no
+  /// account yet) and DOOR_CHECKIN (the attendee is unidentified until they
+  /// sign). This is what turns a total into a cost per person.
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id])
+
   signed    Boolean @default(false)
   cancelled Boolean @default(false)
   expired   Boolean @default(false)
@@ -810,4 +883,7 @@ model XamanPayload {
   fetchedAt DateTime @default(now())
 
   @@index([terminal, fetchedAt])
+  /// The usage report's shape: real spend, on one network, over a date range.
+  @@index([signer, network, createdAt])
+  @@index([userId])
 }

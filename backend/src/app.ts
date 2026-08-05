@@ -18,6 +18,7 @@ import { bidsRouter } from './routes/bids.js'
 import { openAuctionRouter } from './routes/open-auction.js'
 import { redemptionRouter } from './routes/redemption.js'
 import { organizersRouter } from './routes/organizers.js'
+import { payloadUsageRouter } from './routes/payload-usage.js'
 import { webhooksRouter } from './routes/webhooks.js'
 
 /** Codes that mean "the network was unreachable", not "the request was wrong". */
@@ -133,6 +134,7 @@ export function createApp() {
   app.use('/api', openAuctionRouter)
   app.use('/api', redemptionRouter)
   app.use('/api', organizersRouter)
+  app.use('/api', payloadUsageRouter)
   app.use('/api', webhooksRouter)
 
   // An unmatched /api route must 404 as JSON, and must do so BEFORE the static

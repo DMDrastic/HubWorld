@@ -27,7 +27,22 @@
  */
 import { prisma } from './prisma.js'
 import { webhookMode } from './env.js'
+import { NETWORK } from './network.js'
 import { XamanRateLimited, xaman, type PayloadStatus } from './xaman.js'
+
+/**
+ * What every create branch below has to supply, because both columns are
+ * required and neither has a default.
+ *
+ * These branches are DEFENSIVE: the signer wrapper writes the row at creation,
+ * so by the time anything here runs it normally exists and only the update
+ * branch fires. A create firing means a payload we have no creation record of,
+ * which is why `flow` is left null rather than guessed — an unattributed row is
+ * a signal, and a fabricated one is noise in the exact figure this is for.
+ */
+function provenance() {
+  return { network: NETWORK, signer: xaman.mode === 'live' ? 'xaman' : 'stub' }
+}
 
 /** A payload in a final state can never change, so it is safe to serve forever. */
 function isTerminal(s: PayloadStatus): boolean {
@@ -64,7 +79,11 @@ export async function refreshPayload(
     source,
     fetchedAt: new Date(),
   }
-  await prisma.xamanPayload.upsert({ where: { uuid }, create: { uuid, ...data }, update: data })
+  await prisma.xamanPayload.upsert({
+    where: { uuid },
+    create: { uuid, ...provenance(), ...data },
+    update: data,
+  })
 
   return status
 }
@@ -176,15 +195,6 @@ export async function reconcileStalePayloads(olderThanMs = 60_000, limit = 25): 
   return refreshed
 }
 
-/** Register a payload as soon as it is created, so reconciliation can find it. */
-export async function trackPayload(uuid: string): Promise<void> {
-  await prisma.xamanPayload.upsert({
-    where: { uuid },
-    create: { uuid, source: 'poll' },
-    update: {},
-  })
-}
-
 /**
  * Cancel payloads nobody is going to sign.
  *
@@ -263,7 +273,7 @@ export async function cancelAbandonedPayloads(limit = 50, force = false): Promis
       // not go asking Xaman about it.
       await prisma.xamanPayload.upsert({
         where: { uuid },
-        create: { uuid, expired: true, terminal: true, source: 'cancel' },
+        create: { uuid, ...provenance(), expired: true, terminal: true, source: 'cancel' },
         update: { expired: true, terminal: true, source: 'cancel' },
       })
     } catch {

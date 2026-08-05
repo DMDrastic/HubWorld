@@ -80,11 +80,24 @@ terms or API, HubWorld stops working *entirely* — not degraded, stopped.
 
 Two actions, both cheap, both now:
 
-- **Instrument payload creation per flow.** Make quota a metric on a dashboard,
-  not a surprise 503. Today you cannot answer *"how many payloads does one
-  attendee cost us, end to end?"* — and that number decides whether the unit
-  economics work at all. It is the single most valuable missing measurement in
-  the system.
+- ~~**Instrument payload creation per flow.**~~ **DONE, 2026-08-05.** Every
+  payload now records the flow that created it, the network, the signer and the
+  user where one is known. Counting lives in the signer seam rather than the
+  eleven routes, and `PayloadOptions.flow` is required, so a new creation site
+  cannot compile without declaring itself. Read it with `npm run payload:report`
+  or `GET /api/admin/payload-usage`; see CLAUDE.md for what the figures do and
+  do not mean.
+
+  **The measurement still has to be TAKEN.** The instrument exists; the number
+  does not, because nothing real has run through it yet. Take a reading either
+  side of the rehearsal — that is what converts "we ran an event" into a cost
+  per attendee.
+
+  First reading, dev database, all pre-instrumentation rows: **127 payloads
+  created, 66 signed, 51 resolved unsigned**. Do not quote that ratio — it is
+  development noise, mixing stub and abandoned experiments, and it is bucketed
+  as `unknown`/`unattributed` precisely because it cannot be attributed
+  honestly. It is here only as evidence the reader works.
 - **Get quota limits and pricing tiers from Xaman in writing** before selling
   anything to anyone.
 
