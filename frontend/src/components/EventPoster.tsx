@@ -74,8 +74,12 @@ function FallbackPoster({ event }: { event: EventSummary }) {
       }}
       aria-hidden
     >
-      <div className="font-mono text-[0.65rem] tracking-[0.2em] text-white/45 uppercase">
-        {dateFmt.format(when)} · {timeFmt.format(when)}
+      {/* Date only, and never wrapping. The status badge owns the opposite
+          corner, and once room was reserved for it the date-plus-time line
+          broke across two lines with a lone "PM" underneath. The time moves to
+          the caption below, where there is width for it. */}
+      <div className="pr-24 font-mono text-[0.65rem] tracking-[0.2em] whitespace-nowrap text-white/45 uppercase">
+        {dateFmt.format(when)}
       </div>
 
       {/* The title is the artwork, and it sits LOW — where the act's name sits
@@ -140,7 +144,7 @@ export function EventPoster({
         )}
 
         {live && (
-          <span className="bg-live text-live-foreground absolute top-3 left-3 inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[0.68rem] font-medium">
+          <span className="bg-live text-live-foreground absolute top-3 right-3 inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[0.68rem] font-medium">
             <span className="relative flex size-1.5">
               <span className="absolute inline-flex size-full animate-ping rounded-full bg-current opacity-70" />
               <span className="relative inline-flex size-1.5 rounded-full bg-current" />
@@ -150,7 +154,7 @@ export function EventPoster({
         )}
 
         {soldOut && !live && (
-          <span className="absolute top-3 left-3 rounded-full bg-black/55 px-2.5 py-1 text-[0.68rem] font-medium text-white backdrop-blur-sm">
+          <span className="absolute top-3 right-3 rounded-full bg-black/55 px-2.5 py-1 text-[0.68rem] font-medium text-white backdrop-blur-sm">
             sold out
           </span>
         )}
@@ -169,9 +173,9 @@ export function EventPoster({
           </h3>
         )}
         <div className="text-muted-foreground flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-xs">
-          <span className="inline-flex items-center gap-1">
+          <span className="inline-flex items-center gap-1 whitespace-nowrap">
             <CalendarDays className="size-3" aria-hidden />
-            {dateFmt.format(when)}
+            {dateFmt.format(when)} · {timeFmt.format(when)}
           </span>
           {event.venue && (
             <span className="inline-flex min-w-0 items-center gap-1">
