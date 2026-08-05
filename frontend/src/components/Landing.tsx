@@ -72,17 +72,12 @@ export function Landing({
 }) {
   return (
     <div className="space-y-24 pb-16">
-      {/* Hero. The aurora and grid are pinned to the top of the page and masked
-          out before the copy starts, so nothing competes with the text. */}
+      {/* No aurora, deliberately. A violet wash behind the hero is the house
+          style of every crypto product, and it announced "crypto project"
+          before anyone read the copy — which fights the whole positioning,
+          since this page leads with the ticketing and mentions the ledger
+          second. The colour now comes from the type and the mark. */}
       <section className="relative">
-        <div
-          className="aurora pointer-events-none absolute inset-x-0 -top-24 h-128 opacity-70"
-          aria-hidden
-        />
-        <div
-          className="grid-faint pointer-events-none absolute inset-x-0 -top-16 h-96 opacity-40"
-          aria-hidden
-        />
 
         <div className="relative grid items-start gap-12 pt-12 pb-2 md:grid-cols-[1.1fr_1fr]">
           <div className="space-y-6">
@@ -94,7 +89,12 @@ export function Landing({
               {liveOn(network)}
             </span>
 
-            <h1 className="text-gradient text-5xl leading-[1.02] font-semibold tracking-[-0.03em] text-balance sm:text-6xl">
+            {/* Flat, not the violet-fading gradient it used to carry. A
+                gradient headline over a dark ground is the single most
+                recognisable move in crypto and AI landing pages, and it read as
+                decoration where plain white reads as confidence. The accent now
+                appears only where something can be clicked. */}
+            <h1 className="text-5xl leading-[1.02] font-semibold tracking-[-0.03em] text-balance sm:text-6xl">
               Every ticket you hold, in one hub.
             </h1>
 
@@ -165,7 +165,6 @@ export function Landing({
       </section>
 
       <section className="ring-foreground/8 relative overflow-hidden rounded-2xl p-8 ring-1 sm:p-10">
-        <div className="aurora pointer-events-none absolute inset-0 opacity-50" aria-hidden />
         <div className="relative max-w-prose">
           <h2 className="text-xl font-medium tracking-tight">Running events?</h2>
           <p className="text-muted-foreground mt-3 leading-relaxed text-pretty">

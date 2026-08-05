@@ -116,7 +116,7 @@ export function Hub({ me, onOpenAuction }: { me: User; onOpenAuction: (slug: str
     <div className="space-y-10 py-10">
       <div className="relative">
         <div
-          className="aurora pointer-events-none absolute inset-x-0 -top-20 h-64 opacity-50"
+          className="pointer-events-none absolute inset-x-0 -top-20 h-64 opacity-0"
           aria-hidden
         />
         <div className="relative">
