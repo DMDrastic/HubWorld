@@ -139,6 +139,7 @@ npm start                # run the build
 npm run typecheck
 npm run prisma:generate
 npm run prisma:migrate -- --name <description>   # needs a real terminal, see below
+npm run payload:report   # what the Xaman quota went on
 
 # frontend/ — http://localhost:5173
 npm install
@@ -650,6 +651,7 @@ Hubworld out of the funds-custody path. Changing this changes who mints.
 | `GET /api/organizers/me` | my role + application status |
 | `GET /api/admin/organizer-applications` | admin: the review queue |
 | `POST /api/admin/organizer-applications/:id/review` | admin: approve / reject |
+| `GET /api/admin/payload-usage` | admin: Xaman quota consumption, by flow |
 | `GET /api/policy` | platform fee + royalty cap (public) |
 | `POST /api/events` | organizer-only; create an event |
 | `GET /api/events?status=&limit=` | event list |
@@ -857,6 +859,63 @@ What code can do is spend the quota more slowly, which is now done:
   moved on from — but it is NOT quota recovery.
 
 A quota error answers 503 with a specific message rather than a 500.
+
+### Counting what the quota is spent on
+
+**Every payload records which flow created it** (`PayloadFlow` on
+`XamanPayload`, written by `CountingSigner` in `src/xaman.ts`). Before this,
+consumption was a single opaque number and the question that decides the unit
+economics — *how many payloads does one attendee cost, end to end?* — could not
+be answered at all.
+
+**The counting is in the signer seam, not in the eleven routes.** A route that
+forgets to count is real spend that never appears in the numbers, and there is
+no way to notice. Wrapping the client means creating a payload and counting it
+are the same act; `PayloadOptions.flow` is **required**, so a twelfth creation
+site cannot compile without saying what it is — the same trick the `network`
+column uses to make the compiler find every create. Do not give it a default.
+
+The wrapper **absorbed `trackPayload`**, which every route used to call a few
+statements after creating a payload. It is the same row, and writing it inside
+the wrapper closes the window where a signature could resolve against a uuid
+reconciliation had never heard of.
+
+Three things it deliberately does not do:
+
+- **It never reports remaining quota.** Xaman owns that number and exposes no
+  endpoint for it. A local estimate would drift while looking authoritative, and
+  a wrong figure that gets believed is worse than an absent one.
+- **Stub payloads are not spend.** They cost nothing and the e2e suite makes
+  them by the dozen, so `signer` is recorded (`xaman` / `stub` / `unknown` for
+  pre-instrumentation rows) and both readers filter to `xaman` by default.
+  Folding them in would overstate consumption, which is the one direction of
+  error that HIDES a problem.
+- **`flow` is nullable and null means something.** Only the two defensive upsert
+  branches in `payload-store.ts` can create a row without one, so a null is a
+  payload that resolved with no record of being created — worth seeing, not
+  worth papering over with a fake enum member.
+
+Read it with `npm run payload:report` (`-- --days 7`, `-- --all-signers`) or
+`GET /api/admin/payload-usage`. **Admin-only, and not decoratively** — the
+response profiles the whole platform's usage, which belongs to the operator and
+not to an organizer.
+
+`perIdentifiedUser` is **a floor on the cost of a person, not the cost of a
+person**, and both readers say so every time they print it: `SIGNIN` and
+`DOOR_CHECKIN` carry no `userId` — there is no account yet, and an attendee is
+unidentified until they sign — and those are exactly the two flows every
+attendee goes through. Read it beside the per-flow breakdown, never alone.
+
+**Take a reading either side of the mainnet rehearsal.** That is what turns "we
+ran an event" into "an event of N tickets cost M payloads, of which this many
+were waste".
+
+**The test suite must never create real payloads.** `tests/payload-metrics.ts`
+wraps a fake signer via the exported `withPayloadCounting` rather than using the
+`xaman` singleton — which resolves to the LIVE client in any checkout holding
+credentials, so exercising it burns the quota this whole mechanism exists to
+conserve and reports the suite's own usage as product usage. This was found the
+hard way: the first version of that suite created five real payloads.
 
 ## Minting
 

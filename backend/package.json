@@ -31,7 +31,8 @@
     "simulate:auction": "tsx scripts/simulate-auction.ts",
     "purge:test": "tsx scripts/purge-test-data.ts",
     "demo:reset": "tsx scripts/demo-reset.ts",
-    "demo:seed": "tsx scripts/demo-seed.ts"
+    "demo:seed": "tsx scripts/demo-seed.ts",
+    "payload:report": "tsx scripts/payload-report.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

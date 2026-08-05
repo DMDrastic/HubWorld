@@ -12,6 +12,7 @@
  * Endpoint shapes follow the Xaman platform API as of writing — verify against
  * current docs before going live, since the platform evolves.
  */
+import type { PayloadFlow } from '@prisma/client'
 import { env, xamanMode } from './env.js'
 
 const XAMAN_API = 'https://xumm.app/api/v1/platform'
@@ -86,7 +87,26 @@ export class XamanPayloadLimit extends Error {
   }
 }
 
-export type PayloadOptions = {
+/**
+ * Who and what a payload is being spent on.
+ *
+ * `flow` is REQUIRED, and that is the whole enforcement mechanism for payload
+ * accounting: the quota counts creations and cannot be reclaimed, so an
+ * uncounted flow is real spend that never appears on the dashboard. Making it
+ * required means a twelfth creation site cannot be added without saying what it
+ * is — the compiler finds it, the way the `network` column made the compiler
+ * find every create. Do not give it a default.
+ */
+export type PayloadAttribution = {
+  flow: PayloadFlow
+  /**
+   * Who it is for, where that is known. Omitted for SIGNIN (there is no account
+   * yet) and DOOR_CHECKIN (the attendee is unidentified until they sign).
+   */
+  userId?: string | null
+}
+
+export type PayloadOptions = PayloadAttribution & {
   /** Minutes until Xaman expires the payload. */
   expireMinutes?: number
   /**
@@ -100,8 +120,8 @@ export type PayloadOptions = {
 export interface XamanClient {
   readonly mode: 'live' | 'stub'
   /** Generic payload creation — any txjson, signed on the user's device. */
-  createPayload(txjson: Record<string, unknown>, opts?: PayloadOptions): Promise<CreatedPayload>
-  createSignInPayload(): Promise<CreatedPayload>
+  createPayload(txjson: Record<string, unknown>, opts: PayloadOptions): Promise<CreatedPayload>
+  createSignInPayload(attribution: PayloadAttribution): Promise<CreatedPayload>
   getPayload(uuid: string): Promise<PayloadStatus | null>
   /** Free a slot against the account's unresolved-payload limit. */
   cancelPayload(uuid: string): Promise<boolean>
@@ -122,7 +142,7 @@ class LiveXamanClient implements XamanClient {
 
   async createPayload(
     txjson: Record<string, unknown>,
-    opts: PayloadOptions = {},
+    opts: PayloadOptions,
   ): Promise<CreatedPayload> {
     try {
       return await this.createOnce(txjson, opts)
@@ -140,9 +160,10 @@ class LiveXamanClient implements XamanClient {
     }
   }
 
+  /** Attribution is not Xaman's business — only the wire options are. */
   private async createOnce(
     txjson: Record<string, unknown>,
-    opts: PayloadOptions = {},
+    opts: Pick<PayloadOptions, 'expireMinutes' | 'forceNetwork'>,
   ): Promise<CreatedPayload> {
     const res = await fetch(`${XAMAN_API}/payload`, {
       method: 'POST',
@@ -181,10 +202,10 @@ class LiveXamanClient implements XamanClient {
     return { uuid: body.uuid, next: body.next.always, qrPng: body.refs.qr_png }
   }
 
-  createSignInPayload(): Promise<CreatedPayload> {
+  createSignInPayload(attribution: PayloadAttribution): Promise<CreatedPayload> {
     // No force_network: SignIn is a pseudo-transaction, never submitted to any
     // ledger, so pinning a network would only reject valid signers.
-    return this.createPayload({ TransactionType: 'SignIn' })
+    return this.createPayload({ TransactionType: 'SignIn' }, attribution)
   }
 
   /**
@@ -256,6 +277,8 @@ class StubXamanClient implements XamanClient {
     }
   }
 
+  // Both ignore their arguments: a stub has no wire format and no quota to
+  // account for. Declaring fewer parameters still satisfies the interface.
   createSignInPayload(): Promise<CreatedPayload> {
     return this.createPayload()
   }
@@ -302,10 +325,110 @@ function stubQrSvg(): string {
   ].join('')
 }
 
+// --------------------------------------------------------------- counting --
+
+/**
+ * Records every payload the moment it is created, then gets out of the way.
+ *
+ * ## Why a wrapper rather than a line in each route
+ *
+ * The Xaman quota counts payloads CREATED and cannot be reclaimed, so a flow
+ * that forgets to count is real spend that never appears in the numbers — and
+ * there are eleven creation sites. Wrapping the client makes counting the only
+ * way to create: there is no unwrapped `xaman` exported to reach past it.
+ *
+ * It also decorates rather than extends, so it is signer-agnostic. A second
+ * signer added at the seam (Crossmark, GemWallet — see ROADMAP §3) is counted
+ * without touching this file, because what is being measured is *signature
+ * requests we made*, not *calls to Xaman*.
+ *
+ * ## It absorbs `trackPayload`
+ *
+ * Every route used to follow creation with `await trackPayload(uuid)` so webhook
+ * reconciliation could find the payload. That is the same row this writes, and
+ * doing it here closes a real ordering gap: registration now happens before the
+ * route even holds the payload, rather than a few statements later, so a
+ * signature can no longer land in the window between the two.
+ */
+class CountingSigner implements XamanClient {
+  constructor(private readonly inner: XamanClient) {}
+
+  get mode() {
+    return this.inner.mode
+  }
+
+  /**
+   * `live` is the real Xaman; anything else is the local stand-in, which costs
+   * no quota. Recorded as a name rather than a mode so a second signer is
+   * distinguishable in the report without a migration.
+   */
+  private get signerName(): string {
+    return this.inner.mode === 'live' ? 'xaman' : 'stub'
+  }
+
+  async createPayload(
+    txjson: Record<string, unknown>,
+    opts: PayloadOptions,
+  ): Promise<CreatedPayload> {
+    const created = await this.inner.createPayload(txjson, opts)
+    await this.record(created.uuid, opts)
+    return created
+  }
+
+  async createSignInPayload(attribution: PayloadAttribution): Promise<CreatedPayload> {
+    const created = await this.inner.createSignInPayload(attribution)
+    await this.record(created.uuid, attribution)
+    return created
+  }
+
+  private async record(uuid: string, attribution: PayloadAttribution): Promise<void> {
+    // Lazily imported: this module is the seam and must not drag Prisma into
+    // the static graph of anything that only wants to build a transaction.
+    const { recordPayloadCreation } = await import('./payload-metrics.js')
+    await recordPayloadCreation({
+      uuid,
+      flow: attribution.flow,
+      signer: this.signerName,
+      userId: attribution.userId ?? null,
+    })
+  }
+
+  getPayload(uuid: string): Promise<PayloadStatus | null> {
+    return this.inner.getPayload(uuid)
+  }
+
+  cancelPayload(uuid: string): Promise<boolean> {
+    return this.inner.cancelPayload(uuid)
+  }
+
+  /**
+   * The wrapped client, for `asStub`'s `instanceof` check only.
+   *
+   * NOT an escape hatch for creating payloads. Reaching past the wrapper spends
+   * quota that no report can see, which is the exact hole this class closes.
+   */
+  unwrap(): XamanClient {
+    return this.inner
+  }
+}
+
+/**
+ * Wrap any signer so its creations are counted.
+ *
+ * Exported so the counting can be tested against a fake signer. That is not a
+ * convenience: the alternative is testing it through the exported `xaman`, which
+ * in a checkout with real credentials means the test suite CREATES REAL PAYLOADS
+ * every run — burning the very quota this whole mechanism exists to conserve.
+ */
+export function withPayloadCounting(client: XamanClient): XamanClient {
+  return new CountingSigner(client)
+}
+
 // ----------------------------------------------------------------- export --
 
-export const xaman: XamanClient =
-  xamanMode === 'live' ? new LiveXamanClient() : new StubXamanClient()
+export const xaman: XamanClient = withPayloadCounting(
+  xamanMode === 'live' ? new LiveXamanClient() : new StubXamanClient(),
+)
 
 /**
  * `getPayload`, but a rate limit becomes the sentinel `'unavailable'` rather
@@ -325,7 +448,14 @@ export async function tryGetPayload(
   return resolvePayload(uuid)
 }
 
-/** Narrowing helper so routes can reach `simulate` only in stub mode. */
+/**
+ * Narrowing helper so routes can reach `simulate` only in stub mode.
+ *
+ * Unwraps first: the exported client is a `CountingSigner`, so a bare
+ * `instanceof StubXamanClient` would answer null in stub mode and silently
+ * disable the simulate endpoint the whole e2e suite depends on.
+ */
 export function asStub(client: XamanClient): StubXamanClient | null {
-  return client instanceof StubXamanClient ? client : null
+  const target = client instanceof CountingSigner ? client.unwrap() : client
+  return target instanceof StubXamanClient ? target : null
 }

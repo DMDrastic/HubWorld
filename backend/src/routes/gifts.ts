@@ -20,7 +20,6 @@ import { prisma } from '../prisma.js'
 import { NETWORK } from '../network.js'
 import { xamanMode } from '../env.js'
 import { tryGetPayload, xaman, SIGNIN_TTL_MINUTES } from '../xaman.js'
-import { trackPayload } from '../payload-store.js'
 import { issuesOf, usernameSchema } from '../schemas.js'
 import { requireAuth } from '../session.js'
 import { ON_LEDGER_STATES, mayExpire } from '../gift-policy.js'
@@ -152,12 +151,11 @@ giftsRouter.post('/tickets/:nfTokenId/gift', requireAuth, async (req, res) => {
   }
 
   const payload = await xaman.createPayload(txjson as unknown as Record<string, unknown>, {
+    flow: 'GIFT_OFFER',
+    userId: me.id,
     expireMinutes: GIFT_TTL_MINUTES,
     forceNetwork: XAMAN_NETWORK,
   })
-  // Registered before it can resolve, so a webhook callback finds it and
-  // reconciliation can spot one whose callback never arrived.
-  await trackPayload(payload.uuid)
 
   const expiresAt = new Date(Date.now() + GIFT_TTL_MS)
   const gift = await prisma.gift.create({
@@ -219,11 +217,8 @@ giftsRouter.post('/gifts/:id/accept', requireAuth, async (req, res) => {
       accepterAddress: gift.toAddress,
       offerIndex: gift.offerIndex,
     }) as unknown as Record<string, unknown>,
-    { expireMinutes: GIFT_TTL_MINUTES, forceNetwork: XAMAN_NETWORK },
+    { flow: 'GIFT_ACCEPT', userId: req.userId, expireMinutes: GIFT_TTL_MINUTES, forceNetwork: XAMAN_NETWORK },
   )
-  // Registered before it can resolve, so a webhook callback finds it and
-  // reconciliation can spot one whose callback never arrived.
-  await trackPayload(payload.uuid)
 
   await prisma.gift.update({
     where: { id: gift.id },
@@ -293,11 +288,8 @@ giftsRouter.post('/gifts/:id/cancel', requireAuth, async (req, res) => {
       ownerAddress: gift.fromAddress,
       offerIndex: gift.offerIndex,
     }) as unknown as Record<string, unknown>,
-    { expireMinutes: GIFT_TTL_MINUTES, forceNetwork: XAMAN_NETWORK },
+    { flow: 'GIFT_CANCEL', userId: req.userId, expireMinutes: GIFT_TTL_MINUTES, forceNetwork: XAMAN_NETWORK },
   )
-  // Registered before it can resolve, so a webhook callback finds it and
-  // reconciliation can spot one whose callback never arrived.
-  await trackPayload(payload.uuid)
 
   await prisma.gift.update({
     where: { id: gift.id },
