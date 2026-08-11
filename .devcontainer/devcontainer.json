@@ -45,6 +45,14 @@
   // container. `ledger:sync --apply`, the mainnet rehearsal and key rotation are
   // desk work, where you can see what you are doing and stop quickly.
 
+  // `gh codespace ssh` needs an SSH server in the container, and this base image
+  // has none — without it the CLI cannot open a terminal at all and the only way
+  // in is the browser. Codespaces' own default images bundle sshd; a custom
+  // image has to ask for it.
+  "features": {
+    "ghcr.io/devcontainers/features/sshd:1": {}
+  },
+
   "remoteEnv": {
     // Host is `db`, not localhost: the two containers are separate services.
     // vitest rewrites this to `hubworld_test` by swapping the database name, so
