@@ -119,16 +119,43 @@ Both dev servers must be running for the app to work.
 declare `engines`, and `.npmrc` sets `engine-strict=true`, so npm refuses to
 install on an older runtime instead of failing later inside Vite or tsx.
 
+**Everything now runs Node 22, and that is deliberate alignment rather than a
+version bump.** CI pins 22, the `Dockerfile` builds on 22 and the devcontainer
+provisions 22, so the laptop was the only thing that did not — and a machine
+that disagrees with CI is where "works for me" comes from.
+
+The specific cost was measured, not theoretical. On v23.4 a transitive
+`@inquirer/ansi` requires `>=23.5.0 || ^22.13.0 || ^20.17.0`, which 23.4
+satisfies none of, so `engine-strict` refused a plain `npm ci` in BOTH folders
+and every install needed `--engine-strict=false`. A permanent flag that
+suppresses an engine check is exactly the flag that will one day suppress a real
+one. On 22.23.2 the constraint is met and the flag is gone.
+
+Switched with Homebrew, keeping v23 installed so it is one command back:
+
+```sh
+brew install node@22
+brew unlink node && brew link --overwrite --force node@22   # to 22
+brew unlink node@22 && brew link node                       # back to 23
+```
+
+**Verify all three shell types after any switch**, because this machine has
+form: `zsh -c`, `zsh -lc` and `zsh -ic` must all report the same binary.
+Non-interactive shells are the ones that bite — agent shells, CI runners and
+cron — and they are the ones nobody checks.
+
+Native modules are ABI-bound to the Node major, so `node_modules` must be
+reinstalled in both folders after switching (`rm -rf node_modules && npm ci`),
+not merely rebuilt.
+
 A stale `/usr/local/bin/node` v18 from a 2023 `.pkg` install used to shadow
-Homebrew's v23 in non-interactive shells (`zsh -c '...'`, CI runners, cron),
-causing `EBADENGINE` even though interactive shells were fine. **Resolved** — the
-v18 `node`/`npm`/`npx`/`corepack` were moved to `~/node18-disabled/`, so all
-three shell types now resolve `/opt/homebrew/bin/node` v23. `/usr/local/bin` is
-user-owned, so no sudo was involved; restore with
-`mv ~/node18-disabled/* /usr/local/bin/`.
+Homebrew in non-interactive shells, causing `EBADENGINE` even though interactive
+shells were fine. **Resolved** — the v18 `node`/`npm`/`npx`/`corepack` were moved
+to `~/node18-disabled/`. `/usr/local/bin` is user-owned, so no sudo was involved;
+restore with `mv ~/node18-disabled/* /usr/local/bin/`.
 
 Note that `ng`, `vue`, `tsc`, `tsserver` and `yarn` still symlink into
-`/usr/local/lib/node_modules` and now run under v23. Nothing here uses them.
+`/usr/local/lib/node_modules`. Nothing here uses them.
 
 ```sh
 # backend/ — http://localhost:4000
