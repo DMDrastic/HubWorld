@@ -16,10 +16,9 @@
  * arrives accessible: it scrolls with a trackpad, a touch swipe, arrow keys and
  * a screen reader's own navigation, none of which a JS carousel gets for free.
  *
- * PROTOTYPE — the poster-led direction, rendering `EventPoster` instead of
- * `EventCard`. The grid is denser and the posters are portrait, so the page
- * reads as a wall of bills rather than a table of records. See EventPoster for
- * the reasoning.
+ * Events render as portrait posters. The grid is denser than the 4:3 cards this
+ * replaced, so the page reads as a wall of bills rather than a table of
+ * records. See EventPoster for the reasoning.
  */
 import { EventPoster } from '@/components/EventPoster'
 import type { EventSummary } from '@/lib/api'

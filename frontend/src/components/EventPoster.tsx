@@ -1,10 +1,13 @@
 /**
  * One event, as a poster.
  *
- * This is what `/events` renders. `EventCard` is the 4:3 card version it grew
- * out of and is now imported by nothing — kept only so the two can still be
- * compared, and safe to delete the moment that stops being useful. Do not add
- * to it under the impression it is live.
+ * This is what `/events` renders.
+ *
+ * References to `EventCard` below are to the 4:3 card this replaced, deleted
+ * once nothing imported it. They are kept because they record WHY several
+ * decisions here are what they are — three of them are regressions against that
+ * component, found in review after the suite stayed green through all of them.
+ * `git log` has the file if you need to see it.
  *
  * ## Why this looks different
  *

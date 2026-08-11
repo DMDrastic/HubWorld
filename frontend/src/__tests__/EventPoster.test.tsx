@@ -176,3 +176,92 @@ describe('an abnormal status is never silent', () => {
     expect(screen.queryByText('sold out')).toBeNull()
   })
 })
+
+/**
+ * Carried over from `EventCard.test.tsx`, which was deleted with the component.
+ *
+ * These are not about the card — they are about behaviour `EventPoster` still
+ * has, and deleting dead code must not quietly delete the coverage of live
+ * behaviour along with it. The hue tests especially: the golden-angle spread is
+ * documented as load-bearing because plain modulo put five of six real slugs
+ * inside a 44 degree band of green, so a wall of fallbacks read as one event
+ * repeated.
+ *
+ * One EventCard test was NOT carried over, deliberately: it asserted the
+ * fallback showed the title's first letter as a mark. This fallback is
+ * typographic and sets the whole title, so that behaviour no longer exists.
+ */
+describe('the poster image, and the fallback when there is none', () => {
+  it('renders the uploaded image when there is one', () => {
+    const { container } = render(
+      <EventPoster
+        event={event({ imageUrl: 'https://example.test/a.jpg' })}
+        live={false}
+        onOpenAuction={vi.fn()}
+      />,
+    )
+
+    expect(container.querySelector('img')?.getAttribute('src')).toBe('https://example.test/a.jpg')
+  })
+
+  it('renders no <img> at all when there is no poster', () => {
+    // Not a broken image, not an empty src — nothing that could 404.
+    const { container } = render(<EventPoster event={event()} live={false} onOpenAuction={vi.fn()} />)
+
+    expect(container.querySelector('img')).toBeNull()
+  })
+
+  it('gives the same event the same colour every render', () => {
+    // An event that changed colour on reload would read as a rendering bug.
+    const first = render(<EventPoster event={event()} live={false} onOpenAuction={vi.fn()} />)
+    const a = first.container.querySelector('[style*="linear-gradient"]')?.getAttribute('style')
+    first.unmount()
+    const second = render(<EventPoster event={event()} live={false} onOpenAuction={vi.fn()} />)
+    const b = second.container.querySelector('[style*="linear-gradient"]')?.getAttribute('style')
+
+    expect(a).toBeTruthy()
+    expect(a).toBe(b)
+  })
+
+  it('gives similar slugs DISTANT colours, not merely different ones', () => {
+    // "Different" is not the property and asserting it proves nothing: plain
+    // `hash % 360` also yields different hues — just adjacent ones. That was the
+    // actual bug. Five of six real slugs landed inside a 44 degree band of green
+    // and the wall read as one event repeated, while an inequality assertion
+    // passed happily throughout. Verified by mutation: removing the golden angle
+    // leaves an inequality test green and fails this one.
+    const hueOf = (slug: string): number => {
+      const { container } = render(
+        <EventPoster event={event({ slug })} live={false} onOpenAuction={vi.fn()} />,
+      )
+      const style = container.querySelector('[style*="linear-gradient"]')!.getAttribute('style')!
+      // The hue is the third component of the first stop. Matched loosely
+      // because jsdom normalises CSS numbers — the authored `0.40` comes back
+      // as `0.4`, so pinning the literal lightness silently matches nothing.
+      return Number(/oklch\([\d.]+\s+[\d.]+\s+([\d.]+)/.exec(style)![1])
+    }
+
+    // Deliberately near-identical: same length, lowercase, hyphenated, one
+    // character apart. djb2 maps those to nearby hashes and a modulo preserves
+    // the nearness.
+    const a = hueOf('roof-top-run')
+    const b = hueOf('roof-top-rug')
+
+    const apart = Math.abs(a - b)
+    const circular = Math.min(apart, 360 - apart)
+    expect(circular).toBeGreaterThan(40)
+  })
+})
+
+describe('only a live auction makes a poster activatable', () => {
+  // A control that opens an empty window is worse than no control.
+  it('is a button when an auction is live', () => {
+    render(<EventPoster event={event()} live onOpenAuction={vi.fn()} />)
+    expect(screen.getByRole('button')).toBeTruthy()
+  })
+
+  it('is not a button without one', () => {
+    render(<EventPoster event={event()} live={false} onOpenAuction={vi.fn()} />)
+    expect(screen.queryByRole('button')).toBeNull()
+  })
+})
