@@ -28,6 +28,11 @@ Everything below assumes that gets fixed first.
 
 ## 1. A mainnet dress rehearsal, before optimising anything
 
+**There is a runbook: `docs/mainnet-dress-rehearsal.md`.** It carries the
+measured mainnet reserve and fee figures, the preconditions, the sequence with
+a verification at each step, the abort conditions, and where the payload
+readings go. Follow it rather than this summary.
+
 One small real event. Ten to twenty tickets, an event you control, real XRP.
 
 This is first because it converts the largest unknowns into facts, and every
