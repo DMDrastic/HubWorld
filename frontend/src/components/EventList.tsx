@@ -69,11 +69,33 @@ export function EventList({
               rail appears only when there is genuinely something to scroll. */}
           {live.length === 1 ? (
             <div className="grid gap-6 sm:grid-cols-[15rem_1fr] sm:items-end">
-              <EventPoster event={live[0]!} live interactive={false} onOpenAuction={onOpenAuction} />
+              {/* WHICHEVER SIDE CAN SHOW THE TITLE BEST SHOWS IT, EXACTLY ONCE.
+                  The two are complementary rather than independent, so they are
+                  driven by one condition.
+
+                  A photographic poster cannot name its own event, so the
+                  heading beside it does the naming and the poster stays silent.
+                  A FALLBACK poster is a typographic bill whose whole subject is
+                  the title — so it names the event, and the heading beside
+                  would be the same words twice, adjacent.
+
+                  Suppressing the poster's title in both cases was the first
+                  attempt and looked worse than the bug: it left the featured
+                  fallback a coloured rectangle with a rule floating in it,
+                  which is exactly the void the fallback was designed to avoid. */}
+              <EventPoster
+                event={live[0]!}
+                live
+                interactive={false}
+                titled={!live[0]!.imageUrl}
+                onOpenAuction={onOpenAuction}
+              />
               <div className="space-y-3 pb-1">
-                <h3 className="font-heading text-3xl leading-[1.02] font-semibold tracking-[-0.03em] text-balance sm:text-4xl">
-                  {live[0]!.title}
-                </h3>
+                {live[0]!.imageUrl && (
+                  <h3 className="font-heading text-3xl leading-[1.02] font-semibold tracking-[-0.03em] text-balance sm:text-4xl">
+                    {live[0]!.title}
+                  </h3>
+                )}
                 <p className="text-muted-foreground max-w-sm text-sm leading-relaxed">
                   Sold out, and open for bidding. Every bid is a buy offer on the
                   XRP Ledger — only the ones committed on-ledger count toward the
@@ -83,7 +105,7 @@ export function EventList({
                   type="button"
                   onClick={() => onOpenAuction(live[0]!)}
                   aria-label={`View live bidding for ${live[0]!.title}`}
-                  className="bg-primary text-primary-foreground focus-visible:ring-ring inline-flex items-center rounded-xl px-4 py-2 text-sm font-medium transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
+                  className="bg-primary text-primary-foreground focus-visible:ring-ring inline-flex items-center rounded-xl px-4 py-2 text-sm font-medium transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:outline-none"
                 >
                   Watch the bidding
                 </button>

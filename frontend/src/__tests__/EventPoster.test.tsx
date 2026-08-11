@@ -83,6 +83,67 @@ describe('the title reaches the accessibility tree', () => {
   })
 })
 
+describe('the surrounding layout can take over naming the event', () => {
+  it('renders no heading at all when titled is false', () => {
+    // The single-auction feature layout sets its own text-3xl heading beside the
+    // poster. Without this the name appeared twice, adjacent — and since one
+    // live auction is the ordinary case, that was the DEFAULT rendering.
+    render(
+      <EventPoster event={event()} live interactive={false} titled={false} onOpenAuction={vi.fn()} />,
+    )
+
+    expect(screen.queryByRole('heading')).toBeNull()
+    // Nowhere at all, not merely un-headed: the fallback poster paints the title
+    // as artwork, and leaving that would still show it twice on screen.
+    expect(screen.queryByText('Roof Top Run')).toBeNull()
+  })
+
+  it('still shows the date and venue, which the poster owns either way', () => {
+    render(
+      <EventPoster event={event()} live interactive={false} titled={false} onOpenAuction={vi.fn()} />,
+    )
+
+    // getAllBy, because the venue legitimately appears twice on a fallback: set
+    // in mono on the poster as part of the artwork, and again in the caption.
+    // Unlike the title that is intended — it is a detail, not the name of the
+    // thing, and the poster would look unfinished without it.
+    expect(screen.getAllByText(/Spagonia Square/).length).toBeGreaterThan(0)
+  })
+})
+
+describe('dates say enough to tell two events apart', () => {
+  it('omits the year for an event this year', () => {
+    // Noise on the 90% of events happening within a few months.
+    const thisYear = new Date()
+    thisYear.setMonth(11, 25)
+    render(
+      <EventPoster
+        event={event({ startsAt: thisYear.toISOString() })}
+        live={false}
+        onOpenAuction={vi.fn()}
+      />,
+    )
+
+    expect(screen.queryByText(new RegExp(String(thisYear.getFullYear())))).toBeNull()
+  })
+
+  it('shows the year for an event in a different one', () => {
+    // /events is not filtered by date, so two events a year apart sit in the
+    // same grid — and both read "16 Aug" with nothing to distinguish them.
+    const nextYear = new Date()
+    nextYear.setFullYear(nextYear.getFullYear() + 2)
+    render(
+      <EventPoster
+        event={event({ startsAt: nextYear.toISOString() })}
+        live={false}
+        onOpenAuction={vi.fn()}
+      />,
+    )
+
+    expect(screen.getAllByText(new RegExp(String(nextYear.getFullYear()))).length).toBeGreaterThan(0)
+  })
+})
+
 describe('an abnormal status is never silent', () => {
   it.each([
     ['SOLD_OUT', 'sold out'],

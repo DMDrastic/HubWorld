@@ -33,7 +33,28 @@ import type { EventSummary } from '@/lib/api'
 import { posterSrcSet, posterUrl } from '@/lib/poster'
 
 const dateFmt = new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'short' })
+const dateYearFmt = new Intl.DateTimeFormat(undefined, {
+  day: 'numeric',
+  month: 'short',
+  year: 'numeric',
+})
 const timeFmt = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' })
+
+/**
+ * The year appears only when it is not this one.
+ *
+ * `EventCard` used `dateStyle: 'medium'`, which always carried a year; dropping
+ * it for the poster's terse look made two events a year apart both read "16
+ * Aug", with nothing on the page to tell them apart — and `/events` is not
+ * filtered by date, so far-future events sit in the same grid. Printing the year
+ * on everything is the other extreme: it is noise on the 90% of events happening
+ * within a few months. So it earns its place by being surprising.
+ */
+function formatDate(when: Date): string {
+  return when.getFullYear() === new Date().getFullYear()
+    ? dateFmt.format(when)
+    : dateYearFmt.format(when)
+}
 
 /**
  * A stable hue from the slug, spread by the golden angle.
@@ -55,7 +76,7 @@ function hueFrom(slug: string): number {
   return (Math.abs(h) * 137.508) % 360
 }
 
-function FallbackPoster({ event }: { event: EventSummary }) {
+function FallbackPoster({ event, titled }: { event: EventSummary; titled: boolean }) {
   const hue = hueFrom(event.slug)
   const when = new Date(event.startsAt)
 
@@ -79,16 +100,25 @@ function FallbackPoster({ event }: { event: EventSummary }) {
           broke across two lines with a lone "PM" underneath. The time moves to
           the caption below, where there is width for it. */}
       <div className="pr-24 font-mono text-[0.65rem] tracking-[0.2em] whitespace-nowrap text-white/45 uppercase">
-        {dateFmt.format(when)}
+        {formatDate(when)}
       </div>
 
       {/* The title is the artwork, and it sits LOW — where the act's name sits
           on a real bill. The first pass spread these evenly down the poster with
           justify-between, which left a void through the middle. */}
       <div className="mt-auto space-y-3">
-        <div className="font-heading text-[clamp(1.4rem,2.5vw,2rem)] leading-[0.95] font-semibold tracking-[-0.035em] text-balance text-white">
-          {event.title}
-        </div>
+        {/* `line-clamp-5` because this block is `mt-auto` inside a fixed-height
+            `overflow-hidden` poster: once the title, rule and venue exceed the
+            space, `mt-auto` collapses to zero and the text overflows the TOP and
+            is cut mid-letter. At the 2-column mobile density a poster is about
+            123px of content width, which ordinary event names reach. Clamping
+            ends in an ellipsis instead, and the caption below still carries the
+            full name to a screen reader. */}
+        {titled && (
+          <div className="font-heading line-clamp-5 text-[clamp(1.4rem,2.5vw,2rem)] leading-[0.95] font-semibold tracking-[-0.035em] text-balance text-white">
+            {event.title}
+          </div>
+        )}
         <div className="h-px w-full bg-white/25" />
         <div className="font-mono text-[0.65rem] leading-relaxed tracking-[0.18em] text-white/50 uppercase">
           {event.venue ?? 'HubWorld'}
@@ -103,6 +133,7 @@ export function EventPoster({
   live,
   onOpenAuction,
   interactive = true,
+  titled = true,
 }: {
   event: EventSummary
   live: boolean
@@ -114,6 +145,20 @@ export function EventPoster({
    * destination — which reads as two different things until you try them.
    */
   interactive?: boolean
+  /**
+   * Set false when the SURROUNDING layout already names this event.
+   *
+   * The single-auction feature layout sets its own `text-3xl` heading beside the
+   * poster, and the poster was naming the event too — as a small caption under a
+   * photograph, or as the large painted title on a fallback. Either way the name
+   * appeared twice, adjacent, and since one live auction is the ordinary case
+   * rather than the edge, that was the DEFAULT rendering of the section.
+   *
+   * The caller taking this on also takes on the accessible name: with `titled`
+   * false there is no heading in here at all, so the layout must supply a real
+   * one. The feature layout does.
+   */
+  titled?: boolean
 }) {
   const when = new Date(event.startsAt)
 
@@ -152,7 +197,7 @@ export function EventPoster({
             className="absolute inset-0 size-full object-cover transition-transform duration-[600ms] ease-out group-hover:scale-[1.03]"
           />
         ) : (
-          <FallbackPoster event={event} />
+          <FallbackPoster event={event} titled={titled} />
         )}
 
         {/* Only over real photography, and only at the foot, so an uploaded
@@ -210,19 +255,21 @@ export function EventPoster({
 
             So it stays a real `<h3>` in the document either way; `sr-only`
             handles the visual duplication instead of a conditional. */}
-        <h3
-          className={
-            event.imageUrl
-              ? 'font-heading text-[0.95rem] leading-tight font-semibold tracking-[-0.02em] text-balance'
-              : 'sr-only'
-          }
-        >
-          {event.title}
-        </h3>
+        {titled && (
+          <h3
+            className={
+              event.imageUrl
+                ? 'font-heading text-[0.95rem] leading-tight font-semibold tracking-[-0.02em] text-balance'
+                : 'sr-only'
+            }
+          >
+            {event.title}
+          </h3>
+        )}
         <div className="text-muted-foreground flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-xs">
           <span className="inline-flex items-center gap-1 whitespace-nowrap">
             <CalendarDays className="size-3" aria-hidden />
-            {dateFmt.format(when)} · {timeFmt.format(when)}
+            {formatDate(when)} · {timeFmt.format(when)}
           </span>
           {event.venue && (
             <span className="inline-flex min-w-0 items-center gap-1">
@@ -249,7 +296,7 @@ export function EventPoster({
       // something like "Aug 16 The Observatory". The label says what the control
       // does and which event it does it to.
       aria-label={`View live bidding for ${event.title}`}
-      className="group focus-visible:ring-ring block w-full cursor-pointer rounded-lg text-left focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
+      className="group focus-visible:ring-ring block w-full cursor-pointer rounded-lg text-left focus-visible:ring-2 focus-visible:outline-none"
     >
       {body}
     </button>
