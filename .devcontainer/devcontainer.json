@@ -1,0 +1,80 @@
+{
+  "name": "HubWorld",
+  "dockerComposeFile": "docker-compose.yml",
+  "service": "app",
+  "workspaceFolder": "/workspaces/HubWorld",
+
+  // WHY THIS EXISTS
+  //
+  // Working on HubWorld away from the Mac used to mean re-deriving the
+  // environment every time: which Node, which Postgres, which database names,
+  // and — the part that matters — which credentials are safe to be without.
+  //
+  // The answer turns out to be short. `DATABASE_URL` is the ONLY required
+  // variable in `src/env.ts`; everything else is optional or defaulted. So a
+  // full working checkout needs Node, a Postgres, and a connection string, and
+  // NOTHING that could leak.
+  //
+  // WHAT IS DELIBERATELY ABSENT
+  //
+  // XAMAN_API_KEY / XAMAN_API_SECRET are unset, so `src/xaman.ts` swaps in the
+  // in-memory stub and `POST /api/auth/signin/simulate` stands in for a human
+  // signing. That is the same choice CI makes, for the same two reasons: a
+  // sandbox must never reach the real Xaman API, and every payload it created
+  // would spend quota that cannot be reclaimed.
+  //
+  // Note the trap documented in CLAUDE.md: setting them to an EMPTY STRING does
+  // not select stub mode, it stops the server booting — the schema is
+  // `.min(1).optional()`, so empty is present-but-invalid. They must be ABSENT,
+  // which is what this file does by simply never mentioning them.
+  //
+  // PLATFORM_SEED is absent too, so `brokerMode` is disabled and the selling and
+  // settlement routes answer 503 rather than stranding an offer they could never
+  // broker. Run `npm run platform:setup` in the container if you need those; it
+  // is testnet-only by design and refuses mainnet.
+  //
+  // WHAT STILL WORKS
+  //
+  // Both test suites, both typechecks, lint, Stryker, Playwright, the dev
+  // servers, Prisma migrations, and testnet ledger reads — testnet is a public
+  // network and needs no key. That is nearly everything except signing.
+  //
+  // WHAT WILL NEVER WORK HERE, ON PURPOSE
+  //
+  // Anything pointed at production. Do not put the Supabase URL in this
+  // container. `ledger:sync --apply`, the mainnet rehearsal and key rotation are
+  // desk work, where you can see what you are doing and stop quickly.
+
+  "remoteEnv": {
+    // Host is `db`, not localhost: the two containers are separate services.
+    // vitest rewrites this to `hubworld_test` by swapping the database name, so
+    // the host is irrelevant to it — see backend/scripts/test-db-url.ts.
+    "DATABASE_URL": "postgresql://hubworld:hubworld@db:5432/hubworld_dev?schema=public"
+  },
+
+  // 5173 Vite, 4000 Express. Both dev servers must be running for the app to
+  // work; Vite proxies /api to 4000 so the browser stays same-origin.
+  "forwardPorts": [5173, 4000],
+  "portsAttributes": {
+    "5173": { "label": "frontend (Vite)", "onAutoForward": "openPreview" },
+    "4000": { "label": "backend (Express)", "onAutoForward": "silent" }
+  },
+
+  "postCreateCommand": "bash .devcontainer/post-create.sh",
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "Prisma.prisma",
+        "bradlc.vscode-tailwindcss",
+        "oxc.oxc-vscode",
+        "ms-playwright.playwright"
+      ],
+      "settings": {
+        "editor.formatOnSave": true,
+        // The repo has no root package.json; these are the two real roots.
+        "eslint.workingDirectories": ["backend", "frontend"]
+      }
+    }
+  }
+}

@@ -1,0 +1,66 @@
+# The two containers a HubWorld checkout needs, and nothing else.
+#
+# This deliberately mirrors `.github/workflows/ci.yml` rather than inventing a
+# second environment: same Postgres 15, same Node 22, same absent credentials.
+# A dev environment that differs from CI is a source of "works for me" that
+# nobody can reproduce, and CI is the definition that already has to be right.
+services:
+  app:
+    # Node 22 to match CI. `engines` only demands >=20.19 (Vite 8's floor), but
+    # matching the line that actually gates merges is worth more than being
+    # newer — the Mac runs 23 and that gap has cost time before.
+    image: mcr.microsoft.com/devcontainers/typescript-node:1-22-bookworm
+    volumes:
+      # THIS repo, not its parent. The first version mounted `../..`, which on a
+      # normal machine is the folder holding every other checkout — the sandbox
+      # could see and edit unrelated projects.
+      - ..:/workspaces/HubWorld:cached
+
+      # node_modules must NOT be shared with the host, and this is the entry
+      # worth reading twice.
+      #
+      # Both folders hold NATIVE binaries — Prisma's query engine, esbuild,
+      # rollup — compiled for the platform that installed them. With the bind
+      # mount alone, `npm ci` in this Linux container writes Linux binaries
+      # straight into the Mac's working tree, and the next `npm test` on the Mac
+      # dies with an unreadable engine error that looks nothing like its cause.
+      #
+      # Measured, not predicted: the first run of this file left
+      # `libquery_engine-linux-arm64-openssl-3.0.x.so.node` in a macOS checkout
+      # and `tsx: not found` in the container. Named volumes give each side its
+      # own install at the same path.
+      - backend_node_modules:/workspaces/HubWorld/backend/node_modules
+      - frontend_node_modules:/workspaces/HubWorld/frontend/node_modules
+    # Keep the container alive; the dev servers are started by hand.
+    command: sleep infinity
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    image: postgres:15
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: hubworld
+      POSTGRES_PASSWORD: hubworld
+      # The DEV database. `hubworld_test` is created separately by
+      # `npm run db:test:setup`, because vitest derives its URL from this one by
+      # swapping the database name — the same arrangement as a local checkout,
+      # so the sandbox and the Mac behave identically.
+      POSTGRES_DB: hubworld_dev
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    # Without this, postCreate can start before Postgres accepts connections and
+    # the first `prisma migrate deploy` fails for a reason that looks like a
+    # broken migration. Same trap CI documents.
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U hubworld -d hubworld_dev']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  pgdata:
+  # Deliberately separate from the host's. See the app service above.
+  backend_node_modules:
+  frontend_node_modules:
