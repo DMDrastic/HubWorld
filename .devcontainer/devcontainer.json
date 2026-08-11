@@ -45,10 +45,17 @@
   // container. `ledger:sync --apply`, the mainnet rehearsal and key rotation are
   // desk work, where you can see what you are doing and stop quickly.
 
-  // `gh codespace ssh` needs an SSH server in the container, and this base image
-  // has none — without it the CLI cannot open a terminal at all and the only way
-  // in is the browser. Codespaces' own default images bundle sshd; a custom
-  // image has to ask for it.
+  // An SSH server, because this base image has none and Codespaces' own default
+  // images do. Without it `gh codespace ssh` fails outright with "Please check
+  // if an SSH server is installed in the container".
+  //
+  // BE HONEST ABOUT WHAT THIS DOES AND DOES NOT FIX. Adding it gets you a
+  // running sshd, and `gh codespace ssh` then fails differently — "Permission
+  // denied (publickey,password)" — because the CLI's key provisioning does not
+  // reach a compose-based custom image. It was not chased further: the browser
+  // and the VS Code Remote extension both work, and terminal-over-CLI is a
+  // convenience rather than the point. Keep this so a manual SSH is possible at
+  // all; do not expect `gh codespace ssh` to work.
   "features": {
     "ghcr.io/devcontainers/features/sshd:1": {}
   },
