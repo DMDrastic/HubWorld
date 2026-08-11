@@ -9,3 +9,8 @@ npm-debug.log*
 .DS_Store
 .vite/
 coverage/
+
+# Claude Code machine-local settings. Only the `.local` variants: a plain
+# `.claude/settings.json` is the SHARED project config and should be committed
+# if one is ever added, so ignoring the whole directory would hide it.
+.claude/settings.local*.json
