@@ -1,8 +1,10 @@
 /**
  * One event, as a poster.
  *
- * PROTOTYPE — the poster-led direction. Sits alongside `EventCard` rather than
- * replacing it, so the two can be compared before anything is decided.
+ * This is what `/events` renders. `EventCard` is the 4:3 card version it grew
+ * out of and is now imported by nothing — kept only so the two can still be
+ * compared, and safe to delete the moment that stops being useful. Do not add
+ * to it under the impression it is live.
  *
  * ## Why this looks different
  *
