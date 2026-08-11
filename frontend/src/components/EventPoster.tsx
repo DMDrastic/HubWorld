@@ -116,7 +116,26 @@ export function EventPoster({
   interactive?: boolean
 }) {
   const when = new Date(event.startsAt)
-  const soldOut = event.status === 'SOLD_OUT'
+
+  /**
+   * Any status that is not the ordinary one has to be visible.
+   *
+   * `EventCard` badged EVERY status; this component badged only SOLD_OUT, and
+   * `GET /api/events` applies no default filter — so DRAFT, COMPLETED and
+   * CANCELLED events are all in the response and a CANCELLED one rendered
+   * identically to a published one. On a wall of posters, where the whole point
+   * is reading at a glance, that is the worst possible place to lose it.
+   */
+  const abnormal = event.status !== 'PUBLISHED' ? event.status : null
+
+  /**
+   * Cancelled and completed events get a badge AND a visual treatment.
+   *
+   * A badge alone is a detail you read; desaturating is a state you SEE. These
+   * two are the statuses where mistaking the event for a live one wastes
+   * somebody's evening, so they are worth more than a label.
+   */
+  const inert = event.status === 'CANCELLED' || event.status === 'COMPLETED'
 
   const body = (
     <>
@@ -153,10 +172,23 @@ export function EventPoster({
           </span>
         )}
 
-        {soldOut && !live && (
-          <span className="absolute top-3 right-3 rounded-full bg-black/55 px-2.5 py-1 text-[0.68rem] font-medium text-white backdrop-blur-sm">
-            sold out
+        {/* One badge, not two stacked in the same corner. A live auction is the
+            more urgent fact and already implies the event is not on sale. */}
+        {abnormal && !live && (
+          <span
+            className={`absolute top-3 right-3 rounded-full px-2.5 py-1 text-[0.68rem] font-medium text-white backdrop-blur-sm ${
+              event.status === 'CANCELLED' ? 'bg-destructive/85' : 'bg-black/55'
+            }`}
+          >
+            {abnormal.replace('_', ' ').toLowerCase()}
           </span>
+        )}
+
+        {/* Over the artwork rather than on the container, so the caption below
+            stays legible — the point is that the POSTER reads as past, not that
+            the whole entry becomes hard to make out. */}
+        {inert && (
+          <div className="absolute inset-0 bg-background/45 backdrop-saturate-50" aria-hidden />
         )}
       </div>
 
@@ -164,14 +196,29 @@ export function EventPoster({
           listing sits under a bill on a wall — rather than overlaid, which
           would fight whatever the organizer uploaded. */}
       <div className="mt-3 space-y-1">
-        {/* Only when a photograph is doing the work. A fallback poster already
-            sets the title large, and printing it again underneath reads as a
-            mistake rather than a caption. */}
-        {event.imageUrl && (
-          <h3 className="font-heading text-[0.95rem] leading-tight font-semibold tracking-[-0.02em] text-balance">
-            {event.title}
-          </h3>
-        )}
+        {/* ALWAYS rendered, and only sometimes visible.
+
+            A fallback poster already sets the title large, so printing it again
+            underneath reads as a mistake rather than a caption — which is why
+            this used to be behind `event.imageUrl`. That was wrong, and it took
+            the title out of the ACCESSIBILITY TREE entirely: `FallbackPoster` is
+            `aria-hidden`, so for an image-less event the only copy of the name
+            was inside a region screen readers are told to skip. A user got
+            "16 Aug · 7:00 PM · Hub World" with no event name, and heading
+            navigation found nothing at all. `EventCard` never had this problem
+            because its heading sat outside the decorative part.
+
+            So it stays a real `<h3>` in the document either way; `sr-only`
+            handles the visual duplication instead of a conditional. */}
+        <h3
+          className={
+            event.imageUrl
+              ? 'font-heading text-[0.95rem] leading-tight font-semibold tracking-[-0.02em] text-balance'
+              : 'sr-only'
+          }
+        >
+          {event.title}
+        </h3>
         <div className="text-muted-foreground flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-xs">
           <span className="inline-flex items-center gap-1 whitespace-nowrap">
             <CalendarDays className="size-3" aria-hidden />

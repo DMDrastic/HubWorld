@@ -47,7 +47,12 @@ describe('EventList auction gating', () => {
 
     // No button at all — nothing to click that would open an empty window.
     expect(screen.queryByRole('button')).toBeNull()
-    expect(screen.getByText('Neon District Launch')).toBeTruthy()
+    // By ROLE, not by text. An image-less poster now carries the title twice on
+    // purpose: once painted large inside the `aria-hidden` fallback artwork, and
+    // once as a real `sr-only` heading — because the artwork is decorative and a
+    // screen reader is told to skip it. `getByText` sees both and throws on the
+    // ambiguity; the heading is the one that means "this event is on the page".
+    expect(screen.getByRole('heading', { name: 'Neon District Launch' })).toBeTruthy()
     expect(onOpen).not.toHaveBeenCalled()
   })
 
