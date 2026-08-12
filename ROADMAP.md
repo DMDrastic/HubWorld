@@ -104,7 +104,27 @@ Two actions, both cheap, both now:
   as `unknown`/`unattributed` precisely because it cannot be attributed
   honestly. It is here only as evidence the reader works.
 - **Get quota limits and pricing tiers from Xaman in writing** before selling
-  anything to anyone.
+  anything to anyone. **ASKED 2026-08-12, awaiting reply** — by email to
+  `support@xaman.app` and by a ticket in the Support xApp. Note their contact
+  page states support is xApp-only despite publishing the address, so a redirect
+  there is possible; chase through the xApp if nothing comes back.
+
+  Six questions were put, and **the third is the one that changes what we build**:
+
+  1. The exact free-tier limit, and whether it is monthly, rolling or lifetime.
+  2. Confirmation that it counts payloads CREATED, and that resolved, cancelled
+     or expired payloads cannot be reclaimed.
+  3. **Whether limits are scoped per APPLICATION or per developer account.**
+  4. Paid tiers: included volume and price.
+  5. Lead time to raise a limit on an existing application.
+  6. Whether a 429 is separate from the quota, and whether it consumes any.
+
+  If limits are per application, mainnet should get its own Xaman application, so
+  development and the e2e suite's stub traffic cannot spend an event's budget. If
+  they are per account, a second application buys nothing and adds a second set
+  of credentials to hold. **Do not register a mainnet application until this is
+  answered** — it is the only rehearsal precondition that is genuinely blocked on
+  Xaman. The mainnet database and the broker account are not.
 
 Note the existing mitigations are real but bounded: `POST /auth/signin` reuses an
 outstanding unsigned payload, `SIGNIN_TTL_MINUTES` is 3, and every poll site
