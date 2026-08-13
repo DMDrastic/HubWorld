@@ -20,6 +20,7 @@
     "event:create": "tsx scripts/create-event.ts",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:load": "vitest run --config vitest.load.config.ts",
     "mutate": "stryker run",
     "platform:setup": "tsx scripts/setup-platform-account.ts",
     "auction:create": "tsx scripts/create-auction.ts",

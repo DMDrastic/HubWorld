@@ -147,19 +147,39 @@ property; it is the same property that makes a second implementation possible.
 This is insurance, not a project. Do not build a second signer speculatively —
 just refuse to make one impossible.
 
-## 4. Two operational safety nets that are missing
+## 4. Two operational safety nets that were missing
 
-Both are small, and both are the kind of gap that is invisible until it is
-expensive.
+Both were small, and both were the kind of gap that is invisible until it is
+expensive. **Both are now closed, 2026-08-13**, ahead of the rehearsal rather
+than after it.
 
-- **The broker account must stay funded or sales silently stop settling.**
-  Settlement costs HubWorld the transaction fee because the broker submits it.
-  That needs a balance alarm. Discovering it from a customer is the bad path.
-- **The settlement sweep has never been load-tested with many auctions closing
-  at once.** Per-auction `JobLock` leases make it *correct* under concurrency —
-  correct and fast are different claims. A closing-time thundering herd is
-  exactly the moment it must not fall over, and auctions naturally cluster at
-  round times.
+- ~~**The broker account must stay funded or sales silently stop settling.**~~
+  **DONE.** `GET /api/health` now carries a `broker` field: `disabled` with no
+  key, else the address plus `ok` / `low` / `unfunded` / `unknown`
+  (`src/broker-health.ts`). `unknown` is kept distinct from `unfunded` on
+  purpose — an unreadable ledger is not an empty account, and an alarm that
+  cries wolf on a node blip is an alarm that gets ignored.
+
+  **This is visibility, not paging.** Something still has to WATCH the field. A
+  balance that only becomes visible when somebody looks is not yet an alarm, and
+  wiring it to an uptime check is the remaining piece.
+
+- ~~**The settlement sweep has never been load-tested with many auctions closing
+  at once.**~~ **DONE:** `npm run test:load`. Per-auction `JobLock` leases hold
+  under overlapping sweeps — the work happens exactly once per auction — and a
+  herd closes rather than erroring.
+
+  It surfaced a fact worth knowing before an event: **the sweep takes 25 at a
+  time, serially, ordered by `endsAt` ascending.** At a 15s interval that is a
+  queue rather than a stall, but it lengthens with each settlement's ledger round
+  trip, and a big enough herd closes late **with nothing logged to say so**. Not
+  a problem at rehearsal size; a real one at scale, and the cap is where to look
+  first when auctions close late.
+
+  The test runs ALONE for the same reason it was worth writing: thirty auctions
+  closing at once fill the batch, so run beside its neighbours it starved their
+  auctions and failed their tests — one full-suite failure in three, always
+  somewhere else. The fixture was the load being tested.
 
 ## 5. The minting ceiling: lean into it, do not engineer around it
 
