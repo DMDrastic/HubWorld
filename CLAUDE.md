@@ -164,6 +164,7 @@ npm run dev              # tsx watch, reloads on save
 npm run build            # tsc -> dist/
 npm start                # run the build
 npm run typecheck
+npm run test:load        # the sweep under a herd; NOT part of npm test
 npm run prisma:generate
 npm run prisma:migrate -- --name <description>   # needs a real terminal, see below
 npm run payload:report   # what the Xaman quota went on
@@ -259,6 +260,32 @@ It fixes three separate things, all measured rather than assumed:
 `tests/global-setup.ts` fails fast with the command to run if the database is
 missing or unmigrated, rather than a Prisma trace about a database you did not
 know was supposed to exist.
+
+### The sweep under load: `npm run test:load` (backend)
+
+`tests/settlement-load.loadtest.ts`, run alone via `vitest.load.config.ts`.
+**Deliberately outside `npm test`**, and named `.loadtest.ts` so the default glob
+cannot pick it up.
+
+The reason is the finding itself. `settleDueAuctions` sweeps every due auction in
+the database and **takes 25 at a time, serially, ordered by `endsAt` ascending**
+— so a fixture of thirty auctions closing at once is not inert. It fills the
+batch, and any suite sweeping concurrently finds its own auction starved and
+fails. Measured while writing it: **six clean full-suite runs without the file,
+roughly one failure in three with it, and always in a NEIGHBOURING suite.** The
+fixture was the load being tested; it just applied to everybody.
+
+What it pins: a herd closes rather than erroring, the batch cap means a herd
+drains over several passes rather than one, and two overlapping sweeps do the
+work exactly once per auction. The last is asserted as "no auction was acted on
+twice" rather than "exactly N were acted on here" — a neighbour may legitimately
+close one first, and counting results makes a true property fail whenever
+someone else is running.
+
+**The cap is the operational finding, and it is silent.** At a 15s interval,
+25 per pass is a queue rather than a stall — but it lengthens with each
+settlement's ledger round trip, and a large enough herd closes late with nothing
+logged to say so.
 
 ### Mutation testing: `npm run mutate` (backend)
 
