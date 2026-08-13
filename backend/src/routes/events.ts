@@ -3,6 +3,8 @@ import { z } from 'zod'
 import { prisma } from '../prisma.js'
 import { issuesOf, slugSchema } from '../schemas.js'
 
+import { ticketMetadata } from '../nft-metadata.js'
+
 export const eventsRouter = Router()
 
 const ListQuery = z.object({
@@ -78,4 +80,36 @@ eventsRouter.get('/events/:slug', async (req, res) => {
 
   const { _count, ...rest } = event
   res.json({ ...rest, ticketsMinted: _count.tickets })
+})
+
+/**
+ * GET /api/events/:slug/nft.json
+ *
+ * The XLS-24 document every ticket for this event points at. **Public and
+ * unauthenticated on purpose**: it is read by wallets, indexers and explorers
+ * that will never hold a session, and the URI is on a public ledger already.
+ *
+ * Cached for an hour rather than indefinitely — an organizer who fixes a typo
+ * or uploads a poster should see it reflected, and nothing here is expensive
+ * enough to need more.
+ */
+eventsRouter.get('/events/:slug/nft.json', async (req, res) => {
+  const parsed = SlugParams.safeParse(req.params)
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Invalid request', details: issuesOf(parsed.error) })
+    return
+  }
+
+  const event = await prisma.event.findUnique({
+    where: { slug: parsed.data.slug },
+    select: { title: true, description: true, venue: true, startsAt: true, imageUrl: true },
+  })
+
+  if (!event) {
+    res.status(404).json({ error: 'Event not found' })
+    return
+  }
+
+  res.set('Cache-Control', 'public, max-age=3600')
+  res.json(ticketMetadata(event))
 })

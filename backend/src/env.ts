@@ -24,6 +24,14 @@ const EnvSchema = z.object({
   DATABASE_URL: z.string().min(1),
   CORS_ORIGIN: z.string().min(1).default('http://localhost:5173'),
 
+  /**
+   * The origin a WALLET will use, which is not necessarily the one a browser
+   * uses. It is burned into every ticket's on-ledger URI, so it must be public
+   * and it must outlive the ticket. Defaulting to the real origin means a mint
+   * from a laptop still produces a token that renders for everyone else.
+   */
+  PUBLIC_BASE_URL: z.string().url().default('https://hubworld.app'),
+
   // Xaman credentials. Both optional: without them the app runs in stub mode
   // so the sign-in loop is developable before you have a developer account.
   // The SECRET is backend-only and must never be exposed to the frontend.
