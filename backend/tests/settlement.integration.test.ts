@@ -500,16 +500,28 @@ describe('one auction must not stop the others', () => {
       return { hash: 'TX-AFTER-POISON', succeeded: true, result: 'tesSUCCESS' }
     })
 
-    const results = await settleDueAuctions()
+    // Swept until OUR poison is observed, not once.
+    //
+    // A neighbouring suite sweeps the same database and may take it first, in
+    // which case it is absent from this call's results and the assertion below
+    // reads `undefined` — which is what made an earlier version of this test
+    // fail in CI while passing twelve times locally. The poison never settles
+    // (its broker submission always throws), so it stays due and a later sweep
+    // will see it: looping is deterministic rather than hopeful.
+    const seen: Array<{ auctionId: string; outcome: { kind: string } }> = []
+    for (let pass = 0; pass < 6; pass++) {
+      seen.push(...(await settleDueAuctions()))
+      if (seen.some((r) => r.auctionId === poison.auctionId)) break
+    }
 
-    const poisoned = results.find((r) => r.auctionId === poison.auctionId)
-    const after = results.find((r) => r.auctionId === healthy.auctionId)
+    const poisoned = seen.find((r) => r.auctionId === poison.auctionId)
 
     // The failure is reported rather than swallowed...
     expect(poisoned?.outcome.kind).toBe('failed')
-    // ...and the auction behind it still closed, which is the whole point.
-    expect(after?.outcome.kind).toBe('settled')
 
+    // ...and the auction behind it still closed, which is the whole point.
+    // Asserted on the DATABASE rather than on this call's results, because a
+    // neighbour may legitimately have been the one to settle it.
     const settled = await prisma.auction.findUniqueOrThrow({ where: { id: healthy.auctionId } })
     expect(settled.status).toBe('SETTLED')
 
