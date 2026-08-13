@@ -1,3 +1,4 @@
+import { XrplNetwork } from '@prisma/client'
 import { prisma } from './prisma.js'
 import { NETWORK } from './network.js'
 
@@ -34,7 +35,12 @@ const MODELS = [
   'XamanPayload',
 ] as const
 
-export type ForeignRows = { model: (typeof MODELS)[number]; count: number }
+export type ForeignRows = {
+  model: (typeof MODELS)[number]
+  /** WHICH other ledger. Naming it turns "something is wrong" into a diagnosis. */
+  network: XrplNetwork
+  count: number
+}
 
 /**
  * Rows in this database that belong to a DIFFERENT ledger than this process.
@@ -48,7 +54,21 @@ export type ForeignRows = { model: (typeof MODELS)[number]; count: number }
  * hide exactly that.
  */
 export async function foreignNetworkRows(): Promise<ForeignRows[]> {
-  const where = { network: { not: NETWORK } } as const
+  const foreign = Object.values(XrplNetwork).filter((n) => n !== NETWORK)
+  const perNetwork = await Promise.all(foreign.map(countsOn))
+  return perNetwork.flat()
+}
+
+/**
+ * The ten counts, for one foreign ledger.
+ *
+ * Counted per network rather than "everything that is not us" so the message
+ * can name the ledger. At most two foreign networks exist, so this is twenty
+ * cheap counts at boot — paid once, at startup, to avoid a whole class of
+ * silent data mixing.
+ */
+async function countsOn(network: XrplNetwork): Promise<ForeignRows[]> {
+  const where = { network } as const
 
   const [event, mintRequest, ticket, gift, redemption, listing, auction, bid, transfer, payload] =
     await Promise.all([
@@ -65,16 +85,16 @@ export async function foreignNetworkRows(): Promise<ForeignRows[]> {
     ])
 
   const counts: ForeignRows[] = [
-    { model: 'Event', count: event },
-    { model: 'MintRequest', count: mintRequest },
-    { model: 'Ticket', count: ticket },
-    { model: 'Gift', count: gift },
-    { model: 'Redemption', count: redemption },
-    { model: 'Listing', count: listing },
-    { model: 'Auction', count: auction },
-    { model: 'Bid', count: bid },
-    { model: 'Transfer', count: transfer },
-    { model: 'XamanPayload', count: payload },
+    { model: 'Event', network, count: event },
+    { model: 'MintRequest', network, count: mintRequest },
+    { model: 'Ticket', network, count: ticket },
+    { model: 'Gift', network, count: gift },
+    { model: 'Redemption', network, count: redemption },
+    { model: 'Listing', network, count: listing },
+    { model: 'Auction', network, count: auction },
+    { model: 'Bid', network, count: bid },
+    { model: 'Transfer', network, count: transfer },
+    { model: 'XamanPayload', network, count: payload },
   ]
 
   return counts.filter((c) => c.count > 0)
@@ -89,7 +109,7 @@ export async function foreignNetworkRows(): Promise<ForeignRows[]> {
  * rows" tells them which of the two variables to change.
  */
 export function mismatchMessage(rows: ForeignRows[]): string {
-  const detail = rows.map((r) => `  ${r.model}: ${r.count}`).join('\n')
+  const detail = rows.map((r) => `  ${r.network} ${r.model}: ${r.count}`).join('\n')
   return (
     `Refusing to start: this process is configured for ${NETWORK}, but the database ` +
     `holds rows belonging to another ledger.\n\n${detail}\n\n` +

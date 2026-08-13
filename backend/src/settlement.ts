@@ -339,9 +339,31 @@ export async function settleDueAuctions(): Promise<
     // arrive through this function. That also closes a real hole, because the
     // script previously took NO lock at all, so running it while the server was
     // sweeping could have had two processes settling the same auction.
-    const outcome = await withLock(auctionLockName(a.id), AUCTION_LOCK_TTL_MS, () =>
-      settleAuction(a.id),
-    )
+    //
+    // Each auction is isolated, because without this ONE of them can stop all
+    // the others. A throw here used to escape the whole function, so every
+    // auction after it in the batch was skipped — and since the batch is
+    // ordered by `endsAt` ascending, a row that throws consistently sits at the
+    // FRONT of the queue for good. Every sweep would abort at the same place,
+    // and the auctions behind it would never close. `server.ts` catches and
+    // logs, so it retries forever and fails identically: a permanent, silent
+    // stall presenting as a working system.
+    let outcome: SettlementOutcome | null
+    try {
+      outcome = await withLock(auctionLockName(a.id), AUCTION_LOCK_TTL_MS, () =>
+        settleAuction(a.id),
+      )
+    } catch (err) {
+      // Recorded rather than swallowed. `failed` is not terminal — the offers
+      // stand, so a later sweep retries this auction while the rest of the
+      // batch proceeds now.
+      const outcome: SettlementOutcome = {
+        kind: 'failed',
+        reason: err instanceof Error ? err.message : String(err),
+      }
+      results.push({ auctionId: a.id, outcome })
+      continue
+    }
     // null means another process already has this one. A skipped auction is not
     // a result — reporting it would make routine contention look like an event.
     if (outcome !== null) results.push({ auctionId: a.id, outcome })

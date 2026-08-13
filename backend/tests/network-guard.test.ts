@@ -59,18 +59,27 @@ async function createForeignEvent() {
 }
 
 describe('foreignNetworkRows', () => {
-  it('reports nothing when every row belongs to this network', async () => {
-    // The control. Suites share one database, so this asserts the guard is quiet
-    // on whatever else happens to be here — which is the state a real boot is in.
-    await expect(foreignNetworkRows()).resolves.toEqual([])
+  /**
+   * Scoped to OUR foreign ledger, never to the whole report.
+   *
+   * `network-scoping.test.ts` deliberately holds MAINNET rows while it runs, so
+   * "the database contains nothing foreign" is legitimately false for reasons
+   * that have nothing to do with this guard — which is exactly how the first
+   * version of this file flaked. Reporting the ledger per row is what makes a
+   * precise assertion possible.
+   */
+  const ours = async () => (await foreignNetworkRows()).filter((r) => r.network === FOREIGN)
+
+  it('reports nothing when no row belongs to that ledger', async () => {
+    // The control. Without it, the detection test below would pass just as well
+    // if the guard reported everything unconditionally.
+    await expect(ours()).resolves.toEqual([])
   })
 
   it('finds a row written for another ledger, and names the model', async () => {
     await createForeignEvent()
 
-    const rows = await foreignNetworkRows()
-
-    expect(rows).toEqual([{ model: 'Event', count: 1 }])
+    await expect(ours()).resolves.toEqual([{ model: 'Event', network: FOREIGN, count: 1 }])
   })
 
   it('goes quiet again once the foreign row is gone', async () => {
@@ -78,26 +87,28 @@ describe('foreignNetworkRows', () => {
     // guard that stayed tripped after the mistake was corrected would be a
     // deployment that cannot be recovered without a code change.
     await createForeignEvent()
-    expect(await foreignNetworkRows()).toHaveLength(1)
+    expect(await ours()).toHaveLength(1)
 
     await cleanup()
 
-    await expect(foreignNetworkRows()).resolves.toEqual([])
+    await expect(ours()).resolves.toEqual([])
   })
 })
 
 describe('mismatchMessage', () => {
   it('names both sides, not just that something is wrong', () => {
     const msg = mismatchMessage([
-      { model: 'Ticket', count: 3 },
-      { model: 'Bid', count: 7 },
+      { model: 'Ticket', network: XrplNetwork.MAINNET, count: 3 },
+      { model: 'Bid', network: XrplNetwork.MAINNET, count: 7 },
     ])
 
     // The actionable part: which process, and which rows. "Wrong network" alone
     // tells an operator nothing about which of the two variables to change.
     expect(msg).toContain(NETWORK)
-    expect(msg).toContain('Ticket: 3')
-    expect(msg).toContain('Bid: 7')
+    // The ledger is named, not merely 'another one' — that is the difference
+    // between a diagnosis and a puzzle at three in the morning.
+    expect(msg).toContain('MAINNET Ticket: 3')
+    expect(msg).toContain('MAINNET Bid: 7')
     expect(msg).toContain('DATABASE_URL')
     expect(msg).toContain('XRPL_NETWORK')
   })
