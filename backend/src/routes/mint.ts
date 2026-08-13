@@ -22,6 +22,7 @@ import { tryGetPayload, xaman, SIGNIN_TTL_MINUTES } from '../xaman.js'
 import { issuesOf, slugSchema } from '../schemas.js'
 import { requireAuth, requireOrganizer } from '../session.js'
 import { buildMintTx, nftokenIdFromTx, XAMAN_NETWORK } from '../ledger.js'
+import { assertPublicBaseUrl, ticketMetadataUri } from '../nft-metadata.js'
 import { signedByOtherAccount } from '../signer.js'
 
 export const mintRouter = Router()
@@ -90,10 +91,17 @@ mintRouter.post('/events/:slug/mint', requireAuth, requireOrganizer, async (req,
 
   let txjson: ReturnType<typeof buildMintTx>
   try {
+    // Refuse before building, not after signing: a URI no wallet can reach is
+    // correctable only by another transaction per ticket, signed by the
+    // organizer, against the quota that already caps event size.
+    assertPublicBaseUrl()
     txjson = buildMintTx({
       issuerAddress: event.organizer.xrplAddress,
       taxon: event.nftTaxon,
       royaltyBps: event.royaltyBps,
+      // Without this a ticket is an anonymous token from an unknown account,
+      // which is exactly what wallets flag as spam.
+      uri: ticketMetadataUri(event.slug),
     })
   } catch (err) {
     res.status(400).json({ error: err instanceof Error ? err.message : 'Could not build mint' })

@@ -43,7 +43,13 @@ describe('buildMintTx', () => {
   it('sets tfTransferable', () => {
     // Without flag 8 the NFT can only ever move to or from the issuer, which
     // would make both gifting and resale impossible.
-    expect(buildMintTx({ issuerAddress: ISSUER, taxon: 1003, royaltyBps: 500 }).Flags).toBe(8)
+    //
+    // Asserted as a BIT rather than as equality: tfMutable was added alongside
+    // it, and an exact match would have to be edited every time another flag is
+    // set — turning a guard about transferability into a checksum of unrelated
+    // decisions.
+    const flags = Number(buildMintTx({ issuerAddress: ISSUER, taxon: 1003, royaltyBps: 500 }).Flags)
+    expect(flags & 8).toBe(8)
   })
 
   it('mints from the issuer with the event taxon', () => {

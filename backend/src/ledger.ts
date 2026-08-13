@@ -67,6 +67,8 @@ export function bpsToTransferFee(bps: number): number {
 // tfTransferable — without it the NFT can only ever move to/from the issuer,
 // which would make gifting and resale impossible.
 const TF_TRANSFERABLE = 8
+/** tfMutable — lets the issuer update the URI via NFTokenModify. */
+const TF_MUTABLE = 16
 
 /**
  * Build (do not sign) an NFTokenMint. The organizer is the issuer, so the
@@ -83,7 +85,12 @@ export function buildMintTx(params: {
     TransactionType: 'NFTokenMint',
     Account: params.issuerAddress,
     NFTokenTaxon: params.taxon,
-    Flags: TF_TRANSFERABLE,
+    // Mutable as well as transferable. `DynamicNFT` is active on mainnet
+    // (verified 2026-08-13), so the URI can be corrected later with
+    // NFTokenModify. Without this flag it is frozen at mint for the life of the
+    // token — and a ticket whose metadata is wrong forever is a ticket a wallet
+    // may keep calling a scam forever. Set at mint or not at all.
+    Flags: TF_TRANSFERABLE | TF_MUTABLE,
   }
 
   const transferFee = bpsToTransferFee(params.royaltyBps)
