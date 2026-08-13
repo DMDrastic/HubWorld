@@ -490,6 +490,15 @@ Settlement needs the holder's **ACTIVE listing** to broker against; without one
 the auction parks in `SETTLING` rather than failing, since that is a setup gap
 rather than an auction outcome.
 
+**One auction cannot stop the others.** Each is settled inside its own
+try/catch, because a throw used to escape `settleDueAuctions` entirely and skip
+every auction behind it in the batch. The batch is ordered by `endsAt` ascending,
+so a row that throws consistently sits at the FRONT of the queue for good: every
+sweep aborts at the same place, `server.ts` logs "auction sweep failed" and
+retries into the same wall, and the auctions behind it never close. A permanent,
+silent stall presenting as a working system. A failure is now recorded as
+`failed` — not terminal, since the offers stand — and the batch continues.
+
 **The sweep holds a database lease** (`JobLock`, `src/job-lock.ts`) so two
 instances cannot settle the same auction — the loser would burn a transaction fee
 discovering the offers were already consumed. It is a lease rather than a
@@ -720,8 +729,9 @@ opening the mainnet database and writing TESTNET rows into it — one stale shel
 or one forgotten `DOTENV_CONFIG_PATH` away. `src/network-guard.ts` counts rows
 whose `network` differs from this process's on every model that carries the
 column, and `server.ts` exits before serving if it finds any. The message names
-BOTH sides and the per-model counts, because "wrong network" tells an operator
-nothing about which of the two variables to change.
+BOTH sides and the per-model counts — and **which ledger the rows belong to**
+(`TESTNET Ticket: 10`), because "another ledger" is a puzzle where a named one
+is a diagnosis.
 
 Two properties are deliberate. **A failed QUERY is not fatal** — if Postgres is
 unreachable the check learns nothing either way, and crash-looping over a blip

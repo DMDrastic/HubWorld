@@ -451,6 +451,78 @@ describe('edge cases that would otherwise mis-sell', () => {
  * but it opens two doors that were previously nailed shut, and both are tested
  * here because both would lose somebody money.
  */
+describe('one auction must not stop the others', () => {
+  it('keeps sweeping when settling one auction throws', async () => {
+    // Without isolation in the loop, a throw escapes settleDueAuctions and
+    // every auction after it in the batch is skipped. The batch is ordered by
+    // `endsAt` ascending, so a row that throws consistently sits at the front
+    // of the queue permanently: every sweep aborts in the same place and the
+    // auctions behind it never close, while server.ts logs a failure and
+    // retries into the same wall. A silent, permanent stall.
+    //
+    // It is also why this file was flaky. Suites share a database, so a
+    // neighbour deleting its fixtures mid-sweep made Prisma throw here and left
+    // THIS suite's auction unsettled — a failure with no relationship to the
+    // behaviour under test.
+    const poison = await seed({
+      reserveDrops: 5n * XRP,
+      endsAt: new Date(Date.now() - 120_000), // sorts first
+      bids: [{ amount: 10n * XRP, status: 'COMMITTED' }],
+      withSellOffer: true,
+    })
+    const healthy = await seed({
+      reserveDrops: 5n * XRP,
+      endsAt: PAST(),
+      bids: [{ amount: 10n * XRP, status: 'COMMITTED' }],
+      withSellOffer: true,
+    })
+
+    const poisonSellOffer = (
+      await prisma.listing.findFirstOrThrow({
+        where: { auction: { id: poison.auctionId } },
+        select: { offerIndex: true },
+      })
+    ).offerIndex
+
+    // THROWN, not resolved — the unexpected-error path, distinct from a ledger
+    // result the classifier knows how to read. A failed `spendableDrops` would
+    // not do: that one is already caught on purpose ("let the submission be the
+    // judge"), so it never escapes settleAuction.
+    //
+    // Targeted by the poison's own sell offer rather than by call order,
+    // because this sweep also picks up whatever neighbouring suites have due,
+    // and `mockRejectedValueOnce` would then land on somebody else's auction.
+    spendableDrops.mockResolvedValue(10_000_000_000n)
+    brokerSale.mockImplementation(async (params: { sellOfferIndex: string }) => {
+      if (params.sellOfferIndex === poisonSellOffer) {
+        throw new Error('simulated infrastructure failure')
+      }
+      return { hash: 'TX-AFTER-POISON', succeeded: true, result: 'tesSUCCESS' }
+    })
+
+    const results = await settleDueAuctions()
+
+    const poisoned = results.find((r) => r.auctionId === poison.auctionId)
+    const after = results.find((r) => r.auctionId === healthy.auctionId)
+
+    // The failure is reported rather than swallowed...
+    expect(poisoned?.outcome.kind).toBe('failed')
+    // ...and the auction behind it still closed, which is the whole point.
+    expect(after?.outcome.kind).toBe('settled')
+
+    const settled = await prisma.auction.findUniqueOrThrow({ where: { id: healthy.auctionId } })
+    expect(settled.status).toBe('SETTLED')
+
+    // Not terminal: the offers stand, so a later sweep retries it.
+    const parked = await prisma.auction.findUniqueOrThrow({ where: { id: poison.auctionId } })
+    expect(parked.status).not.toBe('SETTLED')
+
+    await releaseLock(auctionLockName(poison.auctionId)).catch(() => undefined)
+    await releaseLock(auctionLockName(healthy.auctionId)).catch(() => undefined)
+    await releaseLock(BROKER_LOCK).catch(() => undefined)
+  })
+})
+
 describe('per-auction leasing', () => {
   async function releaseAll(auctionId: string) {
     await releaseLock(auctionLockName(auctionId)).catch(() => undefined)
