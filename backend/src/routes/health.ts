@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import { prisma } from '../prisma.js'
 import { COMMIT_SHA, env } from '../env.js'
+import { brokerHealth } from '../broker-health.js'
 
 export const healthRouter = Router()
 
@@ -23,9 +24,20 @@ export const healthRouter = Router()
  * mainnet is the setting where a mistake costs real XRP, being able to read it
  * back in one request is worth a field.
  *
- * Both are safe to expose. `XRPL_NETWORK` is not a secret — every payload
+ * `broker` answers "can sales actually settle?". A broker that runs out of XRP
+ * stops settling every sale on the platform at once, and does it silently — no
+ * request fails, auctions just close and never complete. See broker-health.ts.
+ *
+ * All three are safe to expose. `XRPL_NETWORK` is not a secret — every payload
  * already carries it to Xaman as `force_network`, and it names a public ledger.
- * Nothing here reveals a key, a seed or a credential.
+ * The broker's address and balance are likewise public: every offer in the
+ * system names it as `Destination`, and anyone can read its balance from the
+ * ledger. Nothing here reveals a key, a seed or a credential.
+ *
+ * `status` stays a statement about the DATABASE alone. A low broker balance is
+ * worth reporting, but it must not flip the field the host's health check reads
+ * — that would take the service out of rotation over a funding problem no
+ * restart can fix, turning a warning into an outage.
  */
 healthRouter.get('/health', async (_req, res) => {
   let db: 'connected' | 'unavailable' = 'unavailable'
@@ -42,6 +54,7 @@ healthRouter.get('/health', async (_req, res) => {
     db,
     commit: COMMIT_SHA,
     network: env.XRPL_NETWORK,
+    broker: await brokerHealth(),
     uptime: Math.round(process.uptime()),
     timestamp: new Date().toISOString(),
   })

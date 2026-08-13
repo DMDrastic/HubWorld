@@ -1264,11 +1264,32 @@ be moved in Xaman as a collectible; Hubworld just stops presenting it as a ticke
 
 ## Health check
 
-`GET /api/health` → `{ status, db, commit, network, uptime, timestamp }`
+`GET /api/health` → `{ status, db, commit, network, broker, uptime, timestamp }`
 
 Always returns HTTP 200 so the UI can render a status even when Postgres is
 down; a dead database shows as `status: "degraded"`, `db: "unavailable"`. Check
 the `db` field, not the status code.
+
+**`broker` answers "can sales actually settle?"** The broker submits every
+`NFTokenAcceptOffer`, so it pays every settlement fee — and a broker that runs
+out stops settling every sale on the platform at once, *silently*. No request
+fails and nothing 500s; auctions simply close and never complete, and the first
+report comes from a customer. `src/broker-health.ts` reports
+`{ mode: 'disabled' }` with no key, else the address plus
+`ok` / `low` / `unfunded` / `unknown`.
+
+Three decisions there are load-bearing. **`unknown` is not `unfunded`** — "we
+could not read the ledger" and "there is no money" are opposite facts, and
+collapsing them fires a funding alarm every time a public XRPL node blinks,
+which is how an alarm gets ignored; the same rule the bid headroom fields
+follow. **The reading is cached for 60s and races a 2s timeout**, because
+/api/health is polled by the host and by the frontend, and without that every
+poll becomes an `account_info` round trip to someone else's infrastructure — a
+liveness probe must not be a load generator, and a ledger read that hangs must
+not hang the endpoint. **`status` stays a statement about the DATABASE alone**:
+a low balance is worth reporting, but flipping the field the host's health check
+reads would take the service out of rotation over a funding problem no restart
+can fix, turning a warning into an outage.
 
 **`commit` answers "which build is live?"** Nothing did, so confirming a deploy
 had shipped meant probing an endpoint for a behaviour change and inferring it —
