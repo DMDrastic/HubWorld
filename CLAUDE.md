@@ -687,6 +687,22 @@ database ever holds two networks, which the deployment guidance says to avoid.
 The recommendation stands regardless: **one database per network.** The column
 is what makes a mistake survivable, not a licence to mix.
 
+**And it is now enforced at boot, not merely recommended.** `DATABASE_URL` and
+`XRPL_NETWORK` are independent variables, so nothing stopped a testnet process
+opening the mainnet database and writing TESTNET rows into it — one stale shell
+or one forgotten `DOTENV_CONFIG_PATH` away. `src/network-guard.ts` counts rows
+whose `network` differs from this process's on every model that carries the
+column, and `server.ts` exits before serving if it finds any. The message names
+BOTH sides and the per-model counts, because "wrong network" tells an operator
+nothing about which of the two variables to change.
+
+Two properties are deliberate. **A failed QUERY is not fatal** — if Postgres is
+unreachable the check learns nothing either way, and crash-looping over a blip
+is worse than serving while `/api/health` reports `db: unavailable`; it refuses
+on evidence, never on the absence of it. And the counts are written out one call
+per model rather than looped over a dynamic key, so **a model that gains a
+`network` column and is not added there is a compile error**, not a silent gap.
+
 **Royalties use XRPL brokered mode**: the organizer is the NFT issuer and
 collects `royaltyBps` via the native `TransferFee`; Hubworld brokers the
 `NFTokenAcceptOffer` and takes `platformBps` from the spread. This keeps

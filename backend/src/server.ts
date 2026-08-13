@@ -6,6 +6,13 @@ import { settleDueAuctions } from './settlement.js'
 import { cancelAbandonedPayloads, reconcileStalePayloads } from './payload-store.js'
 import { withLock } from './job-lock.js'
 import { attachRealtime, closeRealtime } from './realtime.js'
+import { assertDatabaseNetwork } from './network-guard.js'
+
+// Before anything is served. A process serving another ledger's rows is worse
+// than one that does not start: the failure is silent, and on mainnet it is
+// silent and expensive. Exits on evidence of a mismatch; a database that cannot
+// be reached is left to /api/health to report.
+await assertDatabaseNetwork()
 
 const app = createApp()
 
