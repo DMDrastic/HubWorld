@@ -14,6 +14,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const accountFunding = vi.fn()
+const platformAddress = vi.fn()
 let brokerModeValue: 'live' | 'disabled' = 'live'
 
 vi.mock('../src/env.js', async () => {
@@ -30,7 +31,7 @@ vi.mock('../src/ledger.js', async () => {
   const actual = await vi.importActual<typeof import('../src/ledger.js')>('../src/ledger.js')
   return {
     ...actual,
-    platformAddress: () => 'rBrokerFixtureAddress0000000000000',
+    platformAddress: () => platformAddress(),
     accountFunding: (...a: unknown[]) => accountFunding(...a),
   }
 })
@@ -40,6 +41,8 @@ const { brokerHealth, resetBrokerHealthCache } = await import('../src/broker-hea
 beforeEach(() => {
   brokerModeValue = 'live'
   accountFunding.mockReset()
+  platformAddress.mockReset()
+  platformAddress.mockReturnValue('rBrokerFixtureAddress0000000000000')
   resetBrokerHealthCache()
 })
 
@@ -55,6 +58,21 @@ describe('brokerHealth', () => {
 
     await expect(brokerHealth()).resolves.toEqual({ mode: 'disabled' })
     // No key means no address to read; it must not reach the ledger to say so.
+    expect(accountFunding).not.toHaveBeenCalled()
+  })
+
+  it('reports misconfigured when a key is set but unusable, and does not throw', async () => {
+    // The bug CI caught. `brokerMode` only asks whether PLATFORM_SEED is
+    // PRESENT; deriving an address asks whether it is VALID. A malformed seed
+    // threw straight through /api/health, which answered 500 to a request whose
+    // entire contract is that it always answers 200.
+    platformAddress.mockImplementation(() => {
+      throw new Error('PLATFORM_SEED is not set — cannot broker a sale')
+    })
+
+    await expect(brokerHealth()).resolves.toEqual({ mode: 'misconfigured' })
+    // Distinct from `disabled`: the operator believes settlement is on. And it
+    // must never reach the ledger with an address it could not derive.
     expect(accountFunding).not.toHaveBeenCalled()
   })
 

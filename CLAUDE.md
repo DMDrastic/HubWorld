@@ -1275,7 +1275,8 @@ the `db` field, not the status code.
 out stops settling every sale on the platform at once, *silently*. No request
 fails and nothing 500s; auctions simply close and never complete, and the first
 report comes from a customer. `src/broker-health.ts` reports
-`{ mode: 'disabled' }` with no key, else the address plus
+`{ mode: 'disabled' }` with no key, `{ mode: 'misconfigured' }` when a key is
+set but is not a usable seed, else the address plus
 `ok` / `low` / `unfunded` / `unknown`.
 
 Three decisions there are load-bearing. **`unknown` is not `unfunded`** — "we
@@ -1290,6 +1291,14 @@ not hang the endpoint. **`status` stays a statement about the DATABASE alone**:
 a low balance is worth reporting, but flipping the field the host's health check
 reads would take the service out of rotation over a funding problem no restart
 can fix, turning a warning into an outage.
+
+**`misconfigured` exists because CI found the bug that proves it is needed.**
+`brokerMode` asks only whether `PLATFORM_SEED` is PRESENT; deriving an address
+asks whether it is a valid seed, and those are different questions. Deriving it
+outside the guard let a malformed seed throw straight through the route, which
+answered **500 to the one endpoint whose entire contract is that it always
+answers 200**. Local runs could never see it — a developer `.env` holds a real
+seed — while CI forces `brokerMode` live with none set.
 
 **`commit` answers "which build is live?"** Nothing did, so confirming a deploy
 had shipped meant probing an endpoint for a behaviour change and inferring it —
