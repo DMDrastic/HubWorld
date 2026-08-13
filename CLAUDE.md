@@ -578,10 +578,19 @@ The container runs `prisma migrate deploy` before serving — a process that com
 up against an un-migrated database answers every request with a Prisma error,
 which is worse than failing to start.
 
-**Still outstanding before this is actually live:** `XRPL_NETWORK` has never
-been anything but `testnet`, so every figure measured in this document is
-testnet; and the Xaman application's payload quota is exhausted and its
-credentials still need rotating.
+**A mainnet rehearsal has now run** — 2026-08-13, three tickets, real XRP, every
+money path exercised. See `docs/mainnet-dress-rehearsal.md` for the measured
+figures; the ones that change what we tell an organizer are folded into the
+sections above. Xaman credentials were rotated on 2026-08-02 and the quota is
+live again.
+
+**Still outstanding:** production deploys `testnet` and always has — the
+rehearsal ran from a laptop against a separate `hubworld_mainnet` database,
+which is the one-database-per-network rule being followed rather than an
+accident. And the payload CREATION cap is still unknown: the rehearsal measured
+~3 payloads per ticket sold and ~2 per attendee, so a 20-ticket event is ~100
+payloads against a cap we have hit at ~77. That makes it a constraint on event
+SIZE, and the answer is outstanding with Xaman.
 
 ## Local environment
 
@@ -674,6 +683,12 @@ move anyone's ticket on its own, and sale funds never rest with us.
 transfer a ticket in Xaman without touching Hubworld, so `Ticket.ownerId` /
 `ownerAddress` are a *cache* and carry `syncedAt`. Never treat them as
 authoritative for anything that matters — re-read the ledger first.
+
+**The NFT owner reserve is per PAGE, not per ticket** — measured on mainnet:
+minting the first ticket took the organizer from 0 to 1 owned object, and the
+next two added none. A page holds 32 tickets, so a 32-ticket event locks 0.2 XRP
+in total rather than 6.4. Every transaction fee observed on mainnet was 12
+drops, identical to testnet.
 
 **Money is always `BigInt` drops** (1 XRP = 1_000_000 drops). Never `Float`.
 The API serialises BigInt as strings (see the `json replacer` in `app.ts`);
@@ -1230,6 +1245,13 @@ Verified on testnet:
 - issuer uninvolved, 10 XRP sale → seller **9.5**, issuer **+0.5**, broker **0.25**
 - issuer uninvolved, 15 XRP **auction** → seller **13.89375**, issuer **+0.73125**,
   broker **0.375**
+
+**Confirmed on MAINNET 2026-08-13** with a 1 XRP winning bid: seller
+**0.926250**, issuer **0.048750**, broker **0.024988**. The issuer's share is 5%
+of 0.975, not of 1.0 — so a nominal 5% royalty pays **4.875%** in practice at a
+250 bps platform fee. The same run showed a primary sale by the organizer
+keeping the **full** amount, since `TransferFee` is skipped when the issuer is
+party to the trade.
 
 **The royalty is charged on the bid MINUS the broker fee, not on the headline
 price.** That last case makes it explicit: 5% of 15 would be 0.75, but the issuer

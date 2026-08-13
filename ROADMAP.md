@@ -28,6 +28,22 @@ Everything below assumes that gets fixed first.
 
 ## 1. A mainnet dress rehearsal, before optimising anything
 
+> **FIRST RUN DONE, 2026-08-13.** Three tickets, real XRP, every money path
+> exercised — mint, gift, fixed-price sale, auction, brokered settlement,
+> royalty, door. Results and figures in `docs/mainnet-dress-rehearsal.md`.
+>
+> **The headline: the fee model holds on mainnet exactly as measured on
+> testnet**, including the subtle part — the royalty is charged on the bid minus
+> the broker fee, so a nominal 5% pays 4.875% at a 250 bps platform fee.
+>
+> **The new constraint is payload cost, not ledger cost.** ~3 payloads per
+> ticket sold and ~2 per attendee means a 20-ticket event is ~100 payloads,
+> against a cap we have hit at ~77. Xaman's answer (§2) now gates event SIZE.
+>
+> **Still to do at full scale:** the organizer signing forty times in a row, and
+> the door with real attendees and real phone signal. Three signatures is a
+> sample, not the experience.
+
 **There is a runbook: `docs/mainnet-dress-rehearsal.md`.** It carries the
 measured mainnet reserve and fee figures, the preconditions, the sequence with
 a verification at each step, the abort conditions, and where the payload
