@@ -1207,6 +1207,22 @@ expires; on-ledger states end solely by acceptance or withdrawal, and a stale
 minting a fresh payload must also refresh `expiresAt`, or the retry is born
 expired and reverts on its first poll.
 
+**Every write path that acts on a ticket re-reads the ledger first** — gift,
+list, auction-open, **buy and bid**. The last two did not, and were found by
+sweeping for guards that assert something adjacent to what they protect: buying
+gated on `Listing.status === 'ACTIVE'`, and bidding built the offer's `Owner`
+from `Ticket.ownerAddress`. Both are OUR records, and a seller can cancel an
+offer or move a ticket in Xaman without telling us. The cost lands on the person
+with the least information: the buyer spends a payload, signs, and locks 0.2 XRP
+of owner reserve on an offer that can never match, discovering it only when
+settlement fails. `ledger:sync` reported this drift already, but reconciling
+after the fact is not the same as refusing before someone pays.
+
+**An unreachable ledger is not a negative answer.** All of these treat a failed
+read as "carry on" rather than "refuse", because a public node blinking must not
+cancel live listings or block legitimate bids — the same rule the door follows
+when it admits an attendee on a cached claim rather than turning away a real one.
+
 **Ownership is re-read from the ledger before a gift starts** (`holdsNft`). If it
 disagrees with `Ticket.ownerAddress` the cache is cleared rather than trusted —
 the holder may have moved the ticket in Xaman without touching Hubworld.

@@ -320,13 +320,42 @@ listingsRouter.post('/listings/:id/buy', requireAuth, async (req, res) => {
     return
   }
 
+  const ticket = await prisma.ticket.findUniqueOrThrow({ where: { id: listing.ticketId } })
+
+  // The ledger, not our own status column.
+  //
+  // A seller can cancel their offer or move the ticket in Xaman without ever
+  // touching HubWorld, and `Listing.status` keeps saying ACTIVE. Buying against
+  // that costs the buyer a Xaman payload AND locks 0.2 XRP of owner reserve on
+  // an offer that can never match — and they find out only when settlement
+  // fails, long after they signed.
+  //
+  // `ledger:sync` already reports this drift, but it reconciles AFTER the fact.
+  // This is the one moment where checking prevents someone spending money, so
+  // the round trip is worth it. Every other write path that acts on a ticket
+  // already re-reads: gift, list, and auction-open all call holdsNft first.
+  //
+  // Unreachable ledger is NOT treated as absent: an unknown answer must not
+  // block a legitimate purchase, the same rule the door follows when it admits
+  // an attendee on a cached claim rather than turning away a real one.
+  const sellerStillHolds = await holdsNft(listing.sellerAddress, ticket.nfTokenId).catch(() => null)
+  if (sellerStillHolds === false) {
+    await prisma.listing.update({
+      where: { id: listing.id },
+      data: { status: 'CANCELLED' },
+    })
+    res.status(409).json({
+      error: 'The seller no longer holds this ticket — the listing has been withdrawn',
+    })
+    return
+  }
+
   let txjson
   try {
     txjson = buildBuyOfferTx({
       buyerAddress: me.xrplAddress,
       ownerAddress: listing.sellerAddress,
-      nfTokenId: (await prisma.ticket.findUniqueOrThrow({ where: { id: listing.ticketId } }))
-        .nfTokenId,
+      nfTokenId: ticket.nfTokenId,
       // The ledger requires buy >= sell + brokerFee.
       amountDrops: listing.priceDrops + listing.platformFeeDrops,
       // The LISTING's broker, not whatever is configured now. Both offers must
