@@ -25,6 +25,46 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const holdsNft = vi.fn()
 
+/**
+ * The signer is stubbed, and that is not optional.
+ *
+ * These routes reach `xaman.createPayload` once the guard lets them through. In
+ * any checkout holding credentials that creates a REAL payload against the quota
+ * this project treats as its binding constraint — CLAUDE.md: "The test suite must
+ * never create real payloads." An earlier version of this file did exactly that,
+ * and only passed locally because the live call happened to fail.
+ */
+vi.mock('../src/xaman.js', async () => {
+  const actual = await vi.importActual<typeof import('../src/xaman.js')>('../src/xaman.js')
+  let n = 0
+  const created = () => ({
+    uuid: `00000000-0000-4000-8000-${String((n += 1)).padStart(12, '0')}`,
+    next: 'https://xumm.app/sign/stub',
+    qrPng: 'https://xumm.app/sign/stub.png',
+  })
+  return {
+    ...actual,
+    xaman: {
+      mode: 'stub' as const,
+      createPayload: async () => created(),
+      createSignInPayload: async () => created(),
+      getPayload: async () => null,
+      cancelPayload: async () => true,
+    },
+  }
+})
+
+/**
+ * The broker is forced live. `brokerMode` reads PLATFORM_SEED, and the bid route
+ * answers 503 without it — BEFORE reaching the guard this file exists to assert.
+ * Left ambient, these tests would pass on a laptop with a seed and fail in CI
+ * without one, which is exactly what happened.
+ */
+vi.mock('../src/env.js', async () => {
+  const actual = await vi.importActual<typeof import('../src/env.js')>('../src/env.js')
+  return { ...actual, brokerMode: 'live' as const }
+})
+
 vi.mock('../src/ledger.js', async () => {
   const actual = await vi.importActual<typeof import('../src/ledger.js')>('../src/ledger.js')
   return {
@@ -168,7 +208,12 @@ describe('a listing whose seller no longer holds the ticket', () => {
 
     const result = await buyAs(listing.id, await tokenFor(buyer.id))
 
-    expect(result.status).not.toBe(409)
+    // Asserted as "the guard did not fire", not as a particular end state: how
+    // far the request travels afterwards depends on the signer, and that is a
+    // different question from the one this file is about.
+    expect(result.body.error ?? '').not.toMatch(/no longer holds/i)
+    const after = await prisma.listing.findUniqueOrThrow({ where: { id: listing.id } })
+    expect(after.status).not.toBe('CANCELLED')
   })
 
   it('does not block the sale when the ledger cannot be read', async () => {
@@ -179,9 +224,9 @@ describe('a listing whose seller no longer holds the ticket', () => {
 
     const result = await buyAs(listing.id, await tokenFor(buyer.id))
 
-    expect(result.status).not.toBe(409)
+    expect(result.body.error ?? '').not.toMatch(/no longer holds/i)
     const after = await prisma.listing.findUniqueOrThrow({ where: { id: listing.id } })
-    expect(after.status).toBe('ACTIVE')
+    expect(after.status).not.toBe('CANCELLED')
   })
 })
 
@@ -221,7 +266,7 @@ describe('a bid against a ticket that has moved', () => {
 
     const result = await bidAs(auction.id, await tokenFor(buyer.id), XRP.toString())
 
-    expect(result.status).not.toBe(409)
+    expect(result.body.error ?? '').not.toMatch(/moved/i)
   })
 
   it('does not block bidding when the ledger cannot be read', async () => {
@@ -230,6 +275,6 @@ describe('a bid against a ticket that has moved', () => {
 
     const result = await bidAs(auction.id, await tokenFor(buyer.id), XRP.toString())
 
-    expect(result.status).not.toBe(409)
+    expect(result.body.error ?? '').not.toMatch(/moved/i)
   })
 })
