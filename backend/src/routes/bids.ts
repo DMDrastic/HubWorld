@@ -31,6 +31,7 @@ import {
   platformAddress,
   txSucceeded,
   XAMAN_NETWORK,
+  holdsNft,
 } from '../ledger.js'
 
 export const bidsRouter = Router()
@@ -107,6 +108,25 @@ bidsRouter.post('/auctions/:id/bid', requireAuth, async (req, res) => {
   }
   if (auction.ticket.ownerId === me.id) {
     res.status(400).json({ error: 'You cannot bid on your own ticket' })
+    return
+  }
+
+  // `Ticket.ownerAddress` is a CACHE — it carries `syncedAt` precisely because a
+  // holder can move a ticket in Xaman without telling us. The bid names that
+  // address as the offer's `Owner`, so a stale value produces an offer against
+  // an account that no longer holds the token: unsettleable, while still
+  // costing the bidder a payload and 0.2 XRP of owner reserve.
+  //
+  // Unreachable ledger is NOT treated as absent, for the same reason as the buy
+  // path: an unknown answer must not block a legitimate bid.
+  const holderStillHolds = await holdsNft(
+    auction.ticket.ownerAddress,
+    auction.ticket.nfTokenId,
+  ).catch(() => null)
+  if (holderStillHolds === false) {
+    res.status(409).json({
+      error: 'The ticket has moved since this auction opened — it cannot be settled as listed',
+    })
     return
   }
 
