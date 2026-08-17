@@ -214,10 +214,22 @@ describe('the settlement sweep only settles this network', () => {
     // sweep is broken, or when the fixture was never due in the first place.
     const { auction: mine } = await dueAuction(NETWORK, 'ff')
 
-    const results = await settleDueAuctions()
+    // Swept until this auction is no longer LIVE, and asserted on the DATABASE
+    // rather than on one call's return value.
+    //
+    // Suites share a database and sweep it concurrently, so a neighbour may
+    // legitimately settle this fixture first — in which case it never appears
+    // in OUR results and a `toContain` assertion reads as a broken sweep. That
+    // is a fact about who got there first, not about network scoping, and it
+    // failed roughly one run in six.
+    let after = await prisma.auction.findUniqueOrThrow({ where: { id: mine.id } })
+    for (let pass = 0; pass < 6 && after.status === 'LIVE'; pass++) {
+      await settleDueAuctions()
+      after = await prisma.auction.findUniqueOrThrow({ where: { id: mine.id } })
+    }
 
-    expect(results.map((r) => r.auctionId)).toContain(mine.id)
-    const after = await prisma.auction.findUniqueOrThrow({ where: { id: mine.id } })
+    // The point of the control: an auction on THIS network gets acted on, while
+    // the foreign one above is left untouched.
     expect(after.status).not.toBe('LIVE')
   })
 })

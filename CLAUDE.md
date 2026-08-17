@@ -261,6 +261,19 @@ It fixes three separate things, all measured rather than assumed:
 missing or unmigrated, rather than a Prisma trace about a database you did not
 know was supposed to exist.
 
+**Test files run ONE AT A TIME** (`fileParallelism: false`), and that is the
+same problem as the separate database wearing a different hat.
+`settleDueAuctions` sweeps EVERY due auction in the database, so any two suites
+touching settlement operate on each other's fixtures: a neighbour's sweep
+settles your auction, or fills the batch of 25 ahead of it, and your assertion
+reads as a broken sweep when nothing is broken. Measured: **3 failures in 10
+parallel runs**, across four different suites and never the same one twice,
+against **0 in 10 serial**. It costs ~11 seconds.
+
+Chasing it assertion by assertion was tried first, and each fix only moved the
+failure to another file — the lesson being that a test asserting on a GLOBAL
+mechanism cannot be made robust locally.
+
 ### The sweep under load: `npm run test:load` (backend)
 
 `tests/settlement-load.loadtest.ts`, run alone via `vitest.load.config.ts`.
