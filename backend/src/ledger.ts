@@ -80,6 +80,21 @@ export function buildMintTx(params: {
   taxon: number
   royaltyBps: number
   uri?: string
+  /**
+   * List it for sale in the SAME transaction (`NFTokenMintOffer`, enabled on
+   * mainnet — verified 2026-08-13, and end-to-end in `mint-offer-spike.ts`).
+   *
+   * This is a payload-count decision, not a convenience. The mainnet rehearsal
+   * measured ~3 payloads per ticket sold — mint, list, buy — and payload count,
+   * not ledger cost, is what caps event size. Folding the list into the mint
+   * takes a third off that, with no amendment left to wait for.
+   *
+   * `destinationAddress` must be the broker, for the same reason a separate
+   * sell offer must: without it a buyer could take the offer directly and the
+   * platform fee is bypassable. Brokerage is only enforced when neither party
+   * can settle alone.
+   */
+  sellOffer?: { amountDrops: bigint; destinationAddress: string }
 }): NFTokenMint {
   const tx: NFTokenMint = {
     TransactionType: 'NFTokenMint',
@@ -95,6 +110,18 @@ export function buildMintTx(params: {
 
   const transferFee = bpsToTransferFee(params.royaltyBps)
   if (transferFee > 0) tx.TransferFee = transferFee
+
+  if (params.sellOffer) {
+    if (params.sellOffer.amountDrops <= 0n) {
+      throw new Error('a sale price must be greater than zero')
+    }
+    if (params.sellOffer.destinationAddress === params.issuerAddress) {
+      // Would make the issuer able to settle alone, bypassing brokerage.
+      throw new Error('a mint-time sale must be destined for the broker, not the issuer')
+    }
+    tx.Amount = params.sellOffer.amountDrops.toString()
+    tx.Destination = params.sellOffer.destinationAddress
+  }
 
   // URI must be hex on-ledger; 256 bytes max.
   if (params.uri) {
@@ -500,6 +527,40 @@ export function buildCancelOfferTx(params: {
  * The offer index is not in the transaction we submitted — the ledger assigns
  * it — so it has to be read back out of the metadata.
  */
+/**
+ * Read an NFT offer object back off the ledger.
+ *
+ * Used after a mint that carried its own sell offer: the terms we care about —
+ * amount and destination — are then facts on-ledger rather than intentions in a
+ * request body, which is the right thing to record.
+ */
+export async function readNftOffer(
+  offerIndex: string,
+): Promise<{ amountDrops: bigint; destination: string | null; owner: string } | null> {
+  const c = await ledger()
+  try {
+    const res = await c.request({
+      command: 'ledger_entry',
+      index: offerIndex,
+      ledger_index: 'validated',
+    })
+    const node = res.result.node as unknown as {
+      Amount?: string
+      Destination?: string
+      Owner?: string
+    }
+    if (!node?.Amount || !node.Owner) return null
+    return {
+      amountDrops: BigInt(node.Amount),
+      destination: node.Destination ?? null,
+      owner: node.Owner,
+    }
+  } catch {
+    // Consumed or never existed. The caller decides what that means.
+    return null
+  }
+}
+
 export async function offerIndexFromTx(txHash: string): Promise<string | null> {
   const c = await ledger()
   const res = await c.request({ command: 'tx', transaction: txHash })
