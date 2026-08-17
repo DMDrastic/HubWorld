@@ -26,5 +26,24 @@ export default defineConfig({
     exclude: ['**/node_modules/**', '**/dist/**', '.stryker-tmp/**', 'reports/**'],
     env: { DATABASE_URL: testDatabaseUrl() },
     globalSetup: ['./tests/global-setup.ts'],
+
+    // 3. RUN FILES ONE AT A TIME.
+    //
+    //    `settleDueAuctions` sweeps EVERY due auction in the database, so any
+    //    two suites that touch settlement are operating on each other's
+    //    fixtures. A neighbour's sweep settles your auction, or fills the batch
+    //    of 25 ahead of it, and your assertion reads as a broken sweep when
+    //    nothing is broken at all.
+    //
+    //    Measured, on this machine: **3 failures in 10 parallel runs**, spread
+    //    across four different suites and never the same one twice — against
+    //    **0 in 10 serial runs**. The cost is ~11 seconds (10.5s -> 21.5s).
+    //
+    //    That trade is deliberate. `hubworld_test` exists because confusing
+    //    failures "trained everyone to re-run instead of investigate", and a
+    //    suite that fails one run in three teaches exactly the same habit for a
+    //    different reason. Chasing it assertion by assertion was tried first and
+    //    each fix only moved the failure to another file.
+    fileParallelism: false,
   },
 })
