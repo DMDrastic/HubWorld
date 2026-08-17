@@ -1081,6 +1081,28 @@ organizer before they have signed in:
 npm run event:create -- --organizer <handle> --title "<title>" [--tickets 50]
 ```
 
+**Minting can also LIST in the same signature.** `NFTokenMintOffer` is enabled
+on mainnet, so `NFTokenMint` carries `Amount` and `Destination` and creates the
+sell offer itself — `POST /events/:slug/mint` takes an optional `priceDrops`.
+That takes a ticket sold from three payloads to two, which matters because the
+mainnet rehearsal showed **payload count, not ledger cost, is what caps event
+size**: ~3 per ticket sold plus ~2 per attendee puts a 20-ticket event near 100,
+against a cap hit at ~77.
+
+Two properties are load-bearing. The offer's `Destination` **must** be the
+broker, for the same reason a separate sell offer's must — without it a buyer
+takes the offer directly and the platform fee is bypassable, and `buildMintTx`
+refuses a destination equal to the issuer. And the `Listing` is written **in the
+same database transaction as the `Ticket`**, from the offer read back off the
+LEDGER rather than from anything we stored: a ticket must never exist alongside
+a live offer we have no record of, which is the gap `MintRequest` exists to
+close for the mint itself.
+
+Minting to hold — a gift, a comp, an allocation to sell later — is unchanged:
+omit the price and no offer is created. Zero is refused rather than treated as
+free, because a zero-amount offer with no destination is one anyone can take;
+giveaways go through the gift flow, which names its recipient.
+
 ### Bulk minting: why this caps out in the low hundreds
 
 `NFTokenMint` is one NFT per transaction, and the organizer must sign each one
