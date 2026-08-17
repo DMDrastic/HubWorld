@@ -87,17 +87,26 @@ mainnet event de-risks more than a thousand-ticket testnet one.
 ## 2. Xaman is the top existential risk — above the minting ceiling
 
 The minting ceiling is understood, bounded and documented. The Xaman dependency
-is neither bounded nor measured, and it holds two distinct risks.
+is now MEASURED — see below — but it is still not bounded, and the two risks it
+holds have changed shape rather than gone away.
 
 **The quota scales with USERS, not tickets.** Every sign-in, mint, gift, bid,
-purchase and door check-in is a payload *created*, and creations cannot be
-reclaimed — cancelling a resolved payload returns 404 and it still counts. The
-testnet application is already exhausted. That is not an inconvenience; it is a
-preview of the failure mode at scale, arriving early.
+purchase and door check-in is a payload *created*. Measured on mainnet: ~2 per
+ticket sold since mint-and-list became one signature, plus ~2 per attendee. An
+exhausted application stops sign-in for EVERYONE, not just the event that
+exhausted it.
 
-**The concentration risk is worse than the quota.** Auth, minting, resale,
-bidding and the door all route through one vendor. If Xaman changes pricing,
-terms or API, HubWorld stops working *entirely* — not degraded, stopped.
+**The concentration risk is worse than the quota, and "free" makes it worse
+still.** Auth, minting, resale, bidding and the door all route through one
+vendor. There are no paid tiers, so there is no contract, no SLA, and no
+commercial relationship to appeal to — limits are set at their discretion, based
+partly on our reputation with them, and can move without notice. Paying would
+have bought leverage; free buys none. If Xaman changes terms or API, HubWorld
+stops working *entirely* — not degraded, stopped.
+
+That is an argument for §3 rather than against Xaman: the `src/xaman.ts` seam is
+the only thing that converts "they changed the rules" from an outage into a
+project.
 
 Two actions, both cheap, both now:
 
@@ -119,28 +128,46 @@ Two actions, both cheap, both now:
   development noise, mixing stub and abandoned experiments, and it is bucketed
   as `unknown`/`unattributed` precisely because it cannot be attributed
   honestly. It is here only as evidence the reader works.
-- **Get quota limits and pricing tiers from Xaman in writing** before selling
-  anything to anyone. **ASKED 2026-08-12, awaiting reply** — by email to
-  `support@xaman.app` and by a ticket in the Support xApp. Note their contact
-  page states support is xApp-only despite publishing the address, so a redirect
-  there is possible; chase through the xApp if nothing comes back.
+- ~~**Get quota limits and pricing tiers from Xaman in writing**~~ **ANSWERED
+  2026-08-17**, and the answers reshape this section rather than merely closing
+  it.
 
-  Six questions were put, and **the third is the one that changes what we build**:
+  **There are no paid tiers — the service is free.** Xaman contributes nothing
+  to cost per attendee, so the unit economics that could not be computed now
+  compute trivially: payloads constrain PERMISSION, not money.
 
-  1. The exact free-tier limit, and whether it is monthly, rolling or lifetime.
-  2. Confirmation that it counts payloads CREATED, and that resolved, cancelled
-     or expired payloads cannot be reclaimed.
-  3. **Whether limits are scoped per APPLICATION or per developer account.**
-  4. Paid tiers: included volume and price.
-  5. Lead time to raise a limit on an existing application.
-  6. Whether a 429 is separate from the quota, and whether it consumes any.
+  **Limits are per API KEY.** A separate mainnet application therefore gets its
+  own budget, and the instruction not to register one is lifted.
 
-  If limits are per application, mainnet should get its own Xaman application, so
-  development and the e2e suite's stub traffic cannot spend an event's budget. If
-  they are per account, a second application buys nothing and adds a second set
-  of credentials to hold. **Do not register a mainnet application until this is
-  answered** — it is the only rehearsal precondition that is genuinely blocked on
-  Xaman. The mainnet database and the broker account are not.
+  **429s do not consume the limit**, so the current no-backoff behaviour is not
+  digging a hole.
+
+  **And the load-bearing sentence: limits are "adjusted dynamically based on
+  activity, how long the API key has existed, user reports, and other factors."**
+  Three consequences follow, and none of them were visible before:
+
+  1. **There may be no fixed creation cap at all.** The 67 → 77 error that
+     started this may have been the dynamic limit moving, not a lifetime quota
+     being consumed. A confirmation is outstanding.
+  2. **Rotating credentials resets a key's age.** The 2026-08-02 rotation put us
+     back at the bottom of that curve — a real cost of rotation nobody costed.
+     Worth remembering before rotating again.
+  3. **A mainnet key starts young and constrained.** So create it EARLY and use
+     it gently, not the week before an event. That is now a scheduling
+     constraint on the first mainnet event, not a setup step.
+
+  **Whitelisting is the lever for event day**, on request. Ask before an event,
+  not while a door is queueing.
+
+  This also changes what the webhook work is FOR. Moving payload resolution to
+  webhook-first was asked for by Xaman and committed to in writing; since limits
+  rise with activity and good behaviour, doing it is now the *mechanism* by
+  which our limit grows, on a key whose age is the only other input and cannot
+  be hurried.
+
+  **Event size is no longer a hard ceiling.** With mint-and-list at two payloads
+  per ticket, a 20-ticket event is ~80 creations. Against dynamic limits plus
+  whitelisting, that is a relationship to manage rather than a wall.
 
 Note the existing mitigations are real but bounded: `POST /auth/signin` reuses an
 outstanding unsigned payload, `SIGNIN_TTL_MINUTES` is 3, and every poll site
