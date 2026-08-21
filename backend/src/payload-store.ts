@@ -135,6 +135,39 @@ function toStatus(row: {
 const REFRESH_THROTTLE_MS = 1_500
 
 /**
+ * Have we ever actually RECEIVED a callback?
+ *
+ * `webhookMode` only says a secret is configured — presence, not reachability.
+ * The difference is the documented worst case: throttled polling AND no push,
+ * silently, because nobody registered the URL in the Xaman console.
+ *
+ * `refreshPayload` stamps `source: 'webhook'` when a callback drives it, so the
+ * evidence is already in the table. Cached in memory because it only ever flips
+ * once per deployment, and re-checked occasionally so a console entry made after
+ * boot is picked up without a restart.
+ */
+let webhookSeen: { value: boolean; at: number } | null = null
+const WEBHOOK_PROOF_TTL_MS = 30_000
+
+export async function webhooksArriving(now = Date.now()): Promise<boolean> {
+  if (webhookMode === 'disabled') return false
+  if (webhookSeen?.value) return true
+  if (webhookSeen && now - webhookSeen.at < WEBHOOK_PROOF_TTL_MS) return false
+
+  const seen = await prisma.xamanPayload.findFirst({
+    where: { source: 'webhook' },
+    select: { uuid: true },
+  })
+  webhookSeen = { value: Boolean(seen), at: now }
+  return webhookSeen.value
+}
+
+/** Exported for tests; nothing in the app should need to clear this. */
+export function resetWebhookProof(): void {
+  webhookSeen = null
+}
+
+/**
  * What a poll route sees.
  *
  * A terminal cached state is served without touching Xaman, since it can never
@@ -153,6 +186,22 @@ export async function resolvePayload(
   if (cached?.terminal) return toStatus(cached)
 
   if (webhookMode === 'disabled') return refreshPayload(uuid, 'poll')
+
+  // Push is the primary path, so a poll of OUR api does not become a call to
+  // THEIRS. Xaman asked for this directly: a 1.5s reconciliation loop is still
+  // polling, however cheap, and elevated limits require webhooks or websockets
+  // with polling only as a fallback or periodic check.
+  //
+  // The fallback is not deleted, it is made CONDITIONAL. Setting
+  // XAMAN_WEBHOOK_SECRET says a URL exists; it does not say Xaman can reach it,
+  // and a deployment where the console entry was never made would otherwise sit
+  // silent until a payload expired. So we serve the cache only once callbacks
+  // are OBSERVED arriving, and poll as before until then.
+  if (await webhooksArriving()) {
+    return cached
+      ? toStatus(cached)
+      : { signed: false, cancelled: false, expired: false, account: null, txid: null }
+  }
 
   const stale = !cached || cached.fetchedAt.getTime() < Date.now() - REFRESH_THROTTLE_MS
   if (stale) {
@@ -174,7 +223,7 @@ export async function resolvePayload(
  * mint or a bid means real money stuck. Deliberately narrow: only non-terminal
  * payloads that something is still waiting on.
  */
-export async function reconcileStalePayloads(olderThanMs = 60_000, limit = 25): Promise<number> {
+export async function reconcileStalePayloads(olderThanMs = 20_000, limit = 25): Promise<number> {
   if (webhookMode === 'disabled') return 0
 
   const cutoff = new Date(Date.now() - olderThanMs)

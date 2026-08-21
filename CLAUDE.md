@@ -938,6 +938,27 @@ check-in. Treating it as a nudge rather than a source removes that whole class o
 attack, and means we do not depend on reproducing Xaman's signing scheme
 correctly. The secret in the path is a doorbell, not the boundary.
 
+**Push is the primary path, and polling is a conditional fallback.** Xaman asked
+for this in as many words — "the 1.5-second reconciliation loop is technically
+still polling… use webhooks or WebSockets for real-time updates, and only use
+polling sparingly as a fallback or periodic check" — and since limits are
+adjusted on observed BEHAVIOUR, complying is the mechanism by which our capacity
+grows rather than merely a courtesy.
+
+So `resolvePayload` serves the cache without calling Xaman **once callbacks have
+been observed arriving**, and a payload left non-terminal for 20s is picked up by
+the sweep. Client polls of our API no longer become calls to theirs.
+
+**The fallback is conditional rather than deleted**, and that is the load-bearing
+part. `XAMAN_WEBHOOK_SECRET` being set says a URL exists; it does not say Xaman
+can reach it. Deleting the poll outright would turn an unregistered console entry
+from "slow" into "payloads that never resolve". `refreshPayload` already stamps
+`source: 'webhook'`, so the evidence is in the table: until a callback has
+actually been seen we poll exactly as before, which is also what keeps local
+development working with no public URL. `/api/health` reports it as
+`webhook: receiving | unverified | disabled`, so the difference is visible from
+outside instead of being inferred from signatures feeling slow.
+
 All 16 poll sites go through `tryGetPayload`, so caching there fixed every flow
 without touching a single route. Terminal states (signed/cancelled/expired) are
 cached permanently — they cannot change again. While pending, webhook mode
@@ -1390,7 +1411,7 @@ be moved in Xaman as a collectible; Hubworld just stops presenting it as a ticke
 
 ## Health check
 
-`GET /api/health` → `{ status, db, commit, network, broker, uptime, timestamp }`
+`GET /api/health` → `{ status, db, commit, network, broker, webhook, uptime, timestamp }`
 
 Always returns HTTP 200 so the UI can render a status even when Postgres is
 down; a dead database shows as `status: "degraded"`, `db: "unavailable"`. Check
