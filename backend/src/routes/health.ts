@@ -2,6 +2,8 @@ import { Router } from 'express'
 import { prisma } from '../prisma.js'
 import { COMMIT_SHA, env } from '../env.js'
 import { brokerHealth } from '../broker-health.js'
+import { webhookMode } from '../env.js'
+import { webhooksArriving } from '../payload-store.js'
 
 export const healthRouter = Router()
 
@@ -34,11 +36,31 @@ export const healthRouter = Router()
  * system names it as `Destination`, and anyone can read its balance from the
  * ledger. Nothing here reveals a key, a seed or a credential.
  *
+ * `webhook` answers "is push actually working?" — `receiving` once a callback
+ * has been observed, `unverified` while a secret is set but nothing has ever
+ * arrived. That distinction matters more now than it did: resolution trusts
+ * push, so an unregistered URL is the difference between instant and a
+ * background sweep.
+ *
  * `status` stays a statement about the DATABASE alone. A low broker balance is
  * worth reporting, but it must not flip the field the host's health check reads
  * — that would take the service out of rotation over a funding problem no
  * restart can fix, turning a warning into an outage.
  */
+/**
+ * Configured is not the same as working.
+ *
+ * `XAMAN_WEBHOOK_SECRET` being set says a URL exists; it does not say Xaman can
+ * reach it. A deployment where the console entry was never made looks identical
+ * from the inside — and is the documented worst case, because payload
+ * resolution now trusts push. `unverified` is that state, visible from outside
+ * rather than inferred from someone noticing signatures feel slow.
+ */
+async function webhookState(): Promise<'receiving' | 'unverified' | 'disabled'> {
+  if (webhookMode === 'disabled') return 'disabled'
+  return (await webhooksArriving()) ? 'receiving' : 'unverified'
+}
+
 healthRouter.get('/health', async (_req, res) => {
   let db: 'connected' | 'unavailable' = 'unavailable'
 
@@ -55,6 +77,7 @@ healthRouter.get('/health', async (_req, res) => {
     commit: COMMIT_SHA,
     network: env.XRPL_NETWORK,
     broker: await brokerHealth(),
+    webhook: await webhookState(),
     uptime: Math.round(process.uptime()),
     timestamp: new Date().toISOString(),
   })
