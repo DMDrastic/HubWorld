@@ -136,8 +136,9 @@ Two actions, both cheap, both now:
   to cost per attendee, so the unit economics that could not be computed now
   compute trivially: payloads constrain PERMISSION, not money.
 
-  **Limits are per API KEY.** A separate mainnet application therefore gets its
-  own budget, and the instruction not to register one is lifted.
+  **Limits are per API KEY**, so a separate mainnet application would get its own
+  budget. **Do not register one yet** — see below; the case is weaker than it
+  first looks.
 
   **429s do not consume the limit**, so the current no-backoff behaviour is not
   digging a hole.
@@ -146,33 +147,66 @@ Two actions, both cheap, both now:
   activity, how long the API key has existed, user reports, and other factors."**
   Three consequences follow, and none of them were visible before:
 
-  1. **There may be no fixed creation cap at all.** The 67 → 77 error that
-     started this may have been the dynamic limit moving, not a lifetime quota
-     being consumed. A confirmation is outstanding.
-  2. **Rotating credentials resets a key's age.** The 2026-08-02 rotation put us
-     back at the bottom of that curve — a real cost of rotation nobody costed.
-     Worth remembering before rotating again.
-  3. **A mainnet key starts young and constrained.** So create it EARLY and use
-     it gently, not the week before an event. That is now a scheduling
-     constraint on the first mainnet event, not a setup step.
+  1. **There is no fixed creation cap.** CONFIRMED 2026-08-21: the 67 → 77 error
+     was the dynamic limit moving, not a lifetime quota being consumed.
+  2. **There is no maturation period either.** No length of time after which a
+     key is automatically "established" — so age is not a thing that can be
+     banked by registering early.
+  3. **Rotating credentials still discards whatever standing a key had.** The
+     2026-08-02 rotation did exactly that. Worth costing before rotating again.
+
+### Do NOT register a second application yet
+
+Recommended twice in this document's history, and wrong both times. The reasoning
+is recorded because the arguments FOR it sound better than they are.
+
+**There is nothing to protect.** The mainnet env is a laptop config used for a
+rehearsal, not a deployment. A second key insures against a dev-side throttle
+interrupting a live mainnet service that does not exist — while adding a second
+credential to look after, on a project that has already had two credential
+exposures.
+
+**And splitting halves the history.** Reputation and activity accrue PER KEY.
+One key carrying a mainnet rehearsal plus weeks of real usage is a far better
+whitelist request than two keys with half the track record each. Since
+whitelisting is the actual lever for event capacity, protecting that ask matters
+more than isolating budgets we are not close to exhausting.
+
+What survives is **rotation independence** — a dev-side leak forcing a rotation
+would discard the standing of the key an event depends on. Real, but insurance
+on something not yet built.
+
+**The trigger is a condition, not a date: register the second application when a
+continuously-running mainnet deployment exists.** That is the moment there is
+something to protect, and the moment its webhook URL can be registered from day
+one rather than left blank. Until then, one key, accumulating history. Nothing is
+lost by waiting, because there is no clock to have started.
 
   **Whitelisting is the lever for event day**, on request. Ask before an event,
   not while a door is queueing.
 
-  This also changes what the webhook work is FOR. Moving payload resolution to
-  webhook-first was asked for by Xaman and committed to in writing; since limits
-  rise with activity and good behaviour, doing it is now the *mechanism* by
-  which our limit grows, on a key whose age is the only other input and cannot
-  be hurried.
+  ~~This also changes what the webhook work is FOR.~~ **SHIPPED 2026-08-21**
+  (PR #69) and verified in production, which reports `webhook: receiving`.
+  Payload state is served from cache and driven by callbacks; client polls of our
+  API no longer become calls to theirs. Polling survives only where callbacks are
+  not OBSERVED arriving, plus a 20s sweep — per payload, not per viewer. Since
+  limits rise with observed behaviour, this is the mechanism by which capacity
+  grows, not merely a courtesy.
 
   **Event size is no longer a hard ceiling.** With mint-and-list at two payloads
   per ticket, a 20-ticket event is ~80 creations. Against dynamic limits plus
   whitelisting, that is a relationship to manage rather than a wall.
 
 Note the existing mitigations are real but bounded: `POST /auth/signin` reuses an
-outstanding unsigned payload, `SIGNIN_TTL_MINUTES` is 3, and every poll site
-goes through the cache in `tryGetPayload`. Those spend the quota more slowly.
-**No code change fixes an exhausted quota.**
+outstanding unsigned payload, `SIGNIN_TTL_MINUTES` is 3, and every poll site goes
+through the cache in `tryGetPayload`. Those spend the limit more slowly, and
+mint-and-list in one signature (PR #66) took a ticket sold from three payloads to
+two.
+
+**But no code change raises a limit that is set at someone else's discretion.**
+That is the whole point of §3: with no paid tier there is no contract, no SLA and
+nothing to appeal to, so the only real mitigation is that a second signer remains
+POSSIBLE.
 
 ## 3. Protect the `src/xaman.ts` seam — it is the insurance policy
 
