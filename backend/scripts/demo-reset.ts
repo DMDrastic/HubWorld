@@ -24,6 +24,7 @@
 import { prisma } from '../src/prisma.js'
 import { NETWORK } from '../src/network.js'
 import { env } from '../src/env.js'
+import { assertSafeDatabase } from '../src/db-guard.js'
 
 const SLUG = 'station-square-live'
 const TITLE = 'Station Square Live'
@@ -34,10 +35,9 @@ function arg(name: string): string | undefined {
 }
 
 async function main() {
-  if (env.NODE_ENV === 'production') {
-    console.error('Refusing to reset demo data in production.')
-    process.exit(1)
-  }
+  // Refuses in a production PROCESS and against a non-local DATABASE — the
+  // second is the one that catches a laptop pointed at production.
+  assertSafeDatabase('demo:reset')
 
   const organizerHandle = (arg('organizer') ?? 'dm_drastic').replace(/^@/, '')
   const ticketCount = Number(arg('tickets') ?? 3)

@@ -620,6 +620,24 @@ SIZE, and the answer is outstanding with Xaman.
   in that file gets recycled onto an unrelated process, so the hint names a live
   PID that is not Postgres. **Verify with `ps -p <pid>` before deleting it** —
   removing a live cluster's `postmaster.pid` corrupts data.
+- **Destructive scripts refuse a database that is not local** (`src/db-guard.ts`,
+  used by `demo:seed`, `demo:reset`, `purge:test`, `auction:create`,
+  `simulate:auction`, `broker:match` and `platform:setup`). They used to guard on
+  `NODE_ENV === 'production'`, which names the PROCESS rather than the database —
+  and those come apart in this repo's own workflow, where `ledger:sync --apply`
+  against production is run from a laptop with the production `DATABASE_URL` in
+  `.env.production.local`. Once that file exists, "local process, production
+  database" is ordinary and every such guard passes. Measured the hard way:
+  `purge:test --apply` was run against production on 2026-08-13 and the guard
+  printed nothing.
+
+  Every guarded script now prints its target — `purge:test → hubworld_dev on
+  localhost` — so a dry run makes the destination unambiguous, and refuses a
+  remote host unless `--allow-remote-database` is passed. A flag rather than an
+  env var, so the deliberate act shows up in shell history. The host and database
+  are named in the refusal; the connection string never is, because a guard that
+  prints one writes a password into a terminal, a CI log and a screenshot.
+
 - **`prisma migrate dev` needs an interactive terminal.** It refuses to run from
   a non-TTY ("environment is non-interactive, which is not supported"), which
   includes agent shells, `zsh -c` and CI. That is Prisma's design, not a repo

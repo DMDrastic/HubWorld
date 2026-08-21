@@ -17,6 +17,7 @@ import { appendFileSync, chmodSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { Client, Wallet } from 'xrpl'
 import { env } from '../src/env.js'
+import { assertSafeDatabase } from '../src/db-guard.js'
 import { XRPL_ENDPOINT } from '../src/ledger.js'
 
 const ENV_PATH = resolve(import.meta.dirname, '../.env')
@@ -24,10 +25,9 @@ const ENV_PATH = resolve(import.meta.dirname, '../.env')
 async function main() {
   // Guardrails. A mainnet platform account is a deliberate act with real money
   // behind it; it must not be conjured by a dev convenience script.
-  if (env.NODE_ENV === 'production') {
-    console.error('Refusing to run in production.')
-    process.exit(1)
-  }
+  // Refuses in a production PROCESS and against a non-local DATABASE — the
+  // second is the one that catches a laptop pointed at production.
+  assertSafeDatabase('platform:setup')
   if (env.XRPL_NETWORK === 'mainnet') {
     console.error(
       'Refusing to generate a mainnet platform account. Create it deliberately,\n' +

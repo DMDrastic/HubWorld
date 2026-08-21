@@ -12,7 +12,7 @@
 import { Prisma } from '@prisma/client'
 import { prisma } from '../src/prisma.js'
 import { NETWORK } from '../src/network.js'
-import { env } from '../src/env.js'
+import { assertSafeDatabase } from '../src/db-guard.js'
 
 function arg(name: string): string | undefined {
   const i = process.argv.indexOf(`--${name}`)
@@ -22,10 +22,9 @@ function arg(name: string): string | undefined {
 const XRP = 1_000_000n
 
 async function main() {
-  if (env.NODE_ENV === 'production') {
-    console.error('Refusing to fabricate bids in production.')
-    process.exit(1)
-  }
+  // Refuses in a production PROCESS and against a non-local DATABASE — the
+  // second is the one that catches a laptop pointed at production.
+  assertSafeDatabase('auction:create')
 
   const slug = arg('event')
   if (!slug) {
