@@ -34,7 +34,6 @@
  */
 import {
   Client,
-  Wallet,
   convertStringToHex,
   type NFTokenAcceptOffer,
   type NFTokenCreateOffer,

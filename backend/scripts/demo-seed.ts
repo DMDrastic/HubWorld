@@ -47,6 +47,7 @@ import { Prisma } from '@prisma/client'
 import { prisma } from '../src/prisma.js'
 import { NETWORK } from '../src/network.js'
 import { env } from '../src/env.js'
+import { assertSafeDatabase } from '../src/db-guard.js'
 import { evaluateSoldOut } from '../src/auction-policy.js'
 
 const XRP = 1_000_000n
@@ -90,11 +91,9 @@ async function clean() {
 
 async function main() {
   // Same guards as auction:create and demo:reset, for the same reason.
-  if (env.NODE_ENV === 'production') {
-    console.error('Refusing to seed fixtures in production.')
-    console.error('These are display rows with nothing on-ledger; a public site must not show them.')
-    process.exit(1)
-  }
+  // Refuses in a production PROCESS and against a non-local DATABASE — the
+  // second is the one that catches a laptop pointed at production.
+  assertSafeDatabase('demo:seed')
   if (env.XRPL_NETWORK === 'mainnet') {
     console.error('Refusing to seed fixtures against mainnet.')
     process.exit(1)

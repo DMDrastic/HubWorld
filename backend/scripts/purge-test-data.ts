@@ -22,7 +22,7 @@
  * for events whose tickets you hold yourself.
  */
 import { prisma } from '../src/prisma.js'
-import { env } from '../src/env.js'
+import { assertSafeDatabase } from '../src/db-guard.js'
 import { disconnectLedger, brokerCancelOffers } from '../src/ledger.js'
 
 const APPLY = process.argv.includes('--apply')
@@ -40,10 +40,9 @@ const EXTRA_EVENTS = (() => {
 })()
 
 async function main() {
-  if (env.NODE_ENV === 'production') {
-    console.error('Refusing to purge in production.')
-    process.exit(1)
-  }
+  // Refuses in a production PROCESS and against a non-local DATABASE — the
+  // second is the one that catches a laptop pointed at production.
+  assertSafeDatabase('purge:test')
 
   const users = await prisma.user.findMany({
     where: { OR: [{ username: { in: SEEDED } }, { username: { startsWith: SIM_PREFIX } }] },

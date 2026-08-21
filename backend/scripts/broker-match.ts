@@ -11,7 +11,7 @@
  * Dev-only: it submits a real brokered settlement with Hubworld's key.
  */
 import { prisma } from '../src/prisma.js'
-import { env } from '../src/env.js'
+import { assertSafeDatabase } from '../src/db-guard.js'
 import { brokerSale, disconnectLedger, ledger, platformAddress } from '../src/ledger.js'
 
 function arg(name: string): string | undefined {
@@ -34,10 +34,9 @@ async function balances(addresses: string[]): Promise<Map<string, bigint>> {
 }
 
 async function main() {
-  if (env.NODE_ENV === 'production') {
-    console.error('Refusing to run in production.')
-    process.exit(1)
-  }
+  // Refuses in a production PROCESS and against a non-local DATABASE — the
+  // second is the one that catches a laptop pointed at production.
+  assertSafeDatabase('broker:match')
 
   const sell = arg('sell')
   const buy = arg('buy')

@@ -21,6 +21,7 @@ import { Client, Wallet, type SubmittableTransaction } from 'xrpl'
 import { prisma } from '../src/prisma.js'
 import { NETWORK } from '../src/network.js'
 import { env } from '../src/env.js'
+import { assertSafeDatabase } from '../src/db-guard.js'
 import {
   XRPL_ENDPOINT,
   buildBuyOfferTx,
@@ -104,10 +105,9 @@ async function fundedWallet(client: Client, label: string): Promise<Wallet> {
 }
 
 async function main() {
-  if (env.NODE_ENV === 'production') {
-    console.error('Refusing to run in production.')
-    process.exit(1)
-  }
+  // Refuses in a production PROCESS and against a non-local DATABASE — the
+  // second is the one that catches a laptop pointed at production.
+  assertSafeDatabase('simulate:auction')
   if (env.XRPL_NETWORK === 'mainnet') {
     console.error('Refusing to run against mainnet — this signs for generated wallets.')
     process.exit(1)
