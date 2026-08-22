@@ -743,7 +743,14 @@ actually loses people.
 ## 5d. Wallet trust: every new organizer looks like a scam
 
 **Measured, not predicted.** Xaman shows a **scam warning** on HubWorld tickets
-in the holder's own wallet. A ticketing product whose tickets are labelled a scam
+in the holder's own wallet.
+
+**One vendor, one relationship.** XRPL Labs is the company; Xaman is their
+product. The people who set our payload limits, whitelisted our issuer, and
+operate the classifier that flags NFTs are the same people, reached through the
+same support channel — so this is not a second negotiation to run differently.
+It is all one reputation, which is part of why §2's webhook work was worth doing
+promptly. A ticketing product whose tickets are labelled a scam
 where the attendee actually looks at them is broken in the way that matters most,
 however correct the ledger work underneath is.
 
@@ -757,7 +764,7 @@ URI stays correctable.
 
 **Theirs, and structural: the issuer is unknown.** With valid metadata the NAME
 renders — proving Xaman fetches and parses the document — and **the warning does
-not change.** So classification is not metadata-driven. XRPL Labs whitelisted the
+not change.** So classification is not metadata-driven. Xaman whitelisted the
 issuing account on request (2026-08-22).
 
 ### Why that fix does not generalise
@@ -773,8 +780,8 @@ things follow:
 
 - **Organizer signup cannot be self-serve.** Someone must file a request and wait
   on a queue we do not control.
-- **Onboarding rate is bounded by how fast XRPL Labs answers tickets**, which is
-  not a number we can plan against.
+- **Onboarding rate is bounded by how fast Xaman answers tickets**, which is not
+  a number we can plan against.
 - **The worst-affected event is an organizer's FIRST** — the one where they are
   deciding whether to trust us — unless the account is pre-cleared before tickets
   go on sale.
@@ -783,7 +790,7 @@ That is survivable while onboarding a handful of organizers deliberately. **It
 does not survive a self-serve product**, and that is the honest statement of the
 constraint.
 
-**Outstanding with XRPL Labs:** whether a PLATFORM can be registered so accounts
+**Outstanding with Xaman:** whether a PLATFORM can be registered so accounts
 issuing through it are treated as known, rather than clearing them one at a time;
 and why a public `https` image returning 200 `image/png` does not render, when
 their documentation emphasises IPFS.
