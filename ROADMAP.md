@@ -740,6 +740,61 @@ in our own types.
 a real audience. Barrier 3 is not worth a schema refactor if barrier 1 is what
 actually loses people.
 
+## 5d. Wallet trust: every new organizer looks like a scam
+
+**Measured, not predicted.** Xaman shows a **scam warning** on HubWorld tickets
+in the holder's own wallet. A ticketing product whose tickets are labelled a scam
+where the attendee actually looks at them is broken in the way that matters most,
+however correct the ledger work underneath is.
+
+Two causes were separated by testing, and only one was ours.
+
+**Ours: tickets carried no metadata at all.** `buildMintTx` accepted a `uri` and
+the mint route never passed one, so every ticket ever issued was an anonymous
+token from an unknown account — the exact shape of the spam airdropped across the
+XRPL. Fixed: tickets now carry an XLS-24 document, and `tfMutable` is set so the
+URI stays correctable.
+
+**Theirs, and structural: the issuer is unknown.** With valid metadata the NAME
+renders — proving Xaman fetches and parses the document — and **the warning does
+not change.** So classification is not metadata-driven. XRPL Labs whitelisted the
+issuing account on request (2026-08-22).
+
+### Why that fix does not generalise
+
+`TransferFee` is paid to the ISSUER. For an organizer to earn a royalty on
+resale, the organizer must BE the issuer. So HubWorld can never accumulate
+reputation as one trusted issuer: **every organizer arrives as an account no
+wallet has seen, minting NFTs to people who have just paid.**
+
+If per-account whitelisting is the only route, then **onboarding an organizer
+contains a manual third-party step with roughly a day's lead time**, and three
+things follow:
+
+- **Organizer signup cannot be self-serve.** Someone must file a request and wait
+  on a queue we do not control.
+- **Onboarding rate is bounded by how fast XRPL Labs answers tickets**, which is
+  not a number we can plan against.
+- **The worst-affected event is an organizer's FIRST** — the one where they are
+  deciding whether to trust us — unless the account is pre-cleared before tickets
+  go on sale.
+
+That is survivable while onboarding a handful of organizers deliberately. **It
+does not survive a self-serve product**, and that is the honest statement of the
+constraint.
+
+**Outstanding with XRPL Labs:** whether a PLATFORM can be registered so accounts
+issuing through it are treated as known, rather than clearing them one at a time;
+and why a public `https` image returning 200 `image/png` does not render, when
+their documentation emphasises IPFS.
+
+### What it does not change
+
+This is a wallet-trust problem, not a ledger one. Nothing here touches royalties,
+brokered settlement, resale, auctions or the door. **Do not "fix" it by making
+HubWorld the issuer** — that trades the royalty model for a cosmetic win and
+lands squarely in §6.
+
 ## 6. What would end HubWorld
 
 Every scaling pressure will push toward one of these. They are listed so the
@@ -750,6 +805,10 @@ decision is conscious rather than incremental.
   mode exists to avoid.
 - **Granting a `RegularKey`.** It is unscoped: an organizer granting it also
   grants the ability to send payments from their account.
+- **Making HubWorld the issuer to escape the wallet-trust problem.** It would
+  clear the scam warning at a stroke — one known issuer instead of an endless
+  parade of new ones — and it takes the royalty with it, since `TransferFee`
+  pays the issuer. See §5d. The cosmetic problem is real; this is not the fix.
 
 Both dissolve **"HubWorld cannot act as you"**, which is the claim the entire
 design supports and the only one that is genuinely hard to win back. Either
