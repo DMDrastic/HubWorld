@@ -219,15 +219,33 @@ the fallback onto their websocket. That change lives at the `src/xaman.ts` seam
 >
 > Happy to provide anything else useful.
 
+## Resolved 2026-08-21/22
+
+- **No fixed creation cap.** Confirmed: the 67 → 77 error was the dynamic limit
+  moving, not a lifetime quota being consumed.
+- **Limits are per API key**, adjusted dynamically on activity, key age and user
+  reports. **No maturation period** — age cannot be banked by registering early,
+  which is why `ROADMAP.md` §2 now says NOT to register a second application
+  until a continuously-running mainnet deployment exists.
+- **429s do not consume the limit.**
+- **No paid tiers — the service is free.** Whitelisting is the lever for
+  event-day bursts, on request and in advance.
+- **Webhook-first shipped** (PR #69) and confirmed in production, which reports
+  `webhook: receiving`.
+- **The issuing account was whitelisted** on request, so the scam warning on
+  `r4wQ…BjcF` should clear. That fixes the instance, not the class — see
+  `ROADMAP.md` §5d.
+
 ## Still unanswered
 
-1. **The creation limit**: what it is, and whether it is monthly, rolling or
-   lifetime.
-2. **Per application or per developer account.** The one that changes setup —
-   **do not register a mainnet application until this is answered**
-   (`ROADMAP.md` §2).
-3. Whether a 429 consumes allowance.
-4. Paid tiers and prices, and the lead time to raise a limit.
+1. **Whether a PLATFORM can be registered** so accounts issuing through it are
+   treated as known, rather than clearing every organizer one at a time. This is
+   the one that decides whether organizer signup can ever be self-serve.
+2. **The process and turnaround for per-account whitelisting**, so it can be
+   built into onboarding rather than discovered when an organizer's first event
+   goes on sale.
+3. **Why a public `https` image returning 200 `image/png` does not render**, when
+   their documentation emphasises IPFS.
 
 ## Figures quoted, and where they come from
 
