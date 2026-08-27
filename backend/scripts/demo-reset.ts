@@ -22,6 +22,7 @@
  * Anyone who wants a tidy wallet can burn their own in Xaman.
  */
 import { prisma } from '../src/prisma.js'
+import { assertEventsDeletable } from '../src/event-deletion.js'
 import { NETWORK } from '../src/network.js'
 import { env } from '../src/env.js'
 import { assertSafeDatabase } from '../src/db-guard.js'
@@ -56,6 +57,10 @@ async function main() {
   if (existing) {
     const eventId = existing.id
     const ticketFilter = { ticket: { eventId } }
+
+    // Before the cascade, not inside it: once children are deleted the evidence
+    // of what was minted is gone.
+    await assertEventsDeletable([eventId])
 
     // Children before parents; one transaction so a partial reset cannot leave
     // an event with dangling bids.

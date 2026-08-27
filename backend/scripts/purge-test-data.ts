@@ -22,6 +22,7 @@
  * for events whose tickets you hold yourself.
  */
 import { prisma } from '../src/prisma.js'
+import { assertEventsDeletable } from '../src/event-deletion.js'
 import { assertSafeDatabase } from '../src/db-guard.js'
 import { disconnectLedger, brokerCancelOffers } from '../src/ledger.js'
 
@@ -114,6 +115,10 @@ async function main() {
       console.log('\ncould not cancel on-ledger offers (harmless — they are inert)')
     }
   }
+
+  // Before the cascade, not inside it: once children are deleted the evidence of
+  // what was minted is gone.
+  await assertEventsDeletable(eventIds)
 
   // Foreign keys dictate the order: children before parents.
   const ticketWhere = { OR: [{ ownerId: { in: userIds } }, { eventId: { in: eventIds } }] }
