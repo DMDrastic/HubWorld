@@ -1120,6 +1120,49 @@ organizer before they have signed in:
 npm run event:create -- --organizer <handle> --title "<title>" [--tickets 50]
 ```
 
+### Tickets carry metadata, or wallets call them a scam
+
+Until 2026-08-13 every ticket was minted with **no URI at all** — no name, no
+image, nothing. A wallet cannot render that as anything but an anonymous token
+from an unknown account, which is the exact shape of the spam airdropped across
+the XRPL, and Xaman flagged it accordingly. A ticketing product whose tickets are
+labelled a scam in the holder's own wallet is broken in the way that matters
+most, however correct the ledger work underneath is.
+
+Tickets now carry an XLS-24 document served from
+`GET /api/events/:slug/nft.json` — public and unauthenticated, because it is read
+by wallets, indexers and explorers that will never hold a session, and it
+describes something already on a public ledger.
+
+**Per EVENT, not per ticket.** The `NFTokenID` is derived BY THE LEDGER, so it
+does not exist when the mint transaction is built — a per-ticket URI cannot name
+its own token. The event is the right unit anyway: same poster, same venue.
+
+**Minting sets `tfMutable`.** `DynamicNFT` is enabled on mainnet, so a URI can be
+corrected later with `NFTokenModify` — but **only if the flag was set at mint**.
+Without it the metadata is frozen for the life of the token. The three mainnet
+tickets from the rehearsal predate this and are permanently nameless.
+
+**`PUBLIC_BASE_URL` defaults to the real origin, and minting on mainnet refuses a
+localhost URL outright**, because a URI no wallet can reach is correctable only
+by another organizer-signed transaction per ticket.
+
+**Serving that URI is a promise the database cannot revoke.** Deleting an event
+makes every ticket ever minted from it return 404 for its own name and image —
+found when a purged test event left a live token rendering only from Xaman's
+cache. `src/event-deletion.ts` refuses to delete an event that still has tickets,
+reporting how many reached a LEDGER as distinct from how many are fixtures, and
+`demo:reset` and `purge:test` both call it BEFORE their cascade, since afterwards
+the evidence of what was minted is gone.
+
+**Metadata was never what caused the flag, though.** With a valid document the
+NAME renders — proving Xaman fetches and parses it — and the warning did not
+change. Xaman whitelisted the issuing ACCOUNT on request, after which the warning
+cleared even on the tokens carrying no metadata at all. Classification is
+issuer-based. Since `TransferFee` pays the issuer, every organizer must be their
+own issuer, so each arrives as an account no wallet has seen — see `ROADMAP.md`
+§5d, which treats that as a constraint on onboarding rather than a bug.
+
 **Minting can also LIST in the same signature.** `NFTokenMintOffer` is enabled
 on mainnet, so `NFTokenMint` carries `Amount` and `Destination` and creates the
 sell offer itself — `POST /events/:slug/mint` takes an optional `priceDrops`.
