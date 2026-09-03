@@ -1,0 +1,387 @@
+<title>HubWorld — pitch deck</title>
+
+<style>
+  /* ---------------------------------------------------------------- tokens --
+     The subject is a ledger: 64-character hashes and exact decimal amounts.
+     So the display face is monospace, the accent is a box-office amber, and
+     settled money gets its own verified-green. Neutrals are warmed toward the
+     amber rather than left as flat grey. */
+  :root {
+    --bone:        #F1EFE9;
+    --bone-sunk:   #E7E4DC;
+    --ink:         #16181B;
+    --ink-raised:  #1E2126;
+
+    --amber:       #B4650F;
+    --verified:    #2C6C56;
+
+    --bg:          var(--bone);
+    --bg-sunk:     var(--bone-sunk);
+    --fg:          var(--ink);
+    --fg-muted:    #615D54;
+    --fg-faint:    #8A857A;
+    --rule:        #D5D0C4;
+    --accent:      var(--amber);
+    --money:       var(--verified);
+    --card:        #FAF9F5;
+
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas,
+            "Liberation Mono", monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial,
+            sans-serif;
+
+    --step--1: clamp(0.78rem, 0.74rem + 0.2vw, 0.86rem);
+    --step-0:  clamp(0.98rem, 0.93rem + 0.25vw, 1.08rem);
+    --step-1:  clamp(1.2rem, 1.08rem + 0.6vw, 1.5rem);
+    --step-2:  clamp(1.6rem, 1.3rem + 1.5vw, 2.4rem);
+    --step-3:  clamp(2.1rem, 1.5rem + 3vw, 3.8rem);
+
+    --gutter: clamp(1.4rem, 1rem + 3vw, 5rem);
+    --measure: 62ch;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg:       var(--ink);
+      --bg-sunk:  #101215;
+      --fg:       #EDEAE3;
+      --fg-muted: #A8A296;
+      --fg-faint: #79736A;
+      --rule:     #2E3238;
+      --accent:   #E39C4A;
+      --money:    #6DBB9B;
+      --card:     var(--ink-raised);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg:       var(--ink);
+    --bg-sunk:  #101215;
+    --fg:       #EDEAE3;
+    --fg-muted: #A8A296;
+    --fg-faint: #79736A;
+    --rule:     #2E3238;
+    --accent:   #E39C4A;
+    --money:    #6DBB9B;
+    --card:     var(--ink-raised);
+  }
+  :root[data-theme="light"] {
+    --bg:       var(--bone);
+    --bg-sunk:  var(--bone-sunk);
+    --fg:       var(--ink);
+    --fg-muted: #615D54;
+    --fg-faint: #8A857A;
+    --rule:     #D5D0C4;
+    --accent:   var(--amber);
+    --money:    var(--verified);
+    --card:     #FAF9F5;
+  }
+
+  /* ---------------------------------------------------------------- shell -- */
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font-family: var(--sans);
+    font-size: var(--step-0);
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .rail {
+    position: fixed; inset: 0 0 auto 0; height: 2px;
+    background: var(--rule); z-index: 20;
+  }
+  .rail > i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .25s ease; }
+
+  .counter {
+    position: fixed; right: var(--gutter); bottom: 1.4rem; z-index: 20;
+    font-family: var(--mono); font-size: var(--step--1);
+    color: var(--fg-faint); font-variant-numeric: tabular-nums;
+    background: var(--bg); padding: .3rem .55rem; border: 1px solid var(--rule);
+  }
+
+  .deck { scroll-snap-type: y mandatory; height: 100dvh; overflow-y: auto; }
+
+  .slide {
+    scroll-snap-align: start;
+    min-height: 100dvh;
+    padding: clamp(3rem, 8vh, 6rem) var(--gutter) 4.5rem;
+    display: grid; align-content: center; gap: 1.5rem;
+    border-bottom: 1px solid var(--rule);
+  }
+  .slide > * { max-width: var(--measure); }
+  .slide--wide > * { max-width: 78ch; }
+
+  /* --------------------------------------------------------------- type --- */
+  .eyebrow {
+    font-family: var(--mono); font-size: var(--step--1);
+    letter-spacing: .14em; text-transform: uppercase; color: var(--accent);
+    display: flex; align-items: baseline; gap: .8rem;
+  }
+  .eyebrow b { color: var(--fg-faint); font-weight: 400; }
+
+  h1, h2 {
+    font-family: var(--mono); font-weight: 600; line-height: 1.08;
+    letter-spacing: -0.02em; text-wrap: balance; margin: 0;
+  }
+  h1 { font-size: var(--step-3); }
+  h2 { font-size: var(--step-2); }
+  .lede { font-size: var(--step-1); color: var(--fg-muted); text-wrap: pretty; margin: 0; }
+  p { margin: 0; }
+
+  ul { margin: 0; padding-left: 0; list-style: none; display: grid; gap: .9rem; }
+  li { padding-left: 1.5rem; position: relative; text-wrap: pretty; }
+  li::before {
+    content: ""; position: absolute; left: 0; top: .62em;
+    width: .5rem; height: 1px; background: var(--accent);
+  }
+  strong { font-weight: 650; }
+
+  .note {
+    font-size: var(--step--1); color: var(--fg-faint);
+    border-left: 2px solid var(--rule); padding-left: .9rem; max-width: 56ch;
+  }
+
+  /* ------------------------------------------------------------- evidence -- */
+  .hash {
+    font-family: var(--mono); font-size: clamp(.72rem, .5rem + 1.1vw, 1.02rem);
+    word-break: break-all; line-height: 1.5; color: var(--fg);
+    background: var(--card); border: 1px solid var(--rule);
+    padding: 1rem 1.1rem; max-width: 100%;
+  }
+  .hash em {
+    display: block; font-style: normal; font-family: var(--sans);
+    font-size: var(--step--1); color: var(--fg-faint); margin-top: .6rem;
+  }
+
+  .scroller { overflow-x: auto; max-width: 100%; }
+  table { border-collapse: collapse; width: 100%; font-size: var(--step-0); }
+  th, td { text-align: left; padding: .62rem .9rem; border-bottom: 1px solid var(--rule); }
+  th { font-family: var(--mono); font-size: var(--step--1); text-transform: uppercase;
+       letter-spacing: .1em; color: var(--fg-faint); font-weight: 400; }
+  td.num { font-family: var(--mono); font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+  td.num.pos { color: var(--money); }
+  tr.total td { border-bottom: none; }
+
+  .flow { display: flex; flex-wrap: wrap; gap: .45rem; align-items: center;
+          font-family: var(--mono); font-size: var(--step--1); color: var(--fg-muted); }
+  .flow span { background: var(--bg-sunk); padding: .3rem .55rem; border: 1px solid var(--rule); }
+  .flow i { color: var(--accent); font-style: normal; }
+
+  .grid2 { display: grid; gap: 1.5rem; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); max-width: 78ch; }
+  .card { background: var(--card); border: 1px solid var(--rule); padding: 1.1rem 1.2rem; display: grid; gap: .4rem; }
+  .card h3 { margin: 0; font-family: var(--mono); font-size: var(--step-0); font-weight: 600; letter-spacing: -0.01em; }
+  .card p { font-size: var(--step--1); color: var(--fg-muted); }
+  .card .stat { font-family: var(--mono); font-size: var(--step-1); color: var(--accent); font-variant-numeric: tabular-nums; }
+
+  .status { display: inline-block; font-family: var(--mono); font-size: var(--step--1);
+            padding: .12rem .45rem; border: 1px solid currentColor; }
+  .status.on  { color: var(--money); }
+  .status.off { color: var(--fg-faint); }
+
+  a { color: var(--accent); text-underline-offset: .2em; }
+  a:focus-visible, .deck:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+
+  .reveal { opacity: 0; transform: translateY(10px); transition: opacity .5s ease, transform .5s ease; }
+  .reveal.in { opacity: 1; transform: none; }
+  @media (prefers-reduced-motion: reduce) {
+    .reveal, .reveal.in { opacity: 1; transform: none; transition: none; }
+    .rail > i { transition: none; }
+    .deck { scroll-behavior: auto; }
+  }
+</style>
+
+<div class="rail"><i id="bar"></i></div>
+<div class="counter"><span id="cur">1</span>/11</div>
+
+<div class="deck" id="deck" tabindex="0">
+
+  <section class="slide">
+    <p class="eyebrow">HubWorld <b>ticketing on the XRP Ledger</b></p>
+    <h1 class="reveal">Tickets your attendees actually own.</h1>
+    <p class="lede reveal">Royalties that pay the organizer on every resale — enforced by the ledger, not by a marketplace's goodwill.</p>
+    <div class="flow reveal">
+      <span>hubworld.app</span><i>·</i><span>github.com/DMDrastic/HubWorld</span><i>·</i><span>live on mainnet</span>
+    </div>
+  </section>
+
+  <section class="slide">
+    <p class="eyebrow">01 <b>the problem</b></p>
+    <h2 class="reveal">Ticketing is rented, not owned.</h2>
+    <ul class="reveal">
+      <li>Attendees hold a barcode in someone else's app. Screenshot it and it's forwarded; lose the account and it's gone.</li>
+      <li><strong>Organizers earn nothing on resale.</strong> Scalpers capture the upside on exactly the events that sell out.</li>
+      <li>Transfers happen off-platform, so nobody can prove who holds what at the door.</li>
+    </ul>
+  </section>
+
+  <section class="slide">
+    <p class="eyebrow">02 <b>what it does</b></p>
+    <h2 class="reveal">A ticket is an NFT in the attendee's own wallet.</h2>
+    <ul class="reveal">
+      <li><strong>Organizers mint and sell.</strong> They set a royalty and earn it automatically on every resale.</li>
+      <li><strong>HubWorld never holds a user's key.</strong> Every movement of a ticket or of money is signed by its owner, on their own device.</li>
+      <li><strong>Admission is a signature, not a screenshot.</strong> A QR can be forwarded; a signature needs the attendee's key at that moment.</li>
+    </ul>
+  </section>
+
+  <section class="slide slide--wide">
+    <p class="eyebrow">03 <b>proof</b></p>
+    <h2 class="reveal">It works on mainnet, with real money.</h2>
+    <div class="flow reveal">
+      <span>mint</span><i>→</i><span>gift</span><i>→</i><span>sale</span><i>→</i><span>auction</span><i>→</i><span>settlement</span><i>→</i><span>royalty</span><i>→</i><span>door</span>
+    </div>
+    <p class="reveal">A complete event ran on XRPL mainnet on 13 August 2026. Seven transactions, publicly verifiable — this one is the auction settling, splitting three ways in a single atomic transaction:</p>
+    <p class="hash reveal">E46DF91F1FCA8B3E30830C59E2FC015B9B05F5BD99DA16E25AE60F74627C9236
+      <em>livenet.xrpl.org/transactions/E46DF91F…</em></p>
+  </section>
+
+  <section class="slide slide--wide">
+    <p class="eyebrow">04 <b>where the money goes</b></p>
+    <h2 class="reveal">One transaction, three parties, no custody.</h2>
+    <div class="scroller reveal">
+      <table>
+        <thead><tr><th>On a 1 XRP winning bid</th><th style="text-align:right">XRP</th></tr></thead>
+        <tbody>
+          <tr><td>Seller</td><td class="num pos">+0.926250</td></tr>
+          <tr><td>Organizer — royalty</td><td class="num pos">+0.048750</td></tr>
+          <tr><td>HubWorld — platform fee</td><td class="num pos">+0.024988</td></tr>
+          <tr class="total"><td>Buyer</td><td class="num">−1.000000</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="reveal"><strong>Funds never rest with HubWorld.</strong> The ledger moves buyer → seller and buyer → issuer in a single transaction; we sign it and take a fee from the spread.</p>
+  </section>
+
+  <section class="slide slide--wide">
+    <p class="eyebrow">05 <b>findings</b></p>
+    <h2 class="reveal">What we measured that nobody had written down.</h2>
+    <div class="grid2 reveal">
+      <div class="card">
+        <h3>Royalty is charged after the broker fee</h3>
+        <p class="stat">5% → 4.875%</p>
+        <p>The issuer receives 5% of the bid <em>minus</em> the platform fee, not of the headline price.</p>
+      </div>
+      <div class="card">
+        <h3>Reserve is per page, not per token</h3>
+        <p class="stat">0.2 XRP / 32</p>
+        <p>A 32-ticket event locks 0.2 XRP in reserve, not 6.4.</p>
+      </div>
+      <div class="card">
+        <h3>MPT removes the bottleneck, destroys the royalty</h3>
+        <p class="stat">paid in tokens</p>
+        <p>One signature issues thousands — but its transfer fee is charged in tokens, not XRP.</p>
+      </div>
+      <div class="card">
+        <h3>Bulk minting fails silently</h3>
+        <p class="stat">402 / 1000</p>
+        <p>Submitted fire-and-forget, most of a run is dropped with no error.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="slide slide--wide">
+    <p class="eyebrow">06 <b>the field</b></p>
+    <h2 class="reveal">NFT ticketing is not an unproven idea.</h2>
+    <p class="reveal">GET Protocol processes over two million tickets a year. GUTS, YellowHeart and others run at festival scale. <strong>What is unproven is doing it natively on the XRP Ledger.</strong></p>
+    <ul class="reveal">
+      <li><strong>The royalty is enforced by the ledger</strong>, not by a marketplace's goodwill. Elsewhere it is contract-enforced and can be routed around.</li>
+      <li><strong>No smart contracts.</strong> The whole settlement model is three native transaction types — nothing to audit, upgrade or exploit.</li>
+      <li><strong>No custody at any point</strong>, including the attendee's ticket, which keeps working whether or not HubWorld does.</li>
+    </ul>
+  </section>
+
+  <section class="slide">
+    <p class="eyebrow">07 <b>limitations</b></p>
+    <h2 class="reveal">What doesn't work yet.</h2>
+    <ul class="reveal">
+      <li><strong>No users.</strong> The mainnet event used four accounts we control.</li>
+      <li><strong>Production runs testnet.</strong> The live site is a demonstration.</li>
+      <li><strong>Onboarding isn't self-serve.</strong> The royalty must pay the issuer, so every organizer is their own issuer — and arrives as an account wallets have never seen.</li>
+      <li><strong>Events cap in the low hundreds</strong>, because the organizer signs each mint.</li>
+    </ul>
+    <p class="note reveal">Stated up front because a reviewer who finds an unstated limitation afterwards discounts everything else.</p>
+  </section>
+
+  <section class="slide slide--wide">
+    <p class="eyebrow">08 <b>the ceiling</b></p>
+    <h2 class="reveal">The limit is the protocol's, not the product's.</h2>
+    <div class="scroller reveal">
+      <table>
+        <thead><tr><th>Amendment</th><th>What it would fix</th><th>Mainnet</th><th>Devnet</th></tr></thead>
+        <tbody>
+          <tr><td>PermissionDelegationV1_1</td><td>1,000 mints on one signature</td><td><span class="status off">absent</span></td><td><span class="status on">live</span></td></tr>
+          <tr><td>Sponsor</td><td>Attendees need no XRP to hold a ticket</td><td><span class="status off">absent</span></td><td><span class="status on">live</span></td></tr>
+          <tr><td>BatchV1_1</td><td>Eight mints per signature</td><td><span class="status off">absent</span></td><td><span class="status on">live</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="reveal">All three are live on devnet and absent from mainnet. We have built and measured against each of them — <strong>1,000 mints in 67 seconds on one organizer signature</strong>, with the royalty intact.</p>
+  </section>
+
+  <section class="slide">
+    <p class="eyebrow">09 <b>the ask</b></p>
+    <h2 class="reveal">Three deliverables, dated.</h2>
+    <div class="scroller reveal">
+      <table>
+        <thead><tr><th>Deliverable</th><th>By</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Publish the research</strong> — the measurements above, written up for the ecosystem</td><td class="num">Q4 2026</td></tr>
+          <tr><td><strong>A real event with a real organizer</strong> — the first non-synthetic use</td><td class="num">Q1 2027</td></tr>
+          <tr class="total"><td><strong>Delegation readiness</strong> — bulk-mint path built and tested on devnet</td><td class="num">on activation</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="note reveal">Costs per line item to be added once XRPL Commons confirms what each programme funds.</p>
+  </section>
+
+  <section class="slide">
+    <p class="eyebrow">10 <b>who</b></p>
+    <h2 class="reveal">Deandre Mendes</h2>
+    <ul class="reveal">
+      <li><strong>Senior Java Developer, CIBC</strong> — production software in a regulated bank.</li>
+      <li><strong>XRPL Student Ambassador, Ripple (2023–2025)</strong> — ran XRPL hackathons and taught blockchain development on campus.</li>
+      <li><strong>Ran every transaction in this deck by hand</strong>, on mainnet, with his own XRP.</li>
+    </ul>
+    <div class="flow reveal">
+      <span>385 tests</span><i>·</i><span>mutation-verified</span><i>·</i><span>public repository</span>
+    </div>
+    <p class="note reveal">github.com/DMDrastic/HubWorld — every spike, every measurement, and the decisions behind them.</p>
+  </section>
+
+</div>
+
+<script>
+  (function () {
+    var deck = document.getElementById('deck');
+    var slides = Array.prototype.slice.call(deck.querySelectorAll('.slide'));
+    var bar = document.getElementById('bar');
+    var cur = document.getElementById('cur');
+
+    document.getElementById('cur').parentNode.lastChild.textContent = '/' + slides.length;
+
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) {
+        if (!e.isIntersecting) return;
+        e.target.querySelectorAll('.reveal').forEach(function (el, i) {
+          setTimeout(function () { el.classList.add('in'); }, i * 70);
+        });
+        var n = slides.indexOf(e.target) + 1;
+        cur.textContent = n;
+        bar.style.width = (n / slides.length * 100) + '%';
+      });
+    }, { threshold: 0.5 });
+    slides.forEach(function (s) { io.observe(s); });
+
+    function go(delta) {
+      var top = deck.scrollTop;
+      var i = Math.round(top / window.innerHeight) + delta;
+      i = Math.max(0, Math.min(slides.length - 1, i));
+      slides[i].scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+    deck.focus();
+    window.addEventListener('keydown', function (e) {
+      if (['ArrowRight', 'ArrowDown', 'PageDown', ' '].indexOf(e.key) > -1) { e.preventDefault(); go(1); }
+      if (['ArrowLeft', 'ArrowUp', 'PageUp'].indexOf(e.key) > -1) { e.preventDefault(); go(-1); }
+    });
+  })();
+</script>
