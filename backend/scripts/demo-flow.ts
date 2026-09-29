@@ -72,9 +72,8 @@ async function clean() {
   await prisma.event.deleteMany({ where: { slug: SLUG } })
 }
 
-async function autosign(apiUrl: string, knownUserIds: Set<string>, asActor: Actor) {
-  const asAddress = fabricatedAddress(ACTORS.indexOf(asActor) + 1)
-  console.log(`\nautosign running against ${apiUrl} — anonymous sign-ins resolve as @${asActor} (${asAddress})`)
+async function autosign(apiUrl: string, knownUserIds: Set<string>, asLabel: string, asAddress: string) {
+  console.log(`\nautosign running against ${apiUrl} — anonymous sign-ins resolve as ${asLabel} (${asAddress})`)
   console.log('Ctrl+C to stop.\n')
 
   for (;;) {
@@ -153,13 +152,17 @@ async function main() {
   }
 
   if (flag('autosign')) {
-    const asArg = (arg('as') as Actor | undefined) ?? 'attendee1'
-    if (!ACTORS.includes(asArg)) {
-      console.error(`--as must be one of: ${ACTORS.join(', ')}`)
+    const asArg = arg('as') ?? 'organizer'
+    const allowed = ['organizer', ...ACTORS]
+    if (!allowed.includes(asArg)) {
+      console.error(`--as must be one of: ${allowed.join(', ')}`)
       process.exit(1)
     }
+    const asAddress =
+      asArg === 'organizer' ? organizer.xrplAddress : fabricatedAddress(ACTORS.indexOf(asArg as Actor) + 1)
+    const asLabel = asArg === 'organizer' ? `@${organizerHandle} (organizer)` : `@flowdemo_${asArg}`
     const knownUserIds = new Set([organizer.id, ...attendees.map((a) => a.id)])
-    await autosign(apiUrl, knownUserIds, asArg)
+    await autosign(apiUrl, knownUserIds, asLabel, asAddress)
     return // unreachable — autosign loops forever
   }
 
@@ -191,18 +194,18 @@ async function main() {
   for (const [i, name] of ACTORS.entries()) {
     console.log(`  ${name.padEnd(10)} @flowdemo_${name}  ${fabricatedAddress(i + 1)}`)
   }
-  console.log(`\nIn another terminal, keep this running for the whole recording:`)
-  console.log(`  npm run demo:flow -- --autosign --as attendee1\n`)
-  console.log('Walkthrough, in order:')
-  console.log(`  1. Sign in as @${organizerHandle} (organizer)`)
+  console.log(`\nIn another terminal, start autosign as whoever is about to sign in — default is the organizer:`)
+  console.log(`  npm run demo:flow -- --autosign\n`)
+  console.log('Walkthrough, in order (restart autosign with --as <role> each time who is signing in changes):')
+  console.log(`  1. [--as organizer, the default] Sign in as @${organizerHandle}`)
   console.log(`  2. Mint a few of the ${ticketCount} tickets`)
   console.log('  3. Gift one to @flowdemo_attendee1')
   console.log('  4. List one for sale')
   console.log('  5. Open an auction on one')
-  console.log('  6. Sign out, sign in as @flowdemo_attendee2 — restart autosign with --as attendee2')
+  console.log('  6. Sign out. [--as attendee2] Sign in as @flowdemo_attendee2')
   console.log('  7. Buy the listing, and/or bid on the auction')
   console.log('  8. `npm run auction:settle` (or wait ~15s for the sweep)')
-  console.log('  9. Sign in as the organizer again and check the gifted ticket in at the door')
+  console.log('  9. Sign out. [--as organizer] Sign in as the organizer and check the gifted ticket in at the door')
   console.log(`\nRe-run with --clean to rebuild "${SLUG}" from scratch.\n`)
 }
 
