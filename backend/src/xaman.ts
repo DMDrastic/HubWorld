@@ -14,6 +14,7 @@
  */
 import type { PayloadFlow } from '@prisma/client'
 import { env, xamanMode } from './env.js'
+import * as stubLedger from './stub-ledger.js'
 
 const XAMAN_API = 'https://xumm.app/api/v1/platform'
 
@@ -259,8 +260,12 @@ class LiveXamanClient implements XamanClient {
 class StubXamanClient implements XamanClient {
   readonly mode = 'stub' as const
   private readonly payloads = new Map<string, PayloadStatus>()
+  // What each payload would sign, so `simulate` knows what to fake on the
+  // fake ledger. Undefined for SignIn (createSignInPayload never has one),
+  // which is exactly the case that must keep producing a null txid.
+  private readonly txjsons = new Map<string, Record<string, unknown> | undefined>()
 
-  async createPayload(): Promise<CreatedPayload> {
+  async createPayload(txjson?: Record<string, unknown>): Promise<CreatedPayload> {
     const uuid = crypto.randomUUID()
     this.payloads.set(uuid, {
       signed: false,
@@ -269,6 +274,7 @@ class StubXamanClient implements XamanClient {
       account: null,
       txid: null,
     })
+    this.txjsons.set(uuid, txjson)
     return {
       uuid,
       next: `hubworld-stub://sign/${uuid}`,
@@ -277,13 +283,14 @@ class StubXamanClient implements XamanClient {
     }
   }
 
-  // Both ignore their arguments: a stub has no wire format and no quota to
+  // Ignores its arguments: a SignIn has no wire format and no quota to
   // account for. Declaring fewer parameters still satisfies the interface.
   createSignInPayload(): Promise<CreatedPayload> {
     return this.createPayload()
   }
 
   async cancelPayload(uuid: string): Promise<boolean> {
+    this.txjsons.delete(uuid)
     return this.payloads.delete(uuid)
   }
 
@@ -294,9 +301,14 @@ class StubXamanClient implements XamanClient {
   /**
    * Dev-only: pretend the user signed (or rejected) in the Xaman app.
    *
-   * `txid` is supplied by the caller because a stub cannot mint on a real
-   * ledger. Stub mints therefore never produce a genuine NFTokenID — the
-   * mint route treats a stub signature as un-verifiable and says so.
+   * A `txid` is fabricated automatically for anything that is a real
+   * transaction (mint, gift/list/auction/bid offers, cancels) by running it
+   * through `stub-ledger.ts`, exactly as XRPL itself would produce one on
+   * validation — that is what lets every poll route past sign-in complete in
+   * stub mode instead of freezing at "signed, pending" forever. A SignIn
+   * payload (sign-in, door check-in) has no txjson and keeps its null txid,
+   * unchanged. An explicit `txid` argument still wins, for anything that
+   * wants to override the fabricated one.
    */
   simulate(
     uuid: string,
@@ -308,9 +320,11 @@ class StubXamanClient implements XamanClient {
     if (!p) return false
     if (outcome === 'reject') {
       this.payloads.set(uuid, { ...p, cancelled: true })
-    } else {
-      this.payloads.set(uuid, { ...p, signed: true, account, txid })
+      return true
     }
+    const txjson = this.txjsons.get(uuid)
+    const fabricated = txid ?? (txjson ? stubLedger.applyTransaction(txjson, account).txHash : null)
+    this.payloads.set(uuid, { ...p, signed: true, account, txid: fabricated })
     return true
   }
 }

@@ -158,13 +158,15 @@ against all three on devnet.
 
 | | Deliverable | By | Cost |
 | --- | --- | --- | --- |
-| 1 | **Publish the research** — the findings above, written up for the ecosystem | Q4 2026 | *(fill)* |
-| 2 | **A real event with a real organizer** — first non-synthetic use, venue and ticket float | Q1 2027 | *(fill)* |
-| 3 | **Delegation readiness** — bulk-mint path built and tested on devnet, so the ceiling lifts the day it activates on mainnet | on activation | *(fill)* |
+| 1 | **Publish the research** — the findings above, written up for the ecosystem | Q4 2026 | $8,000 |
+| 2 | **A real event with a real organizer** — onboarding support, ticket-float buffer, wallet-whitelisting coordination for the first non-synthetic use | Q1 2027 | $27,000 |
+| 3 | **Delegation readiness** — harden the bulk-mint path (402/1000 reliability gap found in spikes) against `PermissionDelegationV1_1`, so the ceiling lifts the day it activates on mainnet | on activation | $10,000 |
+| | **Total** | | **$45,000** |
 
 > Speaker note: cost YOUR line items even without knowing their budget — that is
 > a different thing from guessing their ceiling. Blank reads as unconsidered;
-> a costed plan reads as one you have thought through.
+> a costed plan reads as one you have thought through. $45k sits well inside
+> XRPL Commons's $10k–$200k range for a solo-founder early-stage ask.
 
 ---
 
