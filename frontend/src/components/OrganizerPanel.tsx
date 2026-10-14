@@ -147,10 +147,16 @@ function CreateEventForm({ policy, onCreated }: { policy: Policy | null; onCreat
     e.preventDefault()
     setBusy(true)
     try {
-      if (resalePolicy === 'PERCENTAGE_CAP' && !(Number(resaleCapPct) > 0)) {
+      // Validate the CONVERTED value, not the raw input — a tiny percentage
+      // or drops amount can parse as a positive number and still round or
+      // floor to zero, which the server's `.positive()`/regex then rejects
+      // with a confusing error after the form already accepted it.
+      const resaleCapBps = Math.round(Number(resaleCapPct) * 100)
+      if (resalePolicy === 'PERCENTAGE_CAP' && !(resaleCapBps > 0)) {
         throw new ApiError('Enter a resale cap percentage above zero')
       }
-      if (resalePolicy === 'FIXED_CAP' && !(Number(resaleCapXrp) > 0)) {
+      const resaleCapDrops = xrpToDrops(resaleCapXrp)
+      if (resalePolicy === 'FIXED_CAP' && !(BigInt(resaleCapDrops) > 0n)) {
         throw new ApiError('Enter a resale cap price above zero')
       }
       const event = await createEvent({
@@ -160,10 +166,8 @@ function CreateEventForm({ policy, onCreated }: { policy: Policy | null; onCreat
         ticketCount: Number(ticketCount),
         royaltyBps: Math.round(Number(royaltyPct) * 100),
         resalePolicy,
-        ...(resalePolicy === 'PERCENTAGE_CAP'
-          ? { resaleCapBps: Math.round(Number(resaleCapPct) * 100) }
-          : {}),
-        ...(resalePolicy === 'FIXED_CAP' ? { resaleCapDrops: xrpToDrops(resaleCapXrp) } : {}),
+        ...(resalePolicy === 'PERCENTAGE_CAP' ? { resaleCapBps } : {}),
+        ...(resalePolicy === 'FIXED_CAP' ? { resaleCapDrops } : {}),
       })
       setCreated(event.title)
       setTitle('')

@@ -13,7 +13,7 @@ import { issuesOf } from '../schemas.js'
 import { requireAuth } from '../session.js'
 import { accountNfts } from '../ledger.js'
 import { canAuction } from '../auction-policy.js'
-import { resaleCeiling, maxAskForCap } from '../resale-policy.js'
+import { resaleCeiling, maxAskForCap, isPrimarySale } from '../resale-policy.js'
 
 export const ticketsRouter = Router()
 
@@ -108,12 +108,10 @@ ticketsRouter.get('/tickets/mine', requireAuth, async (req, res) => {
           ? (eligibility.get(t.event.id) as { reason: string }).reason
           : null,
       faceValueDrops: t.faceValueDrops?.toString() ?? null,
-      // Matches listings.ts's isPrimarySale exactly: the organizer is exempt
-      // only for a ticket that has never had a face value recorded. A ticket
-      // they've reacquired (bought back, won at auction) already has one, so
-      // it is shown capped like any other resale — nothing here must say
-      // "no cap" for a listing the server would actually refuse.
-      ...(t.event.organizerId === me.id && t.faceValueDrops === null
+      // Same predicate listings.ts enforces with — see isPrimarySale's doc
+      // comment in resale-policy.ts. One shared function so the display here
+      // can never drift from what the server would actually accept.
+      ...(isPrimarySale({ organizerId: t.event.organizerId, sellerId: me.id, faceValueDrops: t.faceValueDrops })
         ? {
             resaleAllowed: true,
             maxListingPriceDrops: null,

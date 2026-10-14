@@ -17,6 +17,76 @@
 import type { ResalePolicy } from '@prisma/client'
 import { platformFeeDrops } from './ledger.js'
 
+/**
+ * A PRIMARY sale — exempt from the cap, and the moment face value is
+ * established — is the organizer selling a ticket that has never had a price
+ * recorded. It is NOT simply "the seller is the organizer": nothing stops the
+ * organizer from being the BUYER on someone else's capped listing (only
+ * buying your OWN listing is refused), so without the face-value condition
+ * they could buy back a ticket at the cap and relist it for anything. Once a
+ * face value exists, every later listing is a resale, including one where the
+ * organizer happens to be holding the ticket again.
+ *
+ * One shared predicate rather than one copy in the enforcement path
+ * (`listings.ts`) and another in the display path (`tickets.ts`) — the two
+ * drifting apart would mean the UI advertises a cap the server doesn't
+ * actually enforce, or refuses one it would actually allow.
+ */
+export function isPrimarySale(params: {
+  organizerId: string
+  sellerId: string
+  faceValueDrops: bigint | null
+}): boolean {
+  return params.sellerId === params.organizerId && params.faceValueDrops === null
+}
+
+type Ceiling = { ok: true; maxDrops: bigint | null } | { ok: false; reason: string }
+
+/**
+ * The policy's limit, with no price to check against yet. Shared by
+ * `checkResalePrice` (which additionally compares a candidate price) and
+ * `resaleCeiling` (which just reports the limit) — a single source of the
+ * actual branching, rather than one of them deriving it from the other via a
+ * sentinel value. `maxDrops: null` only ever means UNRESTRICTED; every
+ * refusal path returns `ok: false` with its own reason instead.
+ */
+function ceilingFor(params: {
+  policy: ResalePolicy
+  capBps: number | null
+  capDrops: bigint | null
+  faceValueDrops: bigint | null
+}): Ceiling {
+  const { policy, capBps, capDrops, faceValueDrops } = params
+
+  if (policy === 'DISABLED') {
+    return { ok: false, reason: 'This event does not allow resale.' }
+  }
+
+  if (policy === 'UNRESTRICTED') {
+    return { ok: true, maxDrops: null }
+  }
+
+  if (policy === 'FIXED_CAP') {
+    // Schema/route validation guarantees this is set whenever policy is
+    // FIXED_CAP; treated as a programmer error, not a user-facing refusal.
+    if (capDrops === null) throw new Error('FIXED_CAP policy with no resaleCapDrops configured')
+    return { ok: true, maxDrops: capDrops }
+  }
+
+  // PERCENTAGE_CAP and FACE_VALUE_ONLY both need a face value to compare
+  // against, and neither has one to fall back on.
+  if (faceValueDrops === null) {
+    return {
+      ok: false,
+      reason: "This ticket has no recorded face value, so it can't be resold under this event's policy.",
+    }
+  }
+
+  const maxDrops =
+    policy === 'FACE_VALUE_ONLY' ? faceValueDrops : (faceValueDrops * BigInt(capBpsOrThrow(capBps))) / 10_000n
+  return { ok: true, maxDrops }
+}
+
 export type ResaleCapResult =
   | { allowed: true; maxDrops: bigint | null }
   | { allowed: false; reason: string; maxDrops: bigint | null }
@@ -37,48 +107,16 @@ export function checkResalePrice(params: {
   faceValueDrops: bigint | null
   priceDrops: bigint
 }): ResaleCapResult {
-  const { policy, capBps, capDrops, faceValueDrops, priceDrops } = params
+  const ceiling = ceilingFor(params)
+  if (!ceiling.ok) return { allowed: false, reason: ceiling.reason, maxDrops: null }
+  if (ceiling.maxDrops === null) return { allowed: true, maxDrops: null } // UNRESTRICTED
 
-  if (policy === 'DISABLED') {
-    return { allowed: false, reason: 'This event does not allow resale.', maxDrops: null }
-  }
-
-  if (policy === 'UNRESTRICTED') {
-    return { allowed: true, maxDrops: null }
-  }
-
-  if (policy === 'FIXED_CAP') {
-    // Schema/route validation guarantees this is set whenever policy is
-    // FIXED_CAP; treated as a programmer error, not a user-facing refusal.
-    if (capDrops === null) throw new Error('FIXED_CAP policy with no resaleCapDrops configured')
-    return priceDrops <= capDrops
-      ? { allowed: true, maxDrops: capDrops }
-      : {
-          allowed: false,
-          reason: `This event's organizer has limited resale prices to ${dropsToXrpString(capDrops)} XRP.`,
-          maxDrops: capDrops,
-        }
-  }
-
-  // PERCENTAGE_CAP and FACE_VALUE_ONLY both need a face value to compare
-  // against, and neither has one to fall back on.
-  if (faceValueDrops === null) {
-    return {
-      allowed: false,
-      reason: "This ticket has no recorded face value, so it can't be resold under this event's policy.",
-      maxDrops: null,
-    }
-  }
-
-  const maxDrops =
-    policy === 'FACE_VALUE_ONLY' ? faceValueDrops : (faceValueDrops * BigInt(capBpsOrThrow(capBps))) / 10_000n
-
-  return priceDrops <= maxDrops
-    ? { allowed: true, maxDrops }
+  return params.priceDrops <= ceiling.maxDrops
+    ? { allowed: true, maxDrops: ceiling.maxDrops }
     : {
         allowed: false,
-        reason: `This event's organizer has limited resale prices to ${dropsToXrpString(maxDrops)} XRP.`,
-        maxDrops,
+        reason: `This event's organizer has limited resale prices to ${dropsToXrpString(ceiling.maxDrops)} XRP.`,
+        maxDrops: ceiling.maxDrops,
       }
 }
 
@@ -89,11 +127,6 @@ export type ResaleCeiling =
 /**
  * The limit itself, with no candidate price to check yet — what the frontend
  * shows next to a price input before the seller has typed anything.
- *
- * Reuses `checkResalePrice` with a zero probe price rather than duplicating
- * its branches: zero never exceeds a real cap, so `allowed` there means
- * exactly "resale is possible at all" (false only for `DISABLED` or a missing
- * face value, both of which are price-independent refusals).
  */
 export function resaleCeiling(params: {
   policy: ResalePolicy
@@ -101,10 +134,10 @@ export function resaleCeiling(params: {
   capDrops: bigint | null
   faceValueDrops: bigint | null
 }): ResaleCeiling {
-  const probe = checkResalePrice({ ...params, priceDrops: 0n })
-  return probe.allowed
-    ? { resaleAllowed: true, maxDrops: probe.maxDrops }
-    : { resaleAllowed: false, reason: probe.reason }
+  const ceiling = ceilingFor(params)
+  return ceiling.ok
+    ? { resaleAllowed: true, maxDrops: ceiling.maxDrops }
+    : { resaleAllowed: false, reason: ceiling.reason }
 }
 
 /**

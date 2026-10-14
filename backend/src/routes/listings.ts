@@ -24,7 +24,7 @@ import { brokerMode, xamanMode } from '../env.js'
 import { tryGetPayload, xaman, SIGNIN_TTL_MINUTES } from '../xaman.js'
 import { issuesOf } from '../schemas.js'
 import { requireAuth } from '../session.js'
-import { checkResalePrice, maxAskForCap } from '../resale-policy.js'
+import { checkResalePrice, maxAskForCap, isPrimarySale } from '../resale-policy.js'
 import {
   brokerSale,
   buildBuyOfferTx,
@@ -190,22 +190,17 @@ listingsRouter.post('/tickets/:nfTokenId/list', requireAuth, async (req, res) =>
 
   const fee = platformFeeDrops(priceDrops, ticket.event.platformBps)
 
-  // A PRIMARY sale — exempt from the cap, and the moment face value is
-  // established — is the organizer selling a ticket that has never had a
-  // price recorded. It is NOT simply "the seller is the organizer": nothing
-  // stops the organizer from being the BUYER on someone else's capped
-  // listing (buy.ts only refuses buying your OWN listing), and without this
-  // second condition they could buy back a ticket at the cap and relist it
-  // for anything — the exact circumvention this feature exists to prevent.
-  // Once a face value exists, every later listing is a resale, including one
-  // where the organizer happens to be holding the ticket again.
-  //
-  // The actual write happens below, together with the Listing — not here,
-  // where a later failure (building the tx, Xaman's payload quota) would
-  // freeze a face value with no listing to show for it, unrecoverable since
-  // there is no event/ticket-edit route.
-  const isPrimarySale = me.id === ticket.event.organizerId && ticket.faceValueDrops === null
-  if (!isPrimarySale) {
+  // See isPrimarySale's doc comment in resale-policy.ts for why this is NOT
+  // simply "the seller is the organizer". The actual write happens below,
+  // together with the Listing — not here, where a later failure (building
+  // the tx, Xaman's payload quota) would freeze a face value with no listing
+  // to show for it, unrecoverable since there is no event/ticket-edit route.
+  const primarySale = isPrimarySale({
+    organizerId: ticket.event.organizerId,
+    sellerId: me.id,
+    faceValueDrops: ticket.faceValueDrops,
+  })
+  if (!primarySale) {
     // Checked against what the BUYER actually pays (priceDrops + fee), not
     // the seller's bare ask — otherwise the platform fee lets the final price
     // creep past the organizer's stated cap. Auctions/bids need no such
@@ -256,8 +251,18 @@ listingsRouter.post('/tickets/:nfTokenId/list', requireAuth, async (req, res) =>
   // nothing to show for it, or a primary sale could lack the face value it
   // was supposed to establish.
   const listing = await prisma.$transaction(async (tx) => {
-    if (isPrimarySale) {
-      await tx.ticket.update({ where: { id: ticket.id }, data: { faceValueDrops: priceDrops } })
+    if (primarySale) {
+      // Conditional on STILL being null, not just an update — `primarySale`
+      // was computed from a snapshot read, so a concurrent double-submit (a
+      // double-click, a client retry) could otherwise have both requests see
+      // faceValueDrops as null and race to overwrite it with different
+      // prices. Whichever transaction commits first wins; the second is a
+      // no-op here rather than a silent overwrite of a value nothing can
+      // ever correct afterward.
+      await tx.ticket.updateMany({
+        where: { id: ticket.id, faceValueDrops: null },
+        data: { faceValueDrops: priceDrops },
+      })
     }
     return tx.listing.create({
       data: {
