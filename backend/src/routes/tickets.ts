@@ -13,6 +13,7 @@ import { issuesOf } from '../schemas.js'
 import { requireAuth } from '../session.js'
 import { accountNfts } from '../ledger.js'
 import { canAuction } from '../auction-policy.js'
+import { resaleCeiling } from '../resale-policy.js'
 
 export const ticketsRouter = Router()
 
@@ -39,7 +40,18 @@ ticketsRouter.get('/tickets/mine', requireAuth, async (req, res) => {
   const tickets = await prisma.ticket.findMany({
     where: { ownerId: me.id },
     include: {
-      event: { select: { id: true, slug: true, title: true, startsAt: true, organizerId: true } },
+      event: {
+        select: {
+          id: true,
+          slug: true,
+          title: true,
+          startsAt: true,
+          organizerId: true,
+          resalePolicy: true,
+          resaleCapBps: true,
+          resaleCapDrops: true,
+        },
+      },
     },
     orderBy: { createdAt: 'desc' },
     take: 200,
@@ -94,6 +106,25 @@ ticketsRouter.get('/tickets/mine', requireAuth, async (req, res) => {
         eligibility.get(t.event.id)?.allowed === false
           ? (eligibility.get(t.event.id) as { reason: string }).reason
           : null,
+      faceValueDrops: t.faceValueDrops?.toString() ?? null,
+      // Matches listings.ts's isPrimarySale exactly: the organizer is exempt
+      // only for a ticket that has never had a face value recorded. A ticket
+      // they've reacquired (bought back, won at auction) already has one, so
+      // it is shown capped like any other resale — nothing here must say
+      // "no cap" for a listing the server would actually refuse.
+      ...(t.event.organizerId === me.id && t.faceValueDrops === null
+        ? { resaleAllowed: true, maxResaleDrops: null, resaleBlockedReason: null }
+        : (() => {
+            const ceiling = resaleCeiling({
+              policy: t.event.resalePolicy,
+              capBps: t.event.resaleCapBps,
+              capDrops: t.event.resaleCapDrops,
+              faceValueDrops: t.faceValueDrops,
+            })
+            return ceiling.resaleAllowed
+              ? { resaleAllowed: true, maxResaleDrops: ceiling.maxDrops?.toString() ?? null, resaleBlockedReason: null }
+              : { resaleAllowed: false, maxResaleDrops: null, resaleBlockedReason: ceiling.reason }
+          })()),
     })),
   })
 })

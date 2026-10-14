@@ -24,6 +24,7 @@ import { brokerMode, xamanMode } from '../env.js'
 import { tryGetPayload, xaman, SIGNIN_TTL_MINUTES } from '../xaman.js'
 import { issuesOf } from '../schemas.js'
 import { requireAuth } from '../session.js'
+import { checkResalePrice } from '../resale-policy.js'
 import {
   brokerSale,
   buildBuyOfferTx,
@@ -187,6 +188,38 @@ listingsRouter.post('/tickets/:nfTokenId/list', requireAuth, async (req, res) =>
     return
   }
 
+  // A PRIMARY sale — exempt from the cap, and the moment face value is
+  // established — is the organizer selling a ticket that has never had a
+  // price recorded. It is NOT simply "the seller is the organizer": nothing
+  // stops the organizer from being the BUYER on someone else's capped
+  // listing (buy.ts only refuses buying your OWN listing), and without this
+  // second condition they could buy back a ticket at the cap and relist it
+  // for anything — the exact circumvention this feature exists to prevent.
+  // Once a face value exists, every later listing is a resale, including one
+  // where the organizer happens to be holding the ticket again.
+  //
+  // The actual write happens below, together with the Listing — not here,
+  // where a later failure (building the tx, Xaman's payload quota) would
+  // freeze a face value with no listing to show for it, unrecoverable since
+  // there is no event/ticket-edit route.
+  const isPrimarySale = me.id === ticket.event.organizerId && ticket.faceValueDrops === null
+  if (!isPrimarySale) {
+    const cap = checkResalePrice({
+      policy: ticket.event.resalePolicy,
+      capBps: ticket.event.resaleCapBps,
+      capDrops: ticket.event.resaleCapDrops,
+      faceValueDrops: ticket.faceValueDrops,
+      priceDrops,
+    })
+    if (!cap.allowed) {
+      res.status(400).json({
+        error: cap.reason,
+        maxResaleDrops: cap.maxDrops?.toString() ?? null,
+      })
+      return
+    }
+  }
+
   const fee = platformFeeDrops(priceDrops, ticket.event.platformBps)
 
   // Resolved ONCE and recorded on the Listing, because this address is baked
@@ -213,20 +246,29 @@ listingsRouter.post('/tickets/:nfTokenId/list', requireAuth, async (req, res) =>
     forceNetwork: XAMAN_NETWORK,
   })
 
-  const listing = await prisma.listing.create({
-    data: {
-      ticketId: ticket.id,
-      network: NETWORK,
-      sellerId: me.id,
-      sellerAddress: me.xrplAddress,
-      brokerAddress,
-      priceDrops,
-      // Frozen at listing time: changing platformBps later must not alter the
-      // terms a buyer has already been shown.
-      platformFeeDrops: fee,
-      listPayloadUuid: payload.uuid,
-      expiresAt: new Date(Date.now() + LIST_TTL_MS),
-    },
+  // Backfilling face value and creating the Listing happen together: if
+  // either failed alone, either a wrong face value could be frozen with
+  // nothing to show for it, or a primary sale could lack the face value it
+  // was supposed to establish.
+  const listing = await prisma.$transaction(async (tx) => {
+    if (isPrimarySale) {
+      await tx.ticket.update({ where: { id: ticket.id }, data: { faceValueDrops: priceDrops } })
+    }
+    return tx.listing.create({
+      data: {
+        ticketId: ticket.id,
+        network: NETWORK,
+        sellerId: me.id,
+        sellerAddress: me.xrplAddress,
+        brokerAddress,
+        priceDrops,
+        // Frozen at listing time: changing platformBps later must not alter
+        // the terms a buyer has already been shown.
+        platformFeeDrops: fee,
+        listPayloadUuid: payload.uuid,
+        expiresAt: new Date(Date.now() + LIST_TTL_MS),
+      },
+    })
   })
 
   res.status(201).json({

@@ -18,9 +18,11 @@ import {
   fetchOrganizerStatus,
   fetchPolicy,
   reviewApplication,
+  xrpToDrops,
   type OrganizerStatus,
   type PendingApplication,
   type Policy,
+  type ResalePolicyMode,
   type Role,
 } from '@/lib/api'
 import { Badge } from '@/components/ui/badge'
@@ -134,6 +136,9 @@ function CreateEventForm({ policy, onCreated }: { policy: Policy | null; onCreat
   const [startsAt, setStartsAt] = useState('')
   const [ticketCount, setTicketCount] = useState('100')
   const [royaltyPct, setRoyaltyPct] = useState('5')
+  const [resalePolicy, setResalePolicy] = useState<ResalePolicyMode>('UNRESTRICTED')
+  const [resaleCapPct, setResaleCapPct] = useState('120')
+  const [resaleCapXrp, setResaleCapXrp] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [created, setCreated] = useState<string | null>(null)
@@ -142,12 +147,23 @@ function CreateEventForm({ policy, onCreated }: { policy: Policy | null; onCreat
     e.preventDefault()
     setBusy(true)
     try {
+      if (resalePolicy === 'PERCENTAGE_CAP' && !(Number(resaleCapPct) > 0)) {
+        throw new ApiError('Enter a resale cap percentage above zero')
+      }
+      if (resalePolicy === 'FIXED_CAP' && !(Number(resaleCapXrp) > 0)) {
+        throw new ApiError('Enter a resale cap price above zero')
+      }
       const event = await createEvent({
         title,
         venue: venue.trim() || undefined,
         startsAt: new Date(startsAt).toISOString(),
         ticketCount: Number(ticketCount),
         royaltyBps: Math.round(Number(royaltyPct) * 100),
+        resalePolicy,
+        ...(resalePolicy === 'PERCENTAGE_CAP'
+          ? { resaleCapBps: Math.round(Number(resaleCapPct) * 100) }
+          : {}),
+        ...(resalePolicy === 'FIXED_CAP' ? { resaleCapDrops: xrpToDrops(resaleCapXrp) } : {}),
       })
       setCreated(event.title)
       setTitle('')
@@ -197,6 +213,55 @@ function CreateEventForm({ policy, onCreated }: { policy: Policy | null; onCreat
         <span className="text-muted-foreground text-xs">
           your cut of every resale{policy ? `, max ${bps(policy.maxRoyaltyBps)}` : ''}
         </span>
+      </div>
+
+      <div className="space-y-2">
+        <div className="flex items-center gap-2">
+          <select
+            value={resalePolicy}
+            onChange={(e) => setResalePolicy(e.target.value as ResalePolicyMode)}
+            aria-label="resale policy"
+            className="border-input bg-background focus-visible:border-ring focus-visible:ring-ring/50 rounded-lg border px-3 py-2 text-sm transition-colors focus-visible:ring-[3px] focus-visible:outline-none"
+          >
+            <option value="UNRESTRICTED">Resale: unrestricted</option>
+            <option value="PERCENTAGE_CAP">Resale: capped at % of face value</option>
+            <option value="FIXED_CAP">Resale: capped at a fixed price</option>
+            <option value="FACE_VALUE_ONLY">Resale: face value only, no markup</option>
+            <option value="DISABLED">Resale: disabled</option>
+          </select>
+          {resalePolicy === 'PERCENTAGE_CAP' && (
+            <>
+              <Input
+                value={resaleCapPct}
+                onChange={(e) => setResaleCapPct(e.target.value)}
+                placeholder="% of face value"
+                inputMode="decimal"
+                aria-label="resale cap percent of face value"
+                className="w-28"
+              />
+              <span className="text-muted-foreground text-xs">
+                e.g. 120 means a resale may not exceed 120% of what the ticket originally sold for
+              </span>
+            </>
+          )}
+          {resalePolicy === 'FIXED_CAP' && (
+            <>
+              <Input
+                value={resaleCapXrp}
+                onChange={(e) => setResaleCapXrp(e.target.value)}
+                placeholder="Max resale price in XRP"
+                inputMode="decimal"
+                aria-label="resale cap in XRP"
+                className="w-36"
+              />
+              <span className="text-muted-foreground text-xs">an absolute ceiling, in XRP</span>
+            </>
+          )}
+        </div>
+        <p className="text-muted-foreground text-xs">
+          Governs what holders may resell for — gifting is unaffected regardless of this
+          setting. Set at creation; there is no edit later.
+        </p>
       </div>
 
       {policy && (

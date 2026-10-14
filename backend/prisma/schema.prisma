@@ -282,6 +282,15 @@ model Event {
   royaltyBps  Int @default(0)
   platformBps Int @default(0)
 
+  /// Organizer-set, create-time only — there is no event-edit route, same as
+  /// royaltyBps/platformBps/ticketCount. UNRESTRICTED is a safe, honest
+  /// default: it means "no cap configured," not a guess about intent.
+  resalePolicy ResalePolicy @default(UNRESTRICTED)
+  /// PERCENTAGE_CAP only. 10000 = 100% of face value, so 12000 = 120%.
+  resaleCapBps Int?
+  /// FIXED_CAP only, in drops.
+  resaleCapDrops BigInt?
+
   ticketCount Int         @default(0)
   status      EventStatus @default(DRAFT)
 
@@ -354,6 +363,21 @@ enum EventStatus {
   CANCELLED
 }
 
+/**
+ * How far above face value a ticket may be resold, organizer-set at event
+ * creation. Deliberately separate from gifting/transfer — this governs price
+ * only, and is checked wherever a resale price is SET (listing, auction
+ * reserve, bid), never on gifting or on the fixed-price buy itself, which
+ * pays whatever the already-validated listing price is.
+ */
+enum ResalePolicy {
+  UNRESTRICTED
+  PERCENTAGE_CAP // Event.resaleCapBps, relative to Ticket.faceValueDrops
+  FIXED_CAP // Event.resaleCapDrops, an absolute ceiling
+  FACE_VALUE_ONLY // may not exceed Ticket.faceValueDrops
+  DISABLED
+}
+
 // ----------------------------------------------------------------- tickets --
 
 model Ticket {
@@ -383,6 +407,13 @@ model Ticket {
   seat   String?
   tier   String?
   status TicketStatus @default(MINTED)
+
+  /// What this ticket actually sold for, the only two times that is ever
+  /// knowable: mint-and-list, or an organizer's own later listing (a primary
+  /// sale, not a resale). Null for a gifted/comped ticket that was never sold
+  /// — see ResalePolicy: percentage/face-value caps refuse resale on a null
+  /// face value rather than silently treating it as unrestricted.
+  faceValueDrops BigInt?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

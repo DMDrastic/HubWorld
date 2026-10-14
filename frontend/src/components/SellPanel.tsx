@@ -51,6 +51,23 @@ const MESSAGES: Record<Listing['state'], string> = {
   failed: 'The sale failed.',
 }
 
+/**
+ * Mirrors the server's resale-cap check (`checkResalePrice` in
+ * `resale-policy.ts`) for immediate feedback — the server re-validates
+ * regardless, this just avoids a round trip for the common case.
+ */
+function checkResaleCap(selected: OwnedTicket | null, drops: string) {
+  if (!selected) return
+  if (!selected.resaleAllowed) {
+    throw new ApiError(selected.resaleBlockedReason ?? "This event's organizer does not allow resale.")
+  }
+  if (selected.maxResaleDrops !== null && BigInt(drops) > BigInt(selected.maxResaleDrops)) {
+    throw new ApiError(
+      `This event's organizer has limited resale prices to ${dropsToXrp(selected.maxResaleDrops)} XRP.`,
+    )
+  }
+}
+
 function priceLine(l: Listing) {
   return `${dropsToXrp(l.priceDrops)} XRP` + (l.platformFeeDrops === '0'
     ? ''
@@ -151,6 +168,7 @@ export function SellPanel({ onChanged }: { onChanged: () => void }) {
     try {
       const drops = xrpToDrops(priceXrp)
       if (BigInt(drops) <= 0n) throw new ApiError('Enter a price above zero')
+      checkResaleCap(selected, drops)
       const payload = await createListing(nfTokenId, drops)
       track(payload.listingId, payload, `List for ${priceXrp} XRP`)
     } catch (err) {
@@ -173,6 +191,7 @@ export function SellPanel({ onChanged }: { onChanged: () => void }) {
     try {
       const drops = xrpToDrops(priceXrp)
       if (BigInt(drops) <= 0n) throw new ApiError('Enter a reserve above zero')
+      checkResaleCap(selected, drops)
       const result = await openAuction(nfTokenId, drops, Number(minutes))
       track(result.listingId, { ...result, priceDrops: drops }, `Auction at ${priceXrp} XRP reserve`)
     } catch (err) {
@@ -354,6 +373,17 @@ export function SellPanel({ onChanged }: { onChanged: () => void }) {
                       {busy ? '…' : mode === 'sell' ? 'List' : 'Open'}
                     </Button>
                   </div>
+                  {selected && !selected.resaleAllowed && (
+                    <p className="text-destructive text-xs">{selected.resaleBlockedReason}</p>
+                  )}
+                  {selected?.resaleAllowed && selected.maxResaleDrops !== null && (
+                    <p className="text-muted-foreground text-xs">
+                      Organizer resale limit: maximum {dropsToXrp(selected.maxResaleDrops)} XRP
+                      {selected.faceValueDrops
+                        ? ` (face value ${dropsToXrp(selected.faceValueDrops)} XRP)`
+                        : ''}
+                    </p>
+                  )}
                   {mode === 'sell' && selected?.auctionBlockedReason && (
                     <p className="text-muted-foreground text-xs">
                       {selected.auctionBlockedReason}

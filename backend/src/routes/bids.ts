@@ -23,6 +23,7 @@ import { issuesOf } from '../schemas.js'
 import { requireAuth } from '../session.js'
 import { publishAuctionEvent } from '../realtime.js'
 import { signedByOtherAccount } from '../signer.js'
+import { checkResalePrice } from '../resale-policy.js'
 import {
   accountFunding,
   bidHeadroom,
@@ -81,7 +82,9 @@ bidsRouter.post('/auctions/:id/bid', requireAuth, async (req, res) => {
   const [auction, me] = await Promise.all([
     prisma.auction.findUnique({
       where: { id: params.data.id },
-      include: { ticket: { include: { owner: true } } },
+      // `event` is needed to check the resale cap: the reserve alone isn't
+      // enough, since a bid can rise past it — see checkResalePrice below.
+      include: { ticket: { include: { owner: true, event: true } } },
     }),
     prisma.user.findUnique({ where: { id: req.userId! } }),
   ])
@@ -148,6 +151,24 @@ bidsRouter.post('/auctions/:id/bid', requireAuth, async (req, res) => {
     res.status(409).json({
       error: `Bid must exceed the current bid of ${top.amountDrops.toString()} drops`,
       currentBidDrops: top.amountDrops.toString(),
+    })
+    return
+  }
+
+  // The reserve check at auction-open time only bounds the FLOOR — bidding can
+  // still rise past the organizer's cap, which is exactly the circumvention
+  // this check closes.
+  const resaleCap = checkResalePrice({
+    policy: auction.ticket.event.resalePolicy,
+    capBps: auction.ticket.event.resaleCapBps,
+    capDrops: auction.ticket.event.resaleCapDrops,
+    faceValueDrops: auction.ticket.faceValueDrops,
+    priceDrops: amountDrops,
+  })
+  if (!resaleCap.allowed) {
+    res.status(400).json({
+      error: resaleCap.reason,
+      maxResaleDrops: resaleCap.maxDrops?.toString() ?? null,
     })
     return
   }

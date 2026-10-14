@@ -40,6 +40,7 @@
     "src/gift-policy.ts",
     "src/image-upload.ts",
     "src/ledger.ts",
+    "src/resale-policy.ts",
     "src/schemas.ts",
     "src/signer.ts",
     "src/tx-result.ts"
