@@ -24,7 +24,7 @@ import { brokerMode, xamanMode } from '../env.js'
 import { tryGetPayload, xaman, SIGNIN_TTL_MINUTES } from '../xaman.js'
 import { issuesOf } from '../schemas.js'
 import { requireAuth } from '../session.js'
-import { checkResalePrice } from '../resale-policy.js'
+import { checkResalePrice, maxAskForCap } from '../resale-policy.js'
 import {
   brokerSale,
   buildBuyOfferTx,
@@ -188,6 +188,8 @@ listingsRouter.post('/tickets/:nfTokenId/list', requireAuth, async (req, res) =>
     return
   }
 
+  const fee = platformFeeDrops(priceDrops, ticket.event.platformBps)
+
   // A PRIMARY sale — exempt from the cap, and the moment face value is
   // established — is the organizer selling a ticket that has never had a
   // price recorded. It is NOT simply "the seller is the organizer": nothing
@@ -204,23 +206,26 @@ listingsRouter.post('/tickets/:nfTokenId/list', requireAuth, async (req, res) =>
   // there is no event/ticket-edit route.
   const isPrimarySale = me.id === ticket.event.organizerId && ticket.faceValueDrops === null
   if (!isPrimarySale) {
+    // Checked against what the BUYER actually pays (priceDrops + fee), not
+    // the seller's bare ask — otherwise the platform fee lets the final price
+    // creep past the organizer's stated cap. Auctions/bids need no such
+    // adjustment; a bid amount already IS the buyer's total.
     const cap = checkResalePrice({
       policy: ticket.event.resalePolicy,
       capBps: ticket.event.resaleCapBps,
       capDrops: ticket.event.resaleCapDrops,
       faceValueDrops: ticket.faceValueDrops,
-      priceDrops,
+      priceDrops: priceDrops + fee,
     })
     if (!cap.allowed) {
       res.status(400).json({
         error: cap.reason,
-        maxResaleDrops: cap.maxDrops?.toString() ?? null,
+        maxResaleDrops:
+          cap.maxDrops !== null ? maxAskForCap(cap.maxDrops, ticket.event.platformBps).toString() : null,
       })
       return
     }
   }
-
-  const fee = platformFeeDrops(priceDrops, ticket.event.platformBps)
 
   // Resolved ONCE and recorded on the Listing, because this address is baked
   // into the offer's `Destination` and only this account can ever settle it.

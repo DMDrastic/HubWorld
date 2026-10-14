@@ -13,7 +13,7 @@ import { issuesOf } from '../schemas.js'
 import { requireAuth } from '../session.js'
 import { accountNfts } from '../ledger.js'
 import { canAuction } from '../auction-policy.js'
-import { resaleCeiling } from '../resale-policy.js'
+import { resaleCeiling, maxAskForCap } from '../resale-policy.js'
 
 export const ticketsRouter = Router()
 
@@ -50,6 +50,7 @@ ticketsRouter.get('/tickets/mine', requireAuth, async (req, res) => {
           resalePolicy: true,
           resaleCapBps: true,
           resaleCapDrops: true,
+          platformBps: true,
         },
       },
     },
@@ -113,7 +114,12 @@ ticketsRouter.get('/tickets/mine', requireAuth, async (req, res) => {
       // it is shown capped like any other resale — nothing here must say
       // "no cap" for a listing the server would actually refuse.
       ...(t.event.organizerId === me.id && t.faceValueDrops === null
-        ? { resaleAllowed: true, maxResaleDrops: null, resaleBlockedReason: null }
+        ? {
+            resaleAllowed: true,
+            maxListingPriceDrops: null,
+            maxAuctionReserveDrops: null,
+            resaleBlockedReason: null,
+          }
         : (() => {
             const ceiling = resaleCeiling({
               policy: t.event.resalePolicy,
@@ -121,9 +127,26 @@ ticketsRouter.get('/tickets/mine', requireAuth, async (req, res) => {
               capDrops: t.event.resaleCapDrops,
               faceValueDrops: t.faceValueDrops,
             })
-            return ceiling.resaleAllowed
-              ? { resaleAllowed: true, maxResaleDrops: ceiling.maxDrops?.toString() ?? null, resaleBlockedReason: null }
-              : { resaleAllowed: false, maxResaleDrops: null, resaleBlockedReason: ceiling.reason }
+            if (!ceiling.resaleAllowed) {
+              return {
+                resaleAllowed: false,
+                maxListingPriceDrops: null,
+                maxAuctionReserveDrops: null,
+                resaleBlockedReason: ceiling.reason,
+              }
+            }
+            // A listing's ask has the platform fee added on top for the
+            // buyer, so the ask itself must be capped below the organizer's
+            // stated limit — an auction reserve/bid IS the buyer's total
+            // already, so it compares against the raw cap unadjusted. Same
+            // split as listings.ts vs. open-auction.ts/bids.ts.
+            return {
+              resaleAllowed: true,
+              maxListingPriceDrops:
+                ceiling.maxDrops === null ? null : maxAskForCap(ceiling.maxDrops, t.event.platformBps).toString(),
+              maxAuctionReserveDrops: ceiling.maxDrops?.toString() ?? null,
+              resaleBlockedReason: null,
+            }
           })()),
     })),
   })

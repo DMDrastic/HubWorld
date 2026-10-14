@@ -306,7 +306,10 @@ export const OwnedTicketSchema = z.object({
   /** false only for a disabled policy or a missing face value — price-independent. */
   resaleAllowed: z.boolean(),
   /** null = no ceiling (unrestricted, or this is the organizer's own ticket). */
-  maxResaleDrops: z.string().nullable(),
+  /** What the seller may ASK in a fixed-price listing — already fee-adjusted. */
+  maxListingPriceDrops: z.string().nullable(),
+  /** What an auction reserve/bid may be — the buyer's total already, no adjustment. */
+  maxAuctionReserveDrops: z.string().nullable(),
   resaleBlockedReason: z.string().nullable(),
 })
 

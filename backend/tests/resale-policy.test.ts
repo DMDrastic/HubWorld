@@ -5,7 +5,8 @@
  * passes whatever the shipped function actually does.
  */
 import { describe, expect, it } from 'vitest'
-import { checkResalePrice, resaleCeiling } from '../src/resale-policy.js'
+import { checkResalePrice, resaleCeiling, maxAskForCap } from '../src/resale-policy.js'
+import { platformFeeDrops } from '../src/ledger.js'
 
 const XRP = 1_000_000n
 
@@ -174,5 +175,28 @@ describe('resaleCeiling', () => {
       faceValueDrops: null,
     })
     expect(result.resaleAllowed).toBe(false)
+  })
+})
+
+describe('maxAskForCap', () => {
+  it('matches the raw cap when there is no platform fee', () => {
+    expect(maxAskForCap(100n * XRP, 0)).toBe(100n * XRP)
+  })
+
+  it('never returns an ask whose total exceeds the cap, across a range of fee rates', () => {
+    // The only property that actually matters for the enforcement boundary:
+    // the result is SAFE. It does not have to be the exact largest possible
+    // ask (the estimate can undershoot by a drop or two on some fee rates,
+    // which at 1 drop = 0.000001 XRP is not a real-world concern), only never
+    // exceed the cap.
+    const cap = 100n * XRP
+    for (const bps of [1, 25, 100, 250, 999, 2_500, 10_000]) {
+      const ask = maxAskForCap(cap, bps)
+      expect(ask + platformFeeDrops(ask, bps)).toBeLessThanOrEqual(cap)
+    }
+  })
+
+  it('floors at zero rather than going negative for a cap smaller than one fee increment', () => {
+    expect(maxAskForCap(0n, 250)).toBe(0n)
   })
 })

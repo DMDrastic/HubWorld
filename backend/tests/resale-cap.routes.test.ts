@@ -11,6 +11,10 @@
  */
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import request from 'supertest'
+import { maxAskForCap } from '../src/resale-policy.js'
+
+/** Every event in this suite uses this platformBps — see mkEvent. */
+const PLATFORM_BPS = 250
 
 const holdsNft = vi.fn<(address: string, nfTokenId: string) => Promise<boolean>>()
 const accountNfts = vi.fn<(address: string) => Promise<{ NFTokenID: string }[]>>()
@@ -183,7 +187,10 @@ describe('POST /tickets/:nfTokenId/list', () => {
     expect(res.body.error).toMatch(/limited resale prices to 100.000000 XRP/)
   })
 
-  it('allows a price exactly at the cap', async () => {
+  it('refuses an ask AT the raw cap, because the buyer pays ask + platform fee', async () => {
+    // This is the fix under test: priceDrops alone is the seller's ask, not
+    // what the buyer pays. An ask of exactly 100 XRP plus a 2.5% platform fee
+    // means the buyer pays 102.5 XRP — over a 100 XRP cap on their total.
     const organizer = await mkUser('org', 'ORGANIZER')
     const holder = await mkUser('holder')
     const event = await mkEvent(organizer, { resalePolicy: 'FIXED_CAP', resaleCapDrops: 100n * XRP })
@@ -193,6 +200,21 @@ describe('POST /tickets/:nfTokenId/list', () => {
       .post(`/api/tickets/${ticket.nfTokenId}/list`)
       .set('Authorization', as(holder))
       .send({ priceDrops: (100n * XRP).toString() })
+
+    expect(res.status).toBe(400)
+  })
+
+  it('allows the largest ask whose buyer-paid total still clears the cap', async () => {
+    const organizer = await mkUser('org', 'ORGANIZER')
+    const holder = await mkUser('holder')
+    const event = await mkEvent(organizer, { resalePolicy: 'FIXED_CAP', resaleCapDrops: 100n * XRP })
+    const ticket = await mkTicket(event.id, holder)
+    const ask = maxAskForCap(100n * XRP, PLATFORM_BPS)
+
+    const res = await request(app)
+      .post(`/api/tickets/${ticket.nfTokenId}/list`)
+      .set('Authorization', as(holder))
+      .send({ priceDrops: ask.toString() })
 
     expect(res.status).toBe(201)
   })
@@ -212,16 +234,17 @@ describe('POST /tickets/:nfTokenId/list', () => {
     expect(res.body.error).toMatch(/no recorded face value/)
   })
 
-  it('allows a PERCENTAGE_CAP resale at exactly 120% of a recorded face value', async () => {
+  it('allows the largest ask whose total clears a PERCENTAGE_CAP of 120%', async () => {
     const organizer = await mkUser('org', 'ORGANIZER')
     const holder = await mkUser('holder')
     const event = await mkEvent(organizer, { resalePolicy: 'PERCENTAGE_CAP', resaleCapBps: 12_000 })
     const ticket = await mkTicket(event.id, holder, 100n * XRP)
+    const ask = maxAskForCap(120n * XRP, PLATFORM_BPS) // 120% of the 100 XRP face value
 
     const res = await request(app)
       .post(`/api/tickets/${ticket.nfTokenId}/list`)
       .set('Authorization', as(holder))
-      .send({ priceDrops: (120n * XRP).toString() })
+      .send({ priceDrops: ask.toString() })
 
     expect(res.status).toBe(201)
   })

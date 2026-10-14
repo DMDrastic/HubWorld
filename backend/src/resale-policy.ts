@@ -15,6 +15,7 @@
  */
 
 import type { ResalePolicy } from '@prisma/client'
+import { platformFeeDrops } from './ledger.js'
 
 export type ResaleCapResult =
   | { allowed: true; maxDrops: bigint | null }
@@ -104,6 +105,32 @@ export function resaleCeiling(params: {
   return probe.allowed
     ? { resaleAllowed: true, maxDrops: probe.maxDrops }
     : { resaleAllowed: false, reason: probe.reason }
+}
+
+/**
+ * Only for fixed-price LISTINGS, never auctions.
+ *
+ * A listing's `priceDrops` is the seller's ASK — the buyer actually pays
+ * `priceDrops + platformFeeDrops(priceDrops, platformBps)` (see
+ * `listings.ts`'s `buyerPaysDrops`), so capping the ask alone lets the final
+ * price creep past the organizer's stated limit by the platform fee. This
+ * backs the fee out of `maxTotalDrops` to find the largest ask that still
+ * keeps the buyer's TOTAL at or under the cap — what the organizer's "maximum
+ * resale price" is actually supposed to mean.
+ *
+ * Auctions need none of this: a bid amount already IS what the bidder pays
+ * (the fee comes out of the seller's cut instead, via `auctionSellAmountDrops`),
+ * so the raw cap is already the right number to compare against there.
+ *
+ * The division only approximates the answer (integer flooring both ways), so
+ * the result is nudged down until it actually satisfies the constraint —
+ * never up, since this feeds a REFUSAL boundary and erring the other way
+ * would let a buyer's total exceed the organizer's cap by a drop or two.
+ */
+export function maxAskForCap(maxTotalDrops: bigint, platformBps: number): bigint {
+  let ask = (maxTotalDrops * 10_000n) / (10_000n + BigInt(platformBps))
+  while (ask > 0n && ask + platformFeeDrops(ask, platformBps) > maxTotalDrops) ask -= 1n
+  return ask > 0n ? ask : 0n
 }
 
 function capBpsOrThrow(capBps: number | null): number {
