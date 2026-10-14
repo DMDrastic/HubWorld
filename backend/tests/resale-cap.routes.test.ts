@@ -5,9 +5,10 @@
  * (`resale-policy.test.ts`); this pins that the three routes actually CALL it,
  * with the real ownership/eligibility checks still in front of it.
  *
- * Only the network is faked — `holdsNft`/`accountNfts` (ledger reads) and
- * `accountFunding` (bid affordability), plus Xaman. Nothing here submits a
- * real transaction.
+ * Only the network is faked — `holdsNft`/`accountNfts` (ledger reads),
+ * `accountFunding` (bid affordability), and `platformAddress` (broker
+ * resolution — see below), plus Xaman. Nothing here submits a real
+ * transaction.
  */
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import request from 'supertest'
@@ -28,6 +29,14 @@ vi.mock('../src/ledger.js', async () => {
     holdsNft: (...a: Parameters<typeof holdsNft>) => holdsNft(...a),
     accountNfts: (...a: Parameters<typeof accountNfts>) => accountNfts(...a),
     accountFunding: (...a: Parameters<typeof accountFunding>) => accountFunding(...a),
+    // listings.ts/open-auction.ts resolve this for real (unconditionally) when
+    // creating a listing/auction, and it throws without PLATFORM_SEED set —
+    // which CI genuinely has unset. Forcing brokerMode live (below) gets past
+    // the "broker not configured" guard but does not make the real seed exist,
+    // so this must be stubbed too, same as broker-health.test.ts does. Found
+    // the hard way: this suite passed locally only because a real PLATFORM_SEED
+    // happened to sit in .env, and failed in CI with none.
+    platformAddress: () => 'rBrokerFixtureAddress0000000000000',
   }
 })
 
