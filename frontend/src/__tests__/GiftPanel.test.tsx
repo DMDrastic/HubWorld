@@ -38,6 +38,11 @@ const INVENTORY = {
       },
       canAuction: false,
       auctionBlockedReason: 'This event is not sold out yet — 3 of 10 tickets issued.',
+      faceValueDrops: null,
+      resaleAllowed: true,
+      maxListingPriceDrops: null,
+      maxAuctionReserveDrops: null,
+      resaleBlockedReason: null,
     },
   ],
 }

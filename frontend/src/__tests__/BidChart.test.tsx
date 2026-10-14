@@ -36,6 +36,7 @@ function auction(bids: Bid[], reserveXrp = 12): Auction {
     startsAt: new Date(NOW - 60 * 60_000).toISOString(),
     endsAt: new Date(NOW + 20 * 60_000).toISOString(),
     reserveDrops: String(reserveXrp * XRP),
+    maxBidDrops: null,
     ticket: { nfTokenId: 'A'.repeat(64), seat: null, tier: 'deluxe' },
     bids,
   }

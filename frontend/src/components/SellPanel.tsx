@@ -51,6 +51,27 @@ const MESSAGES: Record<Listing['state'], string> = {
   failed: 'The sale failed.',
 }
 
+/**
+ * Mirrors the server's resale-cap check (`checkResalePrice` in
+ * `resale-policy.ts`) for immediate feedback — the server re-validates
+ * regardless, this just avoids a round trip for the common case.
+ *
+ * A listing's ask gets the platform fee added on top for the buyer, so it is
+ * capped below the organizer's stated limit; an auction reserve/bid already
+ * IS the buyer's total, so it compares against the limit directly. Same two
+ * numbers the server computes — see tickets.ts.
+ */
+function checkResaleCap(selected: OwnedTicket | null, drops: string, mode: 'sell' | 'auction') {
+  if (!selected) return
+  if (!selected.resaleAllowed) {
+    throw new ApiError(selected.resaleBlockedReason ?? "This event's organizer does not allow resale.")
+  }
+  const max = mode === 'sell' ? selected.maxListingPriceDrops : selected.maxAuctionReserveDrops
+  if (max !== null && BigInt(drops) > BigInt(max)) {
+    throw new ApiError(`This event's organizer has limited resale prices to ${dropsToXrp(max)} XRP.`)
+  }
+}
+
 function priceLine(l: Listing) {
   return `${dropsToXrp(l.priceDrops)} XRP` + (l.platformFeeDrops === '0'
     ? ''
@@ -151,6 +172,7 @@ export function SellPanel({ onChanged }: { onChanged: () => void }) {
     try {
       const drops = xrpToDrops(priceXrp)
       if (BigInt(drops) <= 0n) throw new ApiError('Enter a price above zero')
+      checkResaleCap(selected, drops, 'sell')
       const payload = await createListing(nfTokenId, drops)
       track(payload.listingId, payload, `List for ${priceXrp} XRP`)
     } catch (err) {
@@ -173,6 +195,7 @@ export function SellPanel({ onChanged }: { onChanged: () => void }) {
     try {
       const drops = xrpToDrops(priceXrp)
       if (BigInt(drops) <= 0n) throw new ApiError('Enter a reserve above zero')
+      checkResaleCap(selected, drops, 'auction')
       const result = await openAuction(nfTokenId, drops, Number(minutes))
       track(result.listingId, { ...result, priceDrops: drops }, `Auction at ${priceXrp} XRP reserve`)
     } catch (err) {
@@ -354,6 +377,23 @@ export function SellPanel({ onChanged }: { onChanged: () => void }) {
                       {busy ? '…' : mode === 'sell' ? 'List' : 'Open'}
                     </Button>
                   </div>
+                  {selected && !selected.resaleAllowed && (
+                    <p className="text-destructive text-xs">{selected.resaleBlockedReason}</p>
+                  )}
+                  {selected?.resaleAllowed &&
+                    (() => {
+                      const max = mode === 'sell' ? selected.maxListingPriceDrops : selected.maxAuctionReserveDrops
+                      if (max === null) return null
+                      return (
+                        <p className="text-muted-foreground text-xs">
+                          Organizer resale limit: {mode === 'sell' ? 'list for' : 'reserve'} up to{' '}
+                          {dropsToXrp(max)} XRP
+                          {selected.faceValueDrops
+                            ? ` (face value ${dropsToXrp(selected.faceValueDrops)} XRP)`
+                            : ''}
+                        </p>
+                      )
+                    })()}
                   {mode === 'sell' && selected?.auctionBlockedReason && (
                     <p className="text-muted-foreground text-xs">
                       {selected.auctionBlockedReason}

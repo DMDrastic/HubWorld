@@ -24,6 +24,7 @@ import { brokerMode, xamanMode } from '../env.js'
 import { tryGetPayload, xaman, SIGNIN_TTL_MINUTES } from '../xaman.js'
 import { issuesOf } from '../schemas.js'
 import { requireAuth } from '../session.js'
+import { checkResalePrice, maxAskForCap, isPrimarySale } from '../resale-policy.js'
 import {
   brokerSale,
   buildBuyOfferTx,
@@ -189,6 +190,38 @@ listingsRouter.post('/tickets/:nfTokenId/list', requireAuth, async (req, res) =>
 
   const fee = platformFeeDrops(priceDrops, ticket.event.platformBps)
 
+  // See isPrimarySale's doc comment in resale-policy.ts for why this is NOT
+  // simply "the seller is the organizer". The actual write happens below,
+  // together with the Listing — not here, where a later failure (building
+  // the tx, Xaman's payload quota) would freeze a face value with no listing
+  // to show for it, unrecoverable since there is no event/ticket-edit route.
+  const primarySale = isPrimarySale({
+    organizerId: ticket.event.organizerId,
+    sellerId: me.id,
+    faceValueDrops: ticket.faceValueDrops,
+  })
+  if (!primarySale) {
+    // Checked against what the BUYER actually pays (priceDrops + fee), not
+    // the seller's bare ask — otherwise the platform fee lets the final price
+    // creep past the organizer's stated cap. Auctions/bids need no such
+    // adjustment; a bid amount already IS the buyer's total.
+    const cap = checkResalePrice({
+      policy: ticket.event.resalePolicy,
+      capBps: ticket.event.resaleCapBps,
+      capDrops: ticket.event.resaleCapDrops,
+      faceValueDrops: ticket.faceValueDrops,
+      priceDrops: priceDrops + fee,
+    })
+    if (!cap.allowed) {
+      res.status(400).json({
+        error: cap.reason,
+        maxResaleDrops:
+          cap.maxDrops !== null ? maxAskForCap(cap.maxDrops, ticket.event.platformBps).toString() : null,
+      })
+      return
+    }
+  }
+
   // Resolved ONCE and recorded on the Listing, because this address is baked
   // into the offer's `Destination` and only this account can ever settle it.
   const brokerAddress = platformAddress()
@@ -213,20 +246,39 @@ listingsRouter.post('/tickets/:nfTokenId/list', requireAuth, async (req, res) =>
     forceNetwork: XAMAN_NETWORK,
   })
 
-  const listing = await prisma.listing.create({
-    data: {
-      ticketId: ticket.id,
-      network: NETWORK,
-      sellerId: me.id,
-      sellerAddress: me.xrplAddress,
-      brokerAddress,
-      priceDrops,
-      // Frozen at listing time: changing platformBps later must not alter the
-      // terms a buyer has already been shown.
-      platformFeeDrops: fee,
-      listPayloadUuid: payload.uuid,
-      expiresAt: new Date(Date.now() + LIST_TTL_MS),
-    },
+  // Backfilling face value and creating the Listing happen together: if
+  // either failed alone, either a wrong face value could be frozen with
+  // nothing to show for it, or a primary sale could lack the face value it
+  // was supposed to establish.
+  const listing = await prisma.$transaction(async (tx) => {
+    if (primarySale) {
+      // Conditional on STILL being null, not just an update — `primarySale`
+      // was computed from a snapshot read, so a concurrent double-submit (a
+      // double-click, a client retry) could otherwise have both requests see
+      // faceValueDrops as null and race to overwrite it with different
+      // prices. Whichever transaction commits first wins; the second is a
+      // no-op here rather than a silent overwrite of a value nothing can
+      // ever correct afterward.
+      await tx.ticket.updateMany({
+        where: { id: ticket.id, faceValueDrops: null },
+        data: { faceValueDrops: priceDrops },
+      })
+    }
+    return tx.listing.create({
+      data: {
+        ticketId: ticket.id,
+        network: NETWORK,
+        sellerId: me.id,
+        sellerAddress: me.xrplAddress,
+        brokerAddress,
+        priceDrops,
+        // Frozen at listing time: changing platformBps later must not alter
+        // the terms a buyer has already been shown.
+        platformFeeDrops: fee,
+        listPayloadUuid: payload.uuid,
+        expiresAt: new Date(Date.now() + LIST_TTL_MS),
+      },
+    })
   })
 
   res.status(201).json({

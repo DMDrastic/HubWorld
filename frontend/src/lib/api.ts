@@ -302,6 +302,15 @@ export const OwnedTicketSchema = z.object({
   /** Auctions are secondary-market only: sold-out events, non-organizer holders. */
   canAuction: z.boolean(),
   auctionBlockedReason: z.string().nullable(),
+  faceValueDrops: z.string().nullable(),
+  /** false only for a disabled policy or a missing face value — price-independent. */
+  resaleAllowed: z.boolean(),
+  /** null = no ceiling (unrestricted, or this is the organizer's own ticket). */
+  /** What the seller may ASK in a fixed-price listing — already fee-adjusted. */
+  maxListingPriceDrops: z.string().nullable(),
+  /** What an auction reserve/bid may be — the buyer's total already, no adjustment. */
+  maxAuctionReserveDrops: z.string().nullable(),
+  resaleBlockedReason: z.string().nullable(),
 })
 
 export const InventorySchema = z.object({
@@ -550,6 +559,8 @@ export const AuctionSchema = z.object({
   startsAt: z.string(),
   endsAt: z.string(),
   reserveDrops: z.string(),
+  /** null = no ceiling. */
+  maxBidDrops: z.string().nullable(),
   ticket: z.object({
     nfTokenId: z.string(),
     seat: z.string().nullable(),
@@ -784,6 +795,15 @@ export const ApplicationListSchema = z.object({
   ),
 })
 
+export const ResalePolicySchema = z.enum([
+  'UNRESTRICTED',
+  'PERCENTAGE_CAP',
+  'FIXED_CAP',
+  'FACE_VALUE_ONLY',
+  'DISABLED',
+])
+export type ResalePolicyMode = z.infer<typeof ResalePolicySchema>
+
 export const CreatedEventSchema = z.object({
   slug: z.string(),
   title: z.string(),
@@ -792,6 +812,9 @@ export const CreatedEventSchema = z.object({
   royaltyBps: z.number(),
   platformBps: z.number(),
   nftTaxon: z.number(),
+  resalePolicy: ResalePolicySchema,
+  resaleCapBps: z.number().nullable(),
+  resaleCapDrops: z.string().nullable(),
 })
 
 export type Policy = z.infer<typeof PolicySchema>
@@ -842,6 +865,9 @@ export function createEvent(body: {
   startsAt: string
   ticketCount: number
   royaltyBps: number
+  resalePolicy?: ResalePolicyMode
+  resaleCapBps?: number
+  resaleCapDrops?: string
 }): Promise<z.infer<typeof CreatedEventSchema>> {
   return request('/events', CreatedEventSchema, { method: 'POST', body })
 }

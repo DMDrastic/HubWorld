@@ -14,6 +14,7 @@ import { Router } from 'express'
 import { z } from 'zod'
 import { prisma } from '../prisma.js'
 import { issuesOf, slugSchema } from '../schemas.js'
+import { resaleCeiling } from '../resale-policy.js'
 
 export const auctionsRouter = Router()
 
@@ -44,7 +45,11 @@ auctionsRouter.get('/events/:slug/auction', async (req, res) => {
     orderBy: { createdAt: 'desc' },
     include: {
       ticket: {
-        include: { event: { select: { slug: true, title: true } } },
+        include: {
+          event: {
+            select: { slug: true, title: true, resalePolicy: true, resaleCapBps: true, resaleCapDrops: true },
+          },
+        },
       },
       bids: {
         // Matches @@index([auctionId, placedAt]) — the index exists for this.
@@ -60,6 +65,15 @@ auctionsRouter.get('/events/:slug/auction', async (req, res) => {
     return
   }
 
+  // Auctions never belong to the organizer (canAuction refuses that), so this
+  // is always a genuine resale — no primary-sale exemption needed here.
+  const ceiling = resaleCeiling({
+    policy: auction.ticket.event.resalePolicy,
+    capBps: auction.ticket.event.resaleCapBps,
+    capDrops: auction.ticket.event.resaleCapDrops,
+    faceValueDrops: auction.ticket.faceValueDrops,
+  })
+
   res.json({
     id: auction.id,
     eventTitle: auction.ticket.event.title,
@@ -70,6 +84,10 @@ auctionsRouter.get('/events/:slug/auction', async (req, res) => {
     // BigInt would throw in JSON.stringify; the app-level replacer handles it,
     // but being explicit here keeps the contract obvious.
     reserveDrops: (auction.reserveDrops ?? 0n).toString(),
+    // null = no ceiling. Always defined when resaleAllowed is true at this
+    // point — a live auction could only have opened past the reserve check in
+    // open-auction.ts, so DISABLED/no-face-value cases never reach here.
+    maxBidDrops: ceiling.resaleAllowed ? (ceiling.maxDrops?.toString() ?? null) : null,
     ticket: {
       nfTokenId: auction.ticket.nfTokenId,
       seat: auction.ticket.seat,
