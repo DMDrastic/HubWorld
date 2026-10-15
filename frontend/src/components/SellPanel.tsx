@@ -99,10 +99,20 @@ export function SellPanel({ onChanged }: { onChanged: () => void }) {
       ])
       // A ticket already committed elsewhere cannot be sold or auctioned: LISTED
       // has a live sell offer and IN_AUCTION is mid-auction.
-      setTickets(inv.tickets.filter((t) => t.status !== 'LISTED' && t.status !== 'IN_AUCTION'))
+      const sellable = inv.tickets.filter((t) => t.status !== 'LISTED' && t.status !== 'IN_AUCTION')
+      setTickets(sellable)
       setMarket(m)
       setMine(own)
-      setNfTokenId((cur) => cur || (inv.tickets[0]?.nfTokenId ?? ''))
+      // Picked from the FILTERED (sellable) list, not the raw inventory — the
+      // raw list's first entry can be a ticket this refresh just excluded
+      // (just listed, just auctioned), which would silently keep the form
+      // pointed at it. Also re-picks whenever the current selection drops out
+      // of the sellable set, not just on first mount: listing one ticket and
+      // then listing a second, in the same visit with no reload, used to
+      // resubmit the first ticket's id again and 409 as "already listed".
+      setNfTokenId((cur) =>
+        cur && sellable.some((t) => t.nfTokenId === cur) ? cur : (sellable[0]?.nfTokenId ?? ''),
+      )
     } catch {
       // Non-fatal.
     }
