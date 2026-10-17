@@ -12,6 +12,7 @@ import { QrCode } from '@/components/QrCode'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { cn } from '@/lib/utils'
 import {
   Card,
   CardContent,
@@ -28,7 +29,21 @@ type Phase =
   | { kind: 'claiming'; payload: SignInCreated; address: string }
   | { kind: 'failed'; reason: string }
 
-export function SignIn({ onAuthenticated }: { onAuthenticated: (u: AuthUser) => void }) {
+export function SignIn({
+  onAuthenticated,
+  primaryButtonClassName,
+}: {
+  onAuthenticated: (u: AuthUser) => void
+  /**
+   * Extra classes merged onto the initial "Sign in" button only. The shared
+   * `size="lg"` button scale is 36px tall — fine for the many other places
+   * this component is mounted, but below the 44px touch-target minimum where
+   * this card is the page's single, highest-intent control (the landing
+   * hero). Scoped here rather than bumping `lg` globally, which would also
+   * resize every other `size="lg"` button app-wide.
+   */
+  primaryButtonClassName?: string
+}) {
   const [phase, setPhase] = useState<Phase>({ kind: 'idle' })
   const [busy, setBusy] = useState(false)
   const [handle, setHandle] = useState('')
@@ -133,7 +148,12 @@ export function SignIn({ onAuthenticated }: { onAuthenticated: (u: AuthUser) => 
 
       <CardContent className="space-y-4">
         {phase.kind === 'idle' && (
-          <Button onClick={() => void start()} disabled={busy} size="lg" className="w-full">
+          <Button
+            onClick={() => void start()}
+            disabled={busy}
+            size="lg"
+            className={cn('w-full', primaryButtonClassName)}
+          >
             {busy ? 'Starting…' : 'Sign in'}
           </Button>
         )}

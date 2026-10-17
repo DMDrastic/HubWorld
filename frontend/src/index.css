@@ -185,6 +185,10 @@
     }
   html {
     @apply font-sans;
+    /* The footer "Running events?" CTA jumps back up to the hero's
+       `#hero-signin` sign-in card; smooth scrolling is what makes that read
+       as "returning to a control" instead of a disorienting teleport. */
+    scroll-behavior: smooth;
     }
   ::selection {
     background-color: color-mix(in oklch, var(--primary) 30%, transparent);
@@ -330,6 +334,9 @@
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+    }
+  html {
+    scroll-behavior: auto;
     }
 }
 
