@@ -145,7 +145,7 @@ export function LandingAuctionDemo() {
 
   return (
     <div
-      className="bg-card ring-foreground/8 relative overflow-hidden rounded-2xl p-6 ring-1 sm:p-7"
+      className="bg-card ring-foreground/8 elevate relative overflow-hidden rounded-2xl p-6 ring-1 sm:p-7"
       aria-label="Live auction demo"
     >
       <div className="mb-4 flex items-center justify-between gap-3">

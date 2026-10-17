@@ -116,12 +116,12 @@ export function Landing({
           <div className="blob blob-teal" />
         </div>
         <div
-          className="grid-faint pointer-events-none absolute inset-x-0 -top-16 h-96 opacity-40"
+          className="grid-faint pointer-events-none absolute inset-x-0 -top-16 h-[30rem] opacity-50"
           aria-hidden
         />
 
-        <div className="relative grid items-start gap-12 pt-12 pb-2 md:grid-cols-[1.1fr_1fr]">
-          <div className="space-y-6">
+        <div className="relative grid items-start gap-12 pt-12 pb-2 lg:grid-cols-[1.05fr_1fr]">
+          <div className="space-y-7">
             <span className="border-live/25 bg-live/10 text-live inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-medium">
               <span className="relative flex size-1.5">
                 <span className="bg-live absolute inline-flex size-full animate-ping rounded-full opacity-70" />
@@ -130,7 +130,7 @@ export function Landing({
               {liveOn(network)}
             </span>
 
-            <h1 className="text-gradient text-5xl leading-[1.02] font-semibold tracking-[-0.03em] text-balance sm:text-6xl">
+            <h1 className="text-gradient text-6xl leading-[1.0] font-semibold tracking-[-0.03em] text-balance sm:text-7xl">
               Every ticket you hold, in one hub.
             </h1>
 
@@ -152,34 +152,20 @@ export function Landing({
                 </div>
               ))}
             </dl>
+
+            <div className="max-w-sm pt-2">
+              <SignIn onAuthenticated={onAuthenticated} />
+              <p className="text-muted-foreground mt-3 text-xs leading-relaxed">
+                Signing proves you control the wallet. No password, and your keys never leave your
+                device.
+              </p>
+            </div>
           </div>
 
-          <div className="md:pt-2">
-            <SignIn onAuthenticated={onAuthenticated} />
-            <p className="text-muted-foreground mx-auto mt-4 max-w-xs text-center text-xs leading-relaxed">
-              Signing proves you control the wallet. No password, and your keys never leave your
-              device.
-            </p>
+          <div className="lg:pt-2">
+            <LandingAuctionDemo />
           </div>
         </div>
-      </section>
-
-      <section className="grid items-center gap-10 lg:grid-cols-[1fr_1.1fr]">
-        <div className="space-y-3">
-          <h2 className="text-muted-foreground text-xs font-medium tracking-[0.18em] uppercase">
-            Watch it, live
-          </h2>
-          <p className="text-foreground max-w-prose text-2xl leading-snug font-medium tracking-tight text-balance">
-            A bid is a buy offer on the ledger. The price only moves when one
-            actually lands.
-          </p>
-          <p className="text-muted-foreground max-w-prose text-sm leading-relaxed text-pretty">
-            Below is a recorded replay, not a real auction — but the shape is
-            real: bids cluster toward the close the same way they do on a real
-            sold-out night, and only a committed bid ever sets the price.
-          </p>
-        </div>
-        <LandingAuctionDemo />
       </section>
 
       <section className="grid gap-4 sm:grid-cols-2">
@@ -201,10 +187,10 @@ export function Landing({
 
       <section className="space-y-8">
         <div className="max-w-prose space-y-3">
-          <h2 className="text-muted-foreground text-xs font-medium tracking-[0.18em] uppercase">
+          <h2 className="text-muted-foreground font-mono text-xs font-medium tracking-[0.18em] uppercase">
             Settlement, not a promise
           </h2>
-          <p className="text-2xl leading-snug font-medium tracking-tight text-balance">
+          <p className="text-3xl leading-snug font-medium tracking-tight text-balance sm:text-4xl">
             One signature moves the ticket and the money. Together, or not at
             all.
           </p>
@@ -264,10 +250,10 @@ export function Landing({
 
       <section className="space-y-8">
         <div className="max-w-prose space-y-3">
-          <h2 className="text-muted-foreground text-xs font-medium tracking-[0.18em] uppercase">
+          <h2 className="text-muted-foreground font-mono text-xs font-medium tracking-[0.18em] uppercase">
             Shipped October 2026
           </h2>
-          <p className="text-2xl leading-snug font-medium tracking-tight text-balance">
+          <p className="text-3xl leading-snug font-medium tracking-tight text-balance sm:text-4xl">
             Organizers set the ceiling. The ledger enforces it.
           </p>
           <p className="text-muted-foreground text-sm leading-relaxed text-pretty">
@@ -288,9 +274,13 @@ export function Landing({
               <div className="border-input bg-muted text-muted-foreground flex-1 rounded-lg border px-3 py-2 font-mono text-sm">
                 15
               </div>
-              <span className="bg-primary text-primary-foreground rounded-lg px-4 py-2 text-sm font-medium">
+              <button
+                type="button"
+                disabled
+                className="bg-primary text-primary-foreground rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-100"
+              >
                 List
-              </span>
+              </button>
             </div>
             <p className="text-destructive mt-3 text-sm leading-relaxed">
               This event&rsquo;s organizer has limited resale prices to 12 XRP.
@@ -298,14 +288,18 @@ export function Landing({
           </div>
 
           <div className="bg-card ring-foreground/8 rounded-2xl p-5 ring-1">
-            <div className="text-muted-foreground mb-3 text-xs">&nbsp;</div>
+            <div className="text-muted-foreground mb-3 text-xs">Within the cap</div>
             <div className="flex items-center gap-2.5">
               <div className="border-input bg-muted text-muted-foreground flex-1 rounded-lg border px-3 py-2 font-mono text-sm">
                 12
               </div>
-              <span className="bg-primary text-primary-foreground rounded-lg px-4 py-2 text-sm font-medium">
+              <button
+                type="button"
+                disabled
+                className="bg-primary text-primary-foreground rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-100"
+              >
                 List
-              </span>
+              </button>
             </div>
             <p className="text-live mt-3 text-sm leading-relaxed">
               Listed. Waiting for a buyer.
@@ -315,7 +309,7 @@ export function Landing({
       </section>
 
       <section className="space-y-8">
-        <h2 className="text-muted-foreground text-xs font-medium tracking-[0.18em] uppercase">
+        <h2 className="text-muted-foreground font-mono text-xs font-medium tracking-[0.18em] uppercase">
           How it works
         </h2>
         <ol className="grid gap-8 sm:grid-cols-3">
@@ -335,10 +329,10 @@ export function Landing({
 
       <section className="grid items-center gap-10 lg:grid-cols-[1.1fr_1fr]">
         <div className="space-y-4">
-          <h2 className="text-muted-foreground text-xs font-medium tracking-[0.18em] uppercase">
+          <h2 className="text-muted-foreground font-mono text-xs font-medium tracking-[0.18em] uppercase">
             No account to freeze
           </h2>
-          <p className="max-w-prose text-2xl leading-snug font-medium tracking-tight text-balance">
+          <p className="max-w-prose text-3xl leading-snug font-medium tracking-tight text-balance sm:text-4xl">
             Nobody can revoke a ticket that isn&rsquo;t in our database.
           </p>
           <p className="text-muted-foreground max-w-prose text-sm leading-relaxed text-pretty">
@@ -351,7 +345,7 @@ export function Landing({
 
         {/* A fixed demo ticket, drawn with the same hue-from-slug gradient
             formula EventPoster's fallback uses — on-brand, not invented. */}
-        <div className="ring-foreground/8 overflow-hidden rounded-2xl ring-1">
+        <div className="ring-foreground/8 elevate overflow-hidden rounded-2xl ring-1">
           <div
             className="relative flex aspect-[5/3] flex-col justify-end p-5"
             style={{
