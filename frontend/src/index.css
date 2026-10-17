@@ -229,6 +229,48 @@
       radial-gradient(48% 52% at 92% 8%, color-mix(in oklch, var(--chart-3) 16%, transparent) 0%, transparent 60%);
     }
 
+  /**
+   * Two blurred fields drifting behind the hero, layered under `.aurora`'s
+   * colour wash — what makes the backdrop feel alive rather than painted on.
+   * Negative animation-delays so each blob is already mid-cycle on first
+   * paint instead of popping in from the same resting pose.
+   */
+  .blob-field {
+    position: absolute;
+    inset: -18% -8% auto -8%;
+    height: 560px;
+    pointer-events: none;
+    overflow: hidden;
+    }
+  .blob {
+    position: absolute;
+    border-radius: 50%;
+    filter: blur(70px);
+    }
+  .blob-violet {
+    left: 2%;
+    top: -8%;
+    width: 380px;
+    height: 380px;
+    background: color-mix(in oklch, var(--primary) 55%, transparent);
+    animation: blob-drift 17s ease-in-out infinite;
+    animation-delay: -4s;
+    }
+  .blob-teal {
+    right: 4%;
+    top: 4%;
+    width: 320px;
+    height: 320px;
+    background: color-mix(in oklch, var(--chart-3) 50%, transparent);
+    animation: blob-drift 20s ease-in-out infinite;
+    animation-delay: -11s;
+    }
+  @keyframes blob-drift {
+    0%, 100% { transform: translate(0, 0) scale(1); }
+    33% { transform: translate(34px, -30px) scale(1.14); }
+    66% { transform: translate(-26px, 22px) scale(0.9); }
+    }
+
   /* Gradient headline. Degrades to plain foreground where unsupported. */
   .text-gradient {
     background-image: linear-gradient(
