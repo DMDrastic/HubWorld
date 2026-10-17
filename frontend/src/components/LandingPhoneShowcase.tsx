@@ -193,48 +193,85 @@ const SCREENS: Record<ScreenId, () => React.JSX.Element> = {
 }
 
 /**
- * A phone chassis has to read as a phone against EITHER theme, and the first
- * version failed on dark: its bezel (`#0a0a0c`) was close enough to
- * `--background` (`#09090d`) that the frame was functionally invisible —
- * reported back as "looks like nothing is there." A real device's chassis
- * is a fixed colour regardless of the app running on it, so this stays a
- * literal value rather than a theme token — but it has to sit at a
- * brightness that contrasts against BOTH a near-black and a near-white page,
- * which a pure black or pure white bezel cannot do. A mid grey can.
+ * A chassis colour has to read against EITHER theme, and the first version
+ * failed on dark: its bezel (`#0a0a0c`) was close enough to dark mode's
+ * `--background` (`#09090d`) that the frame was functionally invisible. A
+ * real device's colour doesn't change with the app running on it, so this
+ * stays literal rather than a theme token — titanium's edge highlight does
+ * the same job in promotional renders: a brushed-metal gradient reads as a
+ * frame at a glance in a way a flat fill, dark OR light, does not.
  */
-const BEZEL = '#3a3a40'
-const BEZEL_RIM = 'inset 0 0 0 1px rgba(255,255,255,0.14), inset 0 1px 0 rgba(255,255,255,0.22)'
+const TITANIUM =
+  'linear-gradient(155deg, #6b6b72 0%, #3a3a40 14%, #222226 50%, #3a3a40 86%, #6b6b72 100%)'
+const BODY = 'linear-gradient(155deg, #302f33 0%, #1c1b1e 50%, #302f33 100%)'
 
+/**
+ * Every measurement below is a PERCENTAGE of the frame's own box, not a
+ * fixed rem value, specifically so the chassis — buttons, island, screen
+ * inset — stays in proportion whether this renders at mobile width or the
+ * larger sticky desktop size, rather than looking right at one and wrong at
+ * the other.
+ */
 function PhoneFrame({ screen }: { screen: ScreenId }) {
   const Screen = SCREENS[screen]
   return (
-    <div className="mx-auto w-full max-w-[280px]">
+    <div className="mx-auto w-full max-w-[300px]">
       <div
-        className="elevate relative aspect-[9/19.3] overflow-hidden rounded-[2.75rem] p-2.5"
-        style={{ background: BEZEL, boxShadow: BEZEL_RIM }}
+        className="elevate relative aspect-[9/19.5] overflow-hidden rounded-[3.1rem]"
+        style={{ background: TITANIUM, padding: '2.6%' }}
       >
-        {/* The side buttons are drawn on the bezel itself, outside the
-            screen's rounded corner, the way they sit on a real device. */}
+        {/* Action button, then two volume buttons — left edge, top to bottom. */}
         <div
-          className="absolute top-20 -left-px h-8 w-1 rounded-l-sm"
-          style={{ background: 'rgba(0,0,0,0.4)' }}
+          className="absolute -left-px h-[3.5%] w-[1.6%] rounded-l-sm"
+          style={{ top: '14%', background: 'rgba(0,0,0,0.45)' }}
           aria-hidden
         />
         <div
-          className="absolute top-32 -right-px h-14 w-1 rounded-r-sm"
-          style={{ background: 'rgba(0,0,0,0.4)' }}
+          className="absolute -left-px h-[6%] w-[1.6%] rounded-l-sm"
+          style={{ top: '20%', background: 'rgba(0,0,0,0.45)' }}
           aria-hidden
         />
-        <div className="bg-background relative size-full overflow-hidden rounded-[2.1rem]">
+        <div
+          className="absolute -left-px h-[6%] w-[1.6%] rounded-l-sm"
+          style={{ top: '27.5%', background: 'rgba(0,0,0,0.45)' }}
+          aria-hidden
+        />
+        {/* Power button — right edge. */}
+        <div
+          className="absolute -right-px h-[9%] w-[1.6%] rounded-r-sm"
+          style={{ top: '18%', background: 'rgba(0,0,0,0.45)' }}
+          aria-hidden
+        />
+
+        <div
+          className="relative size-full overflow-hidden rounded-[2.6rem]"
+          style={{ background: BODY }}
+        >
           <div
-            className="absolute top-2.5 left-1/2 z-10 h-5 w-24 -translate-x-1/2 rounded-full"
-            style={{ background: '#000' }}
-            aria-hidden
-          />
-          <div className="absolute inset-0 pt-9">
-            <div key={screen} className="screen-fade h-full">
-              <Screen />
+            className="bg-background absolute overflow-hidden rounded-[2.2rem]"
+            style={{ inset: '7px' }}
+          >
+            <div
+              className="absolute left-1/2 z-10 -translate-x-1/2 rounded-full"
+              style={{ top: '2.4%', height: '3.3%', width: '32%', background: '#000' }}
+              aria-hidden
+            />
+            <div className="absolute inset-0" style={{ paddingTop: '8.5%' }}>
+              <div key={screen} className="screen-fade h-full">
+                <Screen />
+              </div>
             </div>
+            {/* A faint diagonal gloss, the way a glass screen catches light in
+                product photography — purely decorative, so it's excluded from
+                the fade/remount key and never competes with the content. */}
+            <div
+              className="pointer-events-none absolute inset-0"
+              style={{
+                background:
+                  'linear-gradient(135deg, rgba(255,255,255,0.05) 0%, transparent 32%)',
+              }}
+              aria-hidden
+            />
           </div>
         </div>
       </div>
