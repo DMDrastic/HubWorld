@@ -149,13 +149,26 @@ export function LandingAuctionDemo() {
       aria-label="Live auction demo"
     >
       <div className="mb-4 flex items-center justify-between gap-3">
-        <span className="bg-live/10 text-live border-live/25 inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-medium">
-          <span className="relative flex size-1.5">
-            <span className="bg-live absolute inline-flex size-full animate-ping rounded-full opacity-70" />
-            <span className="bg-live relative inline-flex size-1.5 rounded-full" />
+        {/* Driven by `frame.phase`, not hardcoded — this used to say "live"
+            through the whole hold/gap beat too, so it sat next to
+            "closed · won by @arin_k" and, frozen under reduced motion,
+            claimed "live" and "closed" at once permanently. Now it can only
+            ever show one of the two, and they always agree with `frame.who`
+            below. */}
+        {frame.phase === 'active' ? (
+          <span className="bg-live/10 text-live border-live/25 inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-medium">
+            <span className="relative flex size-1.5">
+              <span className="bg-live absolute inline-flex size-full animate-ping rounded-full opacity-70" />
+              <span className="bg-live relative inline-flex size-1.5 rounded-full" />
+            </span>
+            live
           </span>
-          live
-        </span>
+        ) : (
+          <span className="bg-muted text-muted-foreground border-border inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-medium">
+            <span className="bg-muted-foreground relative inline-flex size-1.5 rounded-full" />
+            closed
+          </span>
+        )}
         <span className="text-muted-foreground text-xs">Skyline Sessions — The Observatory, Rooftop</span>
       </div>
 
@@ -178,7 +191,14 @@ export function LandingAuctionDemo() {
         <dl className="flex items-center gap-5 text-xs">
           <div>
             <dt className="text-muted-foreground">Reserve</dt>
-            <dd className="text-live mt-0.5 font-mono tabular-nums">met</dd>
+            {/* Gated on an actual bid existing — "met" next to "0 bids" is a
+                contradiction (a reserve cannot be cleared by nothing), and
+                this used to say "met" unconditionally from frame zero. */}
+            <dd
+              className={`mt-0.5 font-mono tabular-nums ${frame.bidCount > 0 ? 'text-live' : 'text-muted-foreground'}`}
+            >
+              {frame.bidCount > 0 ? 'met' : 'pending'}
+            </dd>
           </div>
           <div>
             <dt className="text-muted-foreground">Bids</dt>

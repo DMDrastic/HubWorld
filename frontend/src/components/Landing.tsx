@@ -14,6 +14,7 @@ import { ArrowLeftRight, Clock, Lock } from 'lucide-react'
 import { LandingAuctionDemo } from '@/components/LandingAuctionDemo'
 import { LandingPhoneShowcase } from '@/components/LandingPhoneShowcase'
 import { SignIn } from '@/components/SignIn'
+import { Button } from '@/components/ui/button'
 import type { AuthUser, Health } from '@/lib/api'
 
 const SETTLEMENT_POINTS = [
@@ -126,8 +127,10 @@ export function Landing({
                 ))}
               </dl>
 
-              <div className="max-w-sm pt-2">
-                <SignIn onAuthenticated={onAuthenticated} />
+              {/* `scroll-mt-20` clears NavBar's sticky 64px header when the
+                  footer CTA below jumps up to this anchor. */}
+              <div id="hero-signin" className="max-w-sm scroll-mt-20 pt-2">
+                <SignIn onAuthenticated={onAuthenticated} primaryButtonClassName="h-11" />
                 <p className="text-muted-foreground mt-3 text-xs leading-relaxed">
                   Signing proves you control the wallet. No password, and your keys never leave
                   your device.
@@ -162,29 +165,39 @@ export function Landing({
             <div className="text-muted-foreground mb-4 font-mono text-xs tracking-[0.1em] uppercase">
               Measured on a public test network · 15.00 XRP winning bid
             </div>
-            <dl className="divide-border divide-y text-sm">
+            {/* A receipt, not a bullet list: the bid at top, deductions
+                indented with minus signs underneath it, a rule, then the
+                seller's actual payout — the card's real thesis — as the one
+                bolded, larger line. Network fee is real but the least
+                important number here, so it drops to a footnote instead of
+                competing with the payout for the one bold/green treatment. */}
+            <dl className="text-sm">
               <div className="flex items-center justify-between py-2.5">
                 <dt className="text-muted-foreground">Winning bid</dt>
                 <dd className="font-mono tabular-nums">15.000000 XRP</dd>
               </div>
-              <div className="flex items-center justify-between py-2.5">
-                <dt className="text-muted-foreground">Seller receives</dt>
-                <dd className="text-primary font-mono tabular-nums">13.893750 XRP</dd>
+              <div className="divide-border divide-y border-t">
+                <div className="flex items-center justify-between py-2.5 pl-4">
+                  <dt className="text-muted-foreground">− Organizer royalty · 5%</dt>
+                  <dd className="text-muted-foreground font-mono tabular-nums">0.731250 XRP</dd>
+                </div>
+                <div className="flex items-center justify-between py-2.5 pl-4">
+                  <dt className="text-muted-foreground">− HubWorld fee · 2.5%</dt>
+                  <dd className="text-muted-foreground font-mono tabular-nums">0.375000 XRP</dd>
+                </div>
               </div>
-              <div className="flex items-center justify-between py-2.5">
-                <dt className="text-muted-foreground">Organizer royalty · 5%</dt>
-                <dd className="font-mono tabular-nums">0.731250 XRP</dd>
-              </div>
-              <div className="flex items-center justify-between py-2.5">
-                <dt className="text-muted-foreground">HubWorld fee · 2.5%</dt>
-                <dd className="font-mono tabular-nums">0.375000 XRP</dd>
-              </div>
-              <div className="flex items-center justify-between pt-3.5">
-                <dt className="font-medium">Network fee, paid by the broker</dt>
-                <dd className="text-live font-mono font-medium tabular-nums">12 drops</dd>
+              <div className="flex items-baseline justify-between border-t pt-3.5">
+                <dt className="font-medium">Seller receives</dt>
+                <dd className="text-primary font-mono text-lg font-semibold tabular-nums">
+                  13.893750 XRP
+                </dd>
               </div>
             </dl>
-            <p className="text-muted-foreground mt-4 text-xs leading-relaxed">
+            <p className="text-muted-foreground mt-3 text-xs leading-relaxed">
+              Network fee, paid by the broker — not deducted from the sale above:
+              12 drops (0.000012 XRP).
+            </p>
+            <p className="text-muted-foreground mt-3 text-xs leading-relaxed">
               Confirmed again on mainnet, 2026-08-13: a 1 XRP winning bid paid
               the seller 0.926250, the issuer 0.048750, and the broker
               0.024988 — same split, real XRP, same 12 drops.
@@ -237,6 +250,14 @@ export function Landing({
             every resale — so you keep earning when a ticket changes hands. Sign in and apply; each
             application is reviewed by a person.
           </p>
+          {/* The page's one other call to action lives in the hero, which on
+              mobile is thousands of pixels above this card — the exact dead
+              end the critique flagged (P0). This jumps back to the same
+              SignIn control rather than mounting a second one, since a
+              duplicate card here would just repeat the hero. */}
+          <Button asChild size="lg" className="mt-6 h-11">
+            <a href="#hero-signin">Enter the hub →</a>
+          </Button>
         </div>
 
         <dl className="relative mt-8 grid gap-6 border-t pt-6 sm:grid-cols-3">

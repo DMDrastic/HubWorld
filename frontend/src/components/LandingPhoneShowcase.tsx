@@ -41,7 +41,13 @@ import { CheckCircle2 } from 'lucide-react'
 function demoHue(slug: string): number {
   let h = 5381
   for (let i = 0; i < slug.length; i++) h = ((h << 5) + h + slug.charCodeAt(i)) | 0
-  return (Math.abs(h) * 137.508) % 360
+  // Mapped into a 140°-wide teal-through-violet band rather than the full
+  // wheel. The unconstrained `% 360` is what let this land on rust/brown for
+  // 'skyline-sessions' — the one warm hue on an otherwise cool-toned page,
+  // reading as an unstyled accident rather than a choice. Still procedural
+  // per slug (not a single hardcoded value), just fenced to hues that are
+  // actually brand-adjacent.
+  return 160 + (Math.abs(h) * 137.508) % 140
 }
 
 type ScreenId = 'ticket' | 'gift' | 'auction' | 'cap' | 'door'
@@ -337,7 +343,13 @@ function PhoneFrame({ screen }: { screen: ScreenId }) {
           style={{ background: BODY }}
         >
           <div
-            className="bg-background absolute overflow-hidden rounded-[2.2rem]"
+            /* `bg-card`, not `bg-background` — the screen sits inside a
+               titanium bezel on a page whose own body is `bg-background`,
+               so matching that token made the "lit screen" indistinguishable
+               from a hole in the page in dark mode (card is reliably a shade
+               lighter than background in both themes, which is also the
+               direction a real backlit screen should read). */
+            className="bg-card absolute overflow-hidden rounded-[2.2rem]"
             style={{ inset: '7px' }}
           >
             <div
@@ -373,16 +385,37 @@ export function LandingPhoneShowcase() {
   const refs = useRef<(HTMLDivElement | null)[]>([])
 
   useEffect(() => {
-    const observer = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) {
-          if (!entry.isIntersecting) continue
-          const idx = refs.current.findIndex((el) => el === entry.target)
-          if (idx !== -1) setActive(idx)
+    // Picking "active" from whichever single IntersectionObserver entry
+    // happened to fire isIntersecting=true was order-dependent: with no gap
+    // between step blocks, one block's bottom edge can cross out of the
+    // centre band in the same callback batch as the next block's top edge
+    // crossing in, and which of the two "wins" depended on array order, not
+    // on which one is actually nearer the band — reproduced as the phone
+    // showing the NEXT step's screen while the previous step's caption was
+    // still the one on screen. Recomputing every block's actual distance
+    // from the viewport's vertical centre on every firing removes the
+    // ambiguity entirely: whichever block is geometrically closest wins,
+    // regardless of which entries fired or in what order.
+    const pickActive = () => {
+      const mid = window.innerHeight / 2
+      let bestIdx = -1
+      let bestDist = Infinity
+      refs.current.forEach((el, i) => {
+        if (!el) return
+        const rect = el.getBoundingClientRect()
+        const dist = Math.abs(rect.top + rect.height / 2 - mid)
+        if (dist < bestDist) {
+          bestDist = dist
+          bestIdx = i
         }
-      },
-      { rootMargin: '-45% 0px -45% 0px', threshold: 0 },
-    )
+      })
+      if (bestIdx !== -1) setActive(bestIdx)
+    }
+
+    const observer = new IntersectionObserver(pickActive, {
+      rootMargin: '-45% 0px -45% 0px',
+      threshold: 0,
+    })
     refs.current.forEach((el) => el && observer.observe(el))
     return () => observer.disconnect()
   }, [])
