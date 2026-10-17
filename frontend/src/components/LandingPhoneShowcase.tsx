@@ -10,23 +10,28 @@
  * standard scrollytelling trick and needs nothing heavier than what the
  * browser already gives for free.
  *
- * It's a two-column `grid` at EVERY width, not just `lg:` — a narrow phone
- * column beside the steps on mobile, widening at `lg:`. Two earlier attempts
- * got this wrong in opposite directions:
+ * Below `lg:`, the phone is NOT squeezed into a side column — three earlier
+ * attempts, in order:
  *
- * - `lg:sticky` (phone not sticky below `lg:`): the scroll effect simply did
- *   not exist on mobile.
- * - Switching to `flex-col` below `lg:` so sticky would have room to work:
- *   it did, but a full-width sticky phone stacked above the steps now
- *   overlapped them as they scrolled past underneath it — reported back as
+ * - `lg:sticky` (not sticky below `lg:`): no scroll effect on mobile at all.
+ * - `flex-col` below `lg:`, phone full-width on top, steps stacked below:
+ *   sticky worked, but the full-width phone now sat on top of the steps'
+ *   normal document flow, so the step TEXT scrolled visibly underneath it —
  *   "the background goes behind the phone."
+ * - A two-column `grid` at every width, phone in a narrow ~35% column:
+ *   no more overlap, but a phone squeezed to ~140px wide on a 390px screen
+ *   reads as "small and weird," not like the desktop version at all.
  *
- * Grid at every width avoids both: the phone and the steps column are
- * always SIDE BY SIDE, so there is never any overlap to go behind, and grid
- * places both in the same row (sized to the taller one — the steps column),
- * which is exactly the shared containing block `sticky` needs to have
- * somewhere to scroll past. Same mechanism as the desktop case, just at
- * mobile proportions.
+ * The fix is to stop trying to show five blocks of text AND a phone at full
+ * size in a 390px-wide space at the same time — that is what every attempt
+ * above was really fighting. Below `lg:`, only ONE caption is ever visible,
+ * directly under the phone, showing whichever step is currently active —
+ * the same "one screen, one caption" a native app's own onboarding carousel
+ * uses, rather than a cut-down copy of the desktop layout. The five step
+ * blocks still exist below `lg:` (`refs`, `min-h-*`) purely as invisible
+ * scroll triggers for the SAME IntersectionObserver driving the phone — their
+ * actual heading/body text is `hidden` and only appears at `lg:`, where
+ * there is finally room to lay all five out beside a full-size phone.
  */
 import { useEffect, useRef, useState } from 'react'
 import { CheckCircle2 } from 'lucide-react'
@@ -380,12 +385,34 @@ export function LandingPhoneShowcase() {
     return () => observer.disconnect()
   }, [])
 
+  const current = STEPS[active]!
+
   return (
-    <div className="grid grid-cols-[38%_1fr] items-start gap-4 sm:grid-cols-[34%_1fr] sm:gap-6 lg:grid-cols-[1fr_1.05fr] lg:gap-12">
-      <div className="sticky top-20">
-        <PhoneFrame screen={STEPS[active]!.screen} />
+    <div className="flex flex-col lg:grid lg:grid-cols-[1fr_1.05fr] lg:items-start lg:gap-12">
+      <div className="sticky top-16 z-10 lg:top-24">
+        <PhoneFrame screen={current.screen} />
+
+        {/* Mobile/tablet only: one caption for the active step, directly
+            under the phone — the full five-step column below is `hidden`
+            at this width (see the step blocks), so there is nothing behind
+            the phone for this to overlap. Re-keyed per step so it reuses
+            the same crossfade the phone's screen does. */}
+        <div key={active} className="screen-fade mx-auto mt-5 max-w-[300px] text-center lg:hidden">
+          <span className="text-primary/70 font-mono text-xs tabular-nums">{current.eyebrow}</span>
+          <h3 className="mt-1.5 text-lg leading-snug font-medium tracking-tight text-balance">
+            {current.title}
+          </h3>
+          <p className="text-muted-foreground mt-2 text-xs leading-relaxed text-pretty">
+            {current.body}
+          </p>
+        </div>
       </div>
 
+      {/* Five scroll triggers, always — `refs` and height are what drive the
+          IntersectionObserver at every width. Below `lg:` they carry no
+          visible content of their own (the mobile caption above covers
+          that); at `lg:` the real heading/body appears beside the phone,
+          same as before. */}
       <div className="space-y-0">
         {STEPS.map((s, i) => (
           <div
@@ -393,15 +420,17 @@ export function LandingPhoneShowcase() {
             ref={(el) => {
               refs.current[i] = el
             }}
-            className="flex min-h-[48vh] flex-col justify-center py-6 sm:min-h-[55vh] lg:min-h-[65vh] lg:py-8"
+            className="min-h-[42vh] py-6 sm:min-h-[50vh] lg:flex lg:min-h-[65vh] lg:flex-col lg:justify-center lg:py-8"
           >
-            <span className="text-primary/70 font-mono text-xs tabular-nums">{s.eyebrow}</span>
-            <h3 className="mt-2 max-w-md text-lg leading-snug font-medium tracking-tight text-balance sm:text-xl lg:text-2xl">
-              {s.title}
-            </h3>
-            <p className="text-muted-foreground mt-3 max-w-sm text-xs leading-relaxed text-pretty sm:text-sm">
-              {s.body}
-            </p>
+            <div className="hidden lg:block">
+              <span className="text-primary/70 font-mono text-xs tabular-nums">{s.eyebrow}</span>
+              <h3 className="mt-2 max-w-md text-2xl leading-snug font-medium tracking-tight text-balance">
+                {s.title}
+              </h3>
+              <p className="text-muted-foreground mt-3 max-w-sm text-sm leading-relaxed text-pretty">
+                {s.body}
+              </p>
+            </div>
           </div>
         ))}
       </div>
