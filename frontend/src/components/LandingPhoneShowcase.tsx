@@ -192,18 +192,43 @@ const SCREENS: Record<ScreenId, () => React.JSX.Element> = {
   door: DoorScreen,
 }
 
+/**
+ * A phone chassis has to read as a phone against EITHER theme, and the first
+ * version failed on dark: its bezel (`#0a0a0c`) was close enough to
+ * `--background` (`#09090d`) that the frame was functionally invisible —
+ * reported back as "looks like nothing is there." A real device's chassis
+ * is a fixed colour regardless of the app running on it, so this stays a
+ * literal value rather than a theme token — but it has to sit at a
+ * brightness that contrasts against BOTH a near-black and a near-white page,
+ * which a pure black or pure white bezel cannot do. A mid grey can.
+ */
+const BEZEL = '#3a3a40'
+const BEZEL_RIM = 'inset 0 0 0 1px rgba(255,255,255,0.14), inset 0 1px 0 rgba(255,255,255,0.22)'
+
 function PhoneFrame({ screen }: { screen: ScreenId }) {
   const Screen = SCREENS[screen]
   return (
     <div className="mx-auto w-full max-w-[280px]">
       <div
-        className="elevate relative aspect-[9/19.3] overflow-hidden rounded-[2.75rem] p-2"
-        style={{ background: '#0a0a0c' }}
+        className="elevate relative aspect-[9/19.3] overflow-hidden rounded-[2.75rem] p-2.5"
+        style={{ background: BEZEL, boxShadow: BEZEL_RIM }}
       >
+        {/* The side buttons are drawn on the bezel itself, outside the
+            screen's rounded corner, the way they sit on a real device. */}
+        <div
+          className="absolute top-20 -left-px h-8 w-1 rounded-l-sm"
+          style={{ background: 'rgba(0,0,0,0.4)' }}
+          aria-hidden
+        />
+        <div
+          className="absolute top-32 -right-px h-14 w-1 rounded-r-sm"
+          style={{ background: 'rgba(0,0,0,0.4)' }}
+          aria-hidden
+        />
         <div className="bg-background relative size-full overflow-hidden rounded-[2.1rem]">
           <div
             className="absolute top-2.5 left-1/2 z-10 h-5 w-24 -translate-x-1/2 rounded-full"
-            style={{ background: '#0a0a0c' }}
+            style={{ background: '#000' }}
             aria-hidden
           />
           <div className="absolute inset-0 pt-9">
