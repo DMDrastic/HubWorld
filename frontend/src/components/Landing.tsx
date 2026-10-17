@@ -102,9 +102,14 @@ export function Landing({
 }) {
   return (
     <div className="space-y-24 pb-16">
-      {/* Hero. The aurora and grid are pinned to the top of the page and masked
-          out before the copy starts, so nothing competes with the text. */}
-      <section className="relative overflow-x-hidden">
+      {/* Hero. `<main>` elsewhere constrains every page to max-w-6xl, which is
+          right for a dashboard but leaves the hero's glow dead-ending in a
+          wall of flat background on anything wider than that column — the
+          backdrop breaks out to the full viewport here so it reaches the
+          edges of the screen the way it does in the design this followed;
+          the actual copy below goes right back into the normal column so
+          line length doesn't change. */}
+      <section className="relative w-screen overflow-x-hidden mx-[calc(50%-50vw)]">
         <div
           className="aurora pointer-events-none absolute inset-x-0 -top-24 h-128 opacity-70"
           aria-hidden
@@ -120,50 +125,52 @@ export function Landing({
           aria-hidden
         />
 
-        <div className="relative grid items-start gap-12 pt-12 pb-2 lg:grid-cols-[1.05fr_1fr]">
-          <div className="space-y-7">
-            <span className="border-live/25 bg-live/10 text-live inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-medium">
-              <span className="relative flex size-1.5">
-                <span className="bg-live absolute inline-flex size-full animate-ping rounded-full opacity-70" />
-                <span className="bg-live relative inline-flex size-1.5 rounded-full" />
+        <div className="relative mx-auto max-w-6xl px-4">
+          <div className="relative grid items-start gap-12 pt-12 pb-2 lg:grid-cols-[1.05fr_1fr]">
+            <div className="space-y-7">
+              <span className="border-live/25 bg-live/10 text-live inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-medium">
+                <span className="relative flex size-1.5">
+                  <span className="bg-live absolute inline-flex size-full animate-ping rounded-full opacity-70" />
+                  <span className="bg-live relative inline-flex size-1.5 rounded-full" />
+                </span>
+                {liveOn(network)}
               </span>
-              {liveOn(network)}
-            </span>
 
-            <h1 className="text-gradient text-6xl leading-[1.0] font-semibold tracking-[-0.03em] text-balance sm:text-7xl">
-              Every ticket you hold, in one hub.
-            </h1>
+              <h1 className="text-gradient text-6xl leading-[1.0] font-semibold tracking-[-0.03em] text-balance sm:text-7xl">
+                Every ticket you hold, in one hub.
+              </h1>
 
-            <p className="text-muted-foreground max-w-prose text-lg leading-relaxed text-pretty">
-              HubWorld is event ticketing built on the XRP Ledger. Your tickets sit in your own
-              wallet like an inventory — gift them, resell them, or bid on a sold-out night, and
-              walk in by signing at the door.
-            </p>
-
-            <dl className="grid max-w-md grid-cols-3 gap-6 border-t pt-6">
-              {[
-                ['Yours', 'held in your wallet'],
-                ['Traceable', 'every move on-ledger'],
-                ['No custody', 'we never hold funds'],
-              ].map(([term, def]) => (
-                <div key={term}>
-                  <dt className="text-foreground text-sm font-medium">{term}</dt>
-                  <dd className="text-muted-foreground mt-0.5 text-xs leading-relaxed">{def}</dd>
-                </div>
-              ))}
-            </dl>
-
-            <div className="max-w-sm pt-2">
-              <SignIn onAuthenticated={onAuthenticated} />
-              <p className="text-muted-foreground mt-3 text-xs leading-relaxed">
-                Signing proves you control the wallet. No password, and your keys never leave your
-                device.
+              <p className="text-muted-foreground max-w-prose text-lg leading-relaxed text-pretty">
+                HubWorld is event ticketing built on the XRP Ledger. Your tickets sit in your own
+                wallet like an inventory — gift them, resell them, or bid on a sold-out night, and
+                walk in by signing at the door.
               </p>
-            </div>
-          </div>
 
-          <div className="lg:pt-2">
-            <LandingAuctionDemo />
+              <dl className="grid max-w-md grid-cols-3 gap-6 border-t pt-6">
+                {[
+                  ['Yours', 'held in your wallet'],
+                  ['Traceable', 'every move on-ledger'],
+                  ['No custody', 'we never hold funds'],
+                ].map(([term, def]) => (
+                  <div key={term}>
+                    <dt className="text-foreground text-sm font-medium">{term}</dt>
+                    <dd className="text-muted-foreground mt-0.5 text-xs leading-relaxed">{def}</dd>
+                  </div>
+                ))}
+              </dl>
+
+              <div className="max-w-sm pt-2">
+                <SignIn onAuthenticated={onAuthenticated} />
+                <p className="text-muted-foreground mt-3 text-xs leading-relaxed">
+                  Signing proves you control the wallet. No password, and your keys never leave
+                  your device.
+                </p>
+              </div>
+            </div>
+
+            <div className="lg:pt-2">
+              <LandingAuctionDemo />
+            </div>
           </div>
         </div>
       </section>
