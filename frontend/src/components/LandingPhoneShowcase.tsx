@@ -10,9 +10,17 @@
  * standard scrollytelling trick and needs nothing heavier than what the
  * browser already gives for free.
  *
- * The phone only STICKS at `lg:` — below that there is no room for a device
- * frame beside a column of text, so it sits once at the top of the section
- * and its screen still updates as the steps below it scroll past.
+ * The layout is `flex-col` below `lg:` and a two-column `grid` at `lg:` and
+ * above, and the phone is `sticky` at EVERY width — not `lg:sticky`. That
+ * matters for why mobile used to not work: `sticky`'s stuck range is bounded
+ * by the element's own containing block, and a CSS grid with no explicit
+ * `grid-template-rows` gives each column its OWN row when it collapses to
+ * one column per breakpoint — so the phone's "row" was only as tall as the
+ * phone itself, leaving no room for it to ever detach and scroll past.
+ * `flex-col` keeps phone and steps as two blocks in the SAME flow, so the
+ * phone's containing block is the whole section (phone height + all five
+ * steps), exactly like the `lg:` grid case already did by placing both in
+ * one shared row.
  */
 import { useEffect, useRef, useState } from 'react'
 import { CheckCircle2 } from 'lucide-react'
@@ -58,23 +66,91 @@ const STEPS: { eyebrow: string; title: string; body: string; screen: ScreenId }[
   },
 ]
 
+/**
+ * A rooftop skyline at dusk, standing in for an uploaded event photo —
+ * illustrated rather than a stock photo, matching the restrained, abstract
+ * treatment `EventPoster`'s own fallback already uses for events with no
+ * artwork, rather than introducing the first photographic asset in the app.
+ * Pure SVG shapes computed from the slug's hue, so it never needs a network
+ * request and stays perfectly crisp at any phone-frame size.
+ */
+function SkylineArt({ hue }: { hue: number }) {
+  const silhouette = `oklch(0.16 0.04 ${(hue + 20) % 360})`
+  const buildings = [
+    { x: 0, w: 16, h: 22 },
+    { x: 15, w: 11, h: 34 },
+    { x: 25, w: 14, h: 26 },
+    { x: 38, w: 10, h: 40 },
+    { x: 47, w: 16, h: 30 },
+    { x: 62, w: 12, h: 38 },
+    { x: 73, w: 15, h: 24 },
+    { x: 87, w: 13, h: 32 },
+  ]
+  return (
+    // `meet`, not `slice`: the ticket art area's real height varies with
+    // the phone frame's own rendered size, so "cover" cropping zoomed into
+    // a single building at some sizes. `meet` scales the WHOLE scene to fit
+    // and anchors it to the bottom — any extra space lands above the
+    // skyline as more sky, which the gradient already fills, so there is
+    // never a visible crop or letterbox bar.
+    <svg
+      viewBox="0 0 100 100"
+      preserveAspectRatio="xMidYMax meet"
+      className="absolute inset-0 size-full"
+      aria-hidden
+    >
+      <circle cx="78" cy="20" r="7" fill="white" fillOpacity="0.2" />
+      {[
+        [10, 14],
+        [25, 8],
+        [42, 18],
+        [60, 10],
+        [92, 16],
+        [18, 28],
+        [52, 6],
+        [70, 30],
+      ].map(([cx, cy], i) => (
+        <circle key={i} cx={cx} cy={cy} r="0.8" fill="white" fillOpacity="0.5" />
+      ))}
+      {buildings.map((b, i) => (
+        <rect key={i} x={b.x} y={100 - b.h} width={b.w} height={b.h} fill={silhouette} />
+      ))}
+      {/* The observatory dome the venue name promises, on the tallest
+          building, with a thin telescope line angled up from it. */}
+      <circle cx="43" cy="62" r="6" fill={silhouette} />
+      <line x1="43" y1="62" x2="52" y2="50" stroke={silhouette} strokeWidth="1.6" strokeLinecap="round" />
+      {/* A string of warm rooftop lights — the one warm accent against the
+          cool dusk gradient and the dark silhouettes. */}
+      {[8, 20, 32, 44, 56, 68, 80, 92].map((x, i) => (
+        <circle key={i} cx={x} cy="97" r="1.1" fill="oklch(0.78 0.14 70)" fillOpacity="0.85" />
+      ))}
+    </svg>
+  )
+}
+
 function TicketScreen() {
   const slug = 'skyline-sessions'
+  const hue = demoHue(slug)
   return (
     <div className="flex h-full flex-col">
       <div
-        className="relative flex flex-1 flex-col justify-end p-4"
+        className="relative flex flex-1 flex-col justify-end overflow-hidden p-4"
         style={{
           background: `linear-gradient(160deg,
-            oklch(0.40 0.105 ${demoHue(slug)}) 0%,
-            oklch(0.24 0.075 ${(demoHue(slug) + 25) % 360}) 58%,
-            oklch(0.16 0.045 ${(demoHue(slug) + 45) % 360}) 100%)`,
+            oklch(0.40 0.105 ${hue}) 0%,
+            oklch(0.24 0.075 ${(hue + 25) % 360}) 58%,
+            oklch(0.16 0.045 ${(hue + 45) % 360}) 100%)`,
         }}
       >
-        <div className="font-heading text-lg leading-tight font-semibold tracking-[-0.02em] text-white">
+        <SkylineArt hue={hue} />
+        {/* Same technique `EventPoster` uses over a real photo: a scrim so
+            the title stays legible regardless of what the art behind it
+            looks like, rather than tuning the art to dodge the text. */}
+        <div className="absolute inset-x-0 bottom-0 h-2/3 bg-gradient-to-t from-black/75 to-transparent" />
+        <div className="relative font-heading text-lg leading-tight font-semibold tracking-[-0.02em] text-white">
           Skyline Sessions
         </div>
-        <div className="mt-1 font-mono text-[0.6rem] tracking-[0.18em] text-white/60 uppercase">
+        <div className="relative mt-1 font-mono text-[0.6rem] tracking-[0.18em] text-white/60 uppercase">
           The Observatory, Rooftop
         </div>
       </div>
@@ -299,8 +375,8 @@ export function LandingPhoneShowcase() {
   }, [])
 
   return (
-    <div className="grid gap-12 lg:grid-cols-[1fr_1.05fr] lg:items-start">
-      <div className="lg:sticky lg:top-24">
+    <div className="flex flex-col gap-10 lg:grid lg:grid-cols-[1fr_1.05fr] lg:items-start lg:gap-12">
+      <div className="sticky top-20 z-10">
         <PhoneFrame screen={STEPS[active]!.screen} />
       </div>
 
@@ -311,7 +387,7 @@ export function LandingPhoneShowcase() {
             ref={(el) => {
               refs.current[i] = el
             }}
-            className="flex min-h-[55vh] flex-col justify-center py-8 lg:min-h-[65vh]"
+            className="flex min-h-[40vh] flex-col justify-center py-6 sm:min-h-[55vh] lg:min-h-[65vh] lg:py-8"
           >
             <span className="text-primary/70 font-mono text-xs tabular-nums">{s.eyebrow}</span>
             <h3 className="mt-2 max-w-md text-2xl leading-snug font-medium tracking-tight text-balance">
