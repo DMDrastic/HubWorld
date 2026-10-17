@@ -10,9 +10,39 @@
  * is the promise; XRPL is how it is kept, mentioned second. The hub-world framing
  * is the product's own — a central place connecting you to everything you hold.
  */
-import { Gift, Repeat2, ScanLine, Wallet } from 'lucide-react'
+import { ArrowLeftRight, Clock, Gift, Lock, Repeat2, ScanLine, Wallet } from 'lucide-react'
+import { LandingAuctionDemo } from '@/components/LandingAuctionDemo'
 import { SignIn } from '@/components/SignIn'
 import type { AuthUser, Health } from '@/lib/api'
+
+/**
+ * A fixed demo "ticket" rendered with the same hue-from-slug gradient
+ * `EventPoster`'s fallback uses, so this reads as a real HubWorld poster
+ * rather than a one-off illustration invented for the landing page.
+ */
+function demoHue(slug: string): number {
+  let h = 5381
+  for (let i = 0; i < slug.length; i++) h = ((h << 5) + h + slug.charCodeAt(i)) | 0
+  return (Math.abs(h) * 137.508) % 360
+}
+
+const SETTLEMENT_POINTS = [
+  {
+    icon: Clock,
+    title: 'The seller signs once, at the start',
+    body: 'Opening an auction is a single signature. Settlement runs itself when the clock hits zero — nobody has to be online to collect.',
+  },
+  {
+    icon: Lock,
+    title: 'The royalty is native, not an invoice',
+    body: "It's the XRPL's own TransferFee, charged by the ledger on what actually reaches the seller — not a side payment HubWorld collects and forwards.",
+  },
+  {
+    icon: ArrowLeftRight,
+    title: 'Losing bids cost nothing',
+    body: 'An unmatched bid is just an inert offer only HubWorld could ever have accepted. Nothing was ever locked up, so there is nothing to refund.',
+  },
+]
 
 const FEATURES = [
   {
@@ -74,11 +104,17 @@ export function Landing({
     <div className="space-y-24 pb-16">
       {/* Hero. The aurora and grid are pinned to the top of the page and masked
           out before the copy starts, so nothing competes with the text. */}
-      <section className="relative">
+      <section className="relative overflow-x-hidden">
         <div
           className="aurora pointer-events-none absolute inset-x-0 -top-24 h-128 opacity-70"
           aria-hidden
         />
+        {/* `.blob-field` bleeds 8% past its own edges on purpose (see index.css),
+            so the section clips it rather than letting it widen the page. */}
+        <div className="blob-field pointer-events-none absolute inset-x-0 -top-24" aria-hidden>
+          <div className="blob blob-violet" />
+          <div className="blob blob-teal" />
+        </div>
         <div
           className="grid-faint pointer-events-none absolute inset-x-0 -top-16 h-96 opacity-40"
           aria-hidden
@@ -128,6 +164,24 @@ export function Landing({
         </div>
       </section>
 
+      <section className="grid items-center gap-10 lg:grid-cols-[1fr_1.1fr]">
+        <div className="space-y-3">
+          <h2 className="text-muted-foreground text-xs font-medium tracking-[0.18em] uppercase">
+            Watch it, live
+          </h2>
+          <p className="text-foreground max-w-prose text-2xl leading-snug font-medium tracking-tight text-balance">
+            A bid is a buy offer on the ledger. The price only moves when one
+            actually lands.
+          </p>
+          <p className="text-muted-foreground max-w-prose text-sm leading-relaxed text-pretty">
+            Below is a recorded replay, not a real auction — but the shape is
+            real: bids cluster toward the close the same way they do on a real
+            sold-out night, and only a committed bid ever sets the price.
+          </p>
+        </div>
+        <LandingAuctionDemo />
+      </section>
+
       <section className="grid gap-4 sm:grid-cols-2">
         {FEATURES.map((f) => (
           <div
@@ -143,6 +197,121 @@ export function Landing({
             </p>
           </div>
         ))}
+      </section>
+
+      <section className="space-y-8">
+        <div className="max-w-prose space-y-3">
+          <h2 className="text-muted-foreground text-xs font-medium tracking-[0.18em] uppercase">
+            Settlement, not a promise
+          </h2>
+          <p className="text-2xl leading-snug font-medium tracking-tight text-balance">
+            One signature moves the ticket and the money. Together, or not at
+            all.
+          </p>
+        </div>
+
+        <div className="grid gap-8 lg:grid-cols-[1fr_1fr]">
+          <div className="bg-card ring-foreground/8 rounded-2xl p-6 ring-1 sm:p-7">
+            <div className="text-muted-foreground mb-4 font-mono text-xs tracking-[0.1em] uppercase">
+              Measured on a public test network · 15.00 XRP winning bid
+            </div>
+            <dl className="divide-border divide-y text-sm">
+              <div className="flex items-center justify-between py-2.5">
+                <dt className="text-muted-foreground">Winning bid</dt>
+                <dd className="font-mono tabular-nums">15.000000 XRP</dd>
+              </div>
+              <div className="flex items-center justify-between py-2.5">
+                <dt className="text-muted-foreground">Seller receives</dt>
+                <dd className="text-primary font-mono tabular-nums">13.893750 XRP</dd>
+              </div>
+              <div className="flex items-center justify-between py-2.5">
+                <dt className="text-muted-foreground">Organizer royalty · 5%</dt>
+                <dd className="font-mono tabular-nums">0.731250 XRP</dd>
+              </div>
+              <div className="flex items-center justify-between py-2.5">
+                <dt className="text-muted-foreground">HubWorld fee · 2.5%</dt>
+                <dd className="font-mono tabular-nums">0.375000 XRP</dd>
+              </div>
+              <div className="flex items-center justify-between pt-3.5">
+                <dt className="font-medium">Network fee, paid by the broker</dt>
+                <dd className="text-live font-mono font-medium tabular-nums">12 drops</dd>
+              </div>
+            </dl>
+            <p className="text-muted-foreground mt-4 text-xs leading-relaxed">
+              Confirmed again on mainnet, 2026-08-13: a 1 XRP winning bid paid
+              the seller 0.926250, the issuer 0.048750, and the broker
+              0.024988 — same split, real XRP, same 12 drops.
+            </p>
+          </div>
+
+          <div className="space-y-6">
+            {SETTLEMENT_POINTS.map((p) => (
+              <div key={p.title} className="flex gap-3.5">
+                <div className="bg-primary/10 text-primary ring-primary/15 mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg ring-1">
+                  <p.icon className="size-4" aria-hidden />
+                </div>
+                <div>
+                  <h3 className="text-sm font-medium tracking-tight">{p.title}</h3>
+                  <p className="text-muted-foreground mt-1 text-sm leading-relaxed text-pretty">
+                    {p.body}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="space-y-8">
+        <div className="max-w-prose space-y-3">
+          <h2 className="text-muted-foreground text-xs font-medium tracking-[0.18em] uppercase">
+            Shipped October 2026
+          </h2>
+          <p className="text-2xl leading-snug font-medium tracking-tight text-balance">
+            Organizers set the ceiling. The ledger enforces it.
+          </p>
+          <p className="text-muted-foreground text-sm leading-relaxed text-pretty">
+            An organizer can cap resale at a percentage of face value, a flat
+            price, face value exactly, or switch it off entirely — checked on
+            the listing, on the auction&rsquo;s reserve, and on every bid that
+            comes in after, so waiting for the auction doesn&rsquo;t buy
+            anyone a way around it.
+          </p>
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="bg-card ring-foreground/8 rounded-2xl p-5 ring-1">
+            <div className="text-muted-foreground mb-3 text-xs">
+              Cap is 150% of face value (12.00 XRP)
+            </div>
+            <div className="flex items-center gap-2.5">
+              <div className="border-input bg-muted text-muted-foreground flex-1 rounded-lg border px-3 py-2 font-mono text-sm">
+                15
+              </div>
+              <span className="bg-primary text-primary-foreground rounded-lg px-4 py-2 text-sm font-medium">
+                List
+              </span>
+            </div>
+            <p className="text-destructive mt-3 text-sm leading-relaxed">
+              This event&rsquo;s organizer has limited resale prices to 12 XRP.
+            </p>
+          </div>
+
+          <div className="bg-card ring-foreground/8 rounded-2xl p-5 ring-1">
+            <div className="text-muted-foreground mb-3 text-xs">&nbsp;</div>
+            <div className="flex items-center gap-2.5">
+              <div className="border-input bg-muted text-muted-foreground flex-1 rounded-lg border px-3 py-2 font-mono text-sm">
+                12
+              </div>
+              <span className="bg-primary text-primary-foreground rounded-lg px-4 py-2 text-sm font-medium">
+                List
+              </span>
+            </div>
+            <p className="text-live mt-3 text-sm leading-relaxed">
+              Listed. Waiting for a buyer.
+            </p>
+          </div>
+        </div>
       </section>
 
       <section className="space-y-8">
@@ -164,6 +333,57 @@ export function Landing({
         </ol>
       </section>
 
+      <section className="grid items-center gap-10 lg:grid-cols-[1.1fr_1fr]">
+        <div className="space-y-4">
+          <h2 className="text-muted-foreground text-xs font-medium tracking-[0.18em] uppercase">
+            No account to freeze
+          </h2>
+          <p className="max-w-prose text-2xl leading-snug font-medium tracking-tight text-balance">
+            Nobody can revoke a ticket that isn&rsquo;t in our database.
+          </p>
+          <p className="text-muted-foreground max-w-prose text-sm leading-relaxed text-pretty">
+            A HubWorld ticket is an XRPL NFT sitting in your own wallet — the
+            same wallet that holds your XRP. We can show it to you, but we
+            were never holding it. Send one to a friend&rsquo;s @handle for
+            free, and it still works even if HubWorld disappears tomorrow.
+          </p>
+        </div>
+
+        {/* A fixed demo ticket, drawn with the same hue-from-slug gradient
+            formula EventPoster's fallback uses — on-brand, not invented. */}
+        <div className="ring-foreground/8 overflow-hidden rounded-2xl ring-1">
+          <div
+            className="relative flex aspect-[5/3] flex-col justify-end p-5"
+            style={{
+              background: `linear-gradient(160deg,
+                oklch(0.40 0.105 ${demoHue('skyline-sessions')}) 0%,
+                oklch(0.24 0.075 ${(demoHue('skyline-sessions') + 25) % 360}) 58%,
+                oklch(0.16 0.045 ${(demoHue('skyline-sessions') + 45) % 360}) 100%)`,
+            }}
+          >
+            <div className="font-heading text-xl leading-tight font-semibold tracking-[-0.02em] text-white">
+              Skyline Sessions
+            </div>
+            <div className="mt-1 font-mono text-[0.65rem] tracking-[0.18em] text-white/60 uppercase">
+              The Observatory, Rooftop
+            </div>
+          </div>
+          <div className="bg-card flex items-center justify-between gap-3 p-4 text-xs">
+            <div>
+              <div className="text-muted-foreground">Held by</div>
+              <div className="mt-0.5 font-mono">@arin_k</div>
+            </div>
+            <div>
+              <div className="text-muted-foreground">Token</div>
+              <div className="mt-0.5 font-mono">000861…A42F</div>
+            </div>
+            <span className="bg-live/10 text-live border-live/25 inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 font-medium">
+              not yet redeemed
+            </span>
+          </div>
+        </div>
+      </section>
+
       <section className="ring-foreground/8 relative overflow-hidden rounded-2xl p-8 ring-1 sm:p-10">
         <div className="aurora pointer-events-none absolute inset-0 opacity-50" aria-hidden />
         <div className="relative max-w-prose">
@@ -174,6 +394,19 @@ export function Landing({
             application is reviewed by a person.
           </p>
         </div>
+
+        <dl className="relative mt-8 grid gap-6 border-t pt-6 sm:grid-cols-3">
+          {[
+            ['~2–3', 'signed payloads per ticket sold, measured at a real mainnet event'],
+            ['≤20%', 'royalty cap — high enough to matter, capped so resale isn’t pointless'],
+            ['1', 'signature opens an auction — you never sign again to settle it'],
+          ].map(([num, def]) => (
+            <div key={def}>
+              <dt className="text-primary font-mono text-xl font-semibold tabular-nums">{num}</dt>
+              <dd className="text-muted-foreground mt-1 text-xs leading-relaxed">{def}</dd>
+            </div>
+          ))}
+        </dl>
       </section>
     </div>
   )
