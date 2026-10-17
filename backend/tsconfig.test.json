@@ -23,6 +23,7 @@
     "scripts/create-event.ts",
     "scripts/demo-reset.ts",
     "scripts/demo-seed.ts",
+    "scripts/demo-flow.ts",
     "scripts/grant-role.ts",
     "scripts/ledger-sync.ts",
     "scripts/payload-report.ts",

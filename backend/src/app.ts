@@ -20,6 +20,7 @@ import { redemptionRouter } from './routes/redemption.js'
 import { organizersRouter } from './routes/organizers.js'
 import { payloadUsageRouter } from './routes/payload-usage.js'
 import { webhooksRouter } from './routes/webhooks.js'
+import { devRouter } from './routes/dev.js'
 
 /** Codes that mean "the network was unreachable", not "the request was wrong". */
 const TRANSIENT_CODES = new Set([
@@ -136,6 +137,7 @@ export function createApp() {
   app.use('/api', organizersRouter)
   app.use('/api', payloadUsageRouter)
   app.use('/api', webhooksRouter)
+  app.use('/api', devRouter)
 
   // An unmatched /api route must 404 as JSON, and must do so BEFORE the static
   // and SPA handlers below. Without this an API typo falls through to the SPA

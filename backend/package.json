@@ -34,6 +34,7 @@
     "purge:test": "tsx scripts/purge-test-data.ts",
     "demo:reset": "tsx scripts/demo-reset.ts",
     "demo:seed": "tsx scripts/demo-seed.ts",
+    "demo:flow": "tsx scripts/demo-flow.ts",
     "payload:report": "tsx scripts/payload-report.ts"
   },
   "prisma": {
