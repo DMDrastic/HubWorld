@@ -31,6 +31,7 @@ import { xaman } from '../xaman.js'
 import { issuesOf } from '../schemas.js'
 import { requireAuth } from '../session.js'
 import { canAuction } from '../auction-policy.js'
+import { checkResalePrice } from '../resale-policy.js'
 import {
   auctionSellAmountDrops,
   buildSellOfferTx,
@@ -156,6 +157,25 @@ openAuctionRouter.post('/tickets/:nfTokenId/auction', requireAuth, async (req, r
   }
   if (liveGift) {
     res.status(409).json({ error: 'This ticket has a gift in flight' })
+    return
+  }
+
+  // The reserve is the auction's FLOOR — a reserve already above the cap means
+  // no bid could ever be both >= reserve and <= cap, so there is no honest way
+  // to win it. Bids themselves are capped independently in bids.ts, since a
+  // reserve under the cap says nothing about where bidding might end up.
+  const resaleCap = checkResalePrice({
+    policy: ticket.event.resalePolicy,
+    capBps: ticket.event.resaleCapBps,
+    capDrops: ticket.event.resaleCapDrops,
+    faceValueDrops: ticket.faceValueDrops,
+    priceDrops: reserveDrops,
+  })
+  if (!resaleCap.allowed) {
+    res.status(400).json({
+      error: resaleCap.reason,
+      maxResaleDrops: resaleCap.maxDrops?.toString() ?? null,
+    })
     return
   }
 

@@ -51,6 +51,27 @@ const MESSAGES: Record<Listing['state'], string> = {
   failed: 'The sale failed.',
 }
 
+/**
+ * Mirrors the server's resale-cap check (`checkResalePrice` in
+ * `resale-policy.ts`) for immediate feedback — the server re-validates
+ * regardless, this just avoids a round trip for the common case.
+ *
+ * A listing's ask gets the platform fee added on top for the buyer, so it is
+ * capped below the organizer's stated limit; an auction reserve/bid already
+ * IS the buyer's total, so it compares against the limit directly. Same two
+ * numbers the server computes — see tickets.ts.
+ */
+function checkResaleCap(selected: OwnedTicket | null, drops: string, mode: 'sell' | 'auction') {
+  if (!selected) return
+  if (!selected.resaleAllowed) {
+    throw new ApiError(selected.resaleBlockedReason ?? "This event's organizer does not allow resale.")
+  }
+  const max = mode === 'sell' ? selected.maxListingPriceDrops : selected.maxAuctionReserveDrops
+  if (max !== null && BigInt(drops) > BigInt(max)) {
+    throw new ApiError(`This event's organizer has limited resale prices to ${dropsToXrp(max)} XRP.`)
+  }
+}
+
 function priceLine(l: Listing) {
   return `${dropsToXrp(l.priceDrops)} XRP` + (l.platformFeeDrops === '0'
     ? ''
@@ -78,10 +99,20 @@ export function SellPanel({ onChanged }: { onChanged: () => void }) {
       ])
       // A ticket already committed elsewhere cannot be sold or auctioned: LISTED
       // has a live sell offer and IN_AUCTION is mid-auction.
-      setTickets(inv.tickets.filter((t) => t.status !== 'LISTED' && t.status !== 'IN_AUCTION'))
+      const sellable = inv.tickets.filter((t) => t.status !== 'LISTED' && t.status !== 'IN_AUCTION')
+      setTickets(sellable)
       setMarket(m)
       setMine(own)
-      setNfTokenId((cur) => cur || (inv.tickets[0]?.nfTokenId ?? ''))
+      // Picked from the FILTERED (sellable) list, not the raw inventory — the
+      // raw list's first entry can be a ticket this refresh just excluded
+      // (just listed, just auctioned), which would silently keep the form
+      // pointed at it. Also re-picks whenever the current selection drops out
+      // of the sellable set, not just on first mount: listing one ticket and
+      // then listing a second, in the same visit with no reload, used to
+      // resubmit the first ticket's id again and 409 as "already listed".
+      setNfTokenId((cur) =>
+        cur && sellable.some((t) => t.nfTokenId === cur) ? cur : (sellable[0]?.nfTokenId ?? ''),
+      )
     } catch {
       // Non-fatal.
     }
@@ -151,6 +182,7 @@ export function SellPanel({ onChanged }: { onChanged: () => void }) {
     try {
       const drops = xrpToDrops(priceXrp)
       if (BigInt(drops) <= 0n) throw new ApiError('Enter a price above zero')
+      checkResaleCap(selected, drops, 'sell')
       const payload = await createListing(nfTokenId, drops)
       track(payload.listingId, payload, `List for ${priceXrp} XRP`)
     } catch (err) {
@@ -173,6 +205,7 @@ export function SellPanel({ onChanged }: { onChanged: () => void }) {
     try {
       const drops = xrpToDrops(priceXrp)
       if (BigInt(drops) <= 0n) throw new ApiError('Enter a reserve above zero')
+      checkResaleCap(selected, drops, 'auction')
       const result = await openAuction(nfTokenId, drops, Number(minutes))
       track(result.listingId, { ...result, priceDrops: drops }, `Auction at ${priceXrp} XRP reserve`)
     } catch (err) {
@@ -354,6 +387,23 @@ export function SellPanel({ onChanged }: { onChanged: () => void }) {
                       {busy ? '…' : mode === 'sell' ? 'List' : 'Open'}
                     </Button>
                   </div>
+                  {selected && !selected.resaleAllowed && (
+                    <p className="text-destructive text-xs">{selected.resaleBlockedReason}</p>
+                  )}
+                  {selected?.resaleAllowed &&
+                    (() => {
+                      const max = mode === 'sell' ? selected.maxListingPriceDrops : selected.maxAuctionReserveDrops
+                      if (max === null) return null
+                      return (
+                        <p className="text-muted-foreground text-xs">
+                          Organizer resale limit: {mode === 'sell' ? 'list for' : 'reserve'} up to{' '}
+                          {dropsToXrp(max)} XRP
+                          {selected.faceValueDrops
+                            ? ` (face value ${dropsToXrp(selected.faceValueDrops)} XRP)`
+                            : ''}
+                        </p>
+                      )
+                    })()}
                   {mode === 'sell' && selected?.auctionBlockedReason && (
                     <p className="text-muted-foreground text-xs">
                       {selected.auctionBlockedReason}

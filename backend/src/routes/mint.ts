@@ -359,6 +359,10 @@ mintRouter.get('/mint/:uuid', requireAuth, async (req, res) => {
         seat: request.seat,
         tier: request.tier,
         status: 'MINTED',
+        // Only knowable here, from the mint's own sell offer — see
+        // ResalePolicy in schema.prisma. Null for a mint-to-hold; a later
+        // organizer listing (listings.ts) backfills it if one ever happens.
+        faceValueDrops: mintOffer?.amountDrops ?? null,
       },
     })
 

@@ -96,6 +96,11 @@ export function BidForm({
     try {
       const drops = xrpToDrops(amountXrp)
       if (BigInt(drops) <= 0n) throw new ApiError('Enter an amount above zero')
+      if (auction.maxBidDrops !== null && BigInt(drops) > BigInt(auction.maxBidDrops)) {
+        throw new ApiError(
+          `This event's organizer has limited resale prices to ${dropsToXrp(auction.maxBidDrops)} XRP.`,
+        )
+      }
       setBid(null)
       setPhase({ kind: 'active', payload: await placeBid(auction.id, drops) })
     } catch (err) {
@@ -174,7 +179,11 @@ export function BidForm({
         <Input
           value={amountXrp}
           onChange={(e) => setAmountXrp(e.target.value)}
-          placeholder={`Bid in XRP (reserve ${dropsToXrp(auction.reserveDrops)})`}
+          placeholder={
+            auction.maxBidDrops !== null
+              ? `Bid in XRP (reserve ${dropsToXrp(auction.reserveDrops)}, max ${dropsToXrp(auction.maxBidDrops)})`
+              : `Bid in XRP (reserve ${dropsToXrp(auction.reserveDrops)})`
+          }
           inputMode="decimal"
           aria-label="bid amount in XRP"
           disabled={closed}

@@ -13,6 +13,7 @@ import { issuesOf } from '../schemas.js'
 import { requireAuth } from '../session.js'
 import { accountNfts } from '../ledger.js'
 import { canAuction } from '../auction-policy.js'
+import { resaleCeiling, maxAskForCap, isPrimarySale } from '../resale-policy.js'
 
 export const ticketsRouter = Router()
 
@@ -39,7 +40,19 @@ ticketsRouter.get('/tickets/mine', requireAuth, async (req, res) => {
   const tickets = await prisma.ticket.findMany({
     where: { ownerId: me.id },
     include: {
-      event: { select: { id: true, slug: true, title: true, startsAt: true, organizerId: true } },
+      event: {
+        select: {
+          id: true,
+          slug: true,
+          title: true,
+          startsAt: true,
+          organizerId: true,
+          resalePolicy: true,
+          resaleCapBps: true,
+          resaleCapDrops: true,
+          platformBps: true,
+        },
+      },
     },
     orderBy: { createdAt: 'desc' },
     take: 200,
@@ -94,6 +107,45 @@ ticketsRouter.get('/tickets/mine', requireAuth, async (req, res) => {
         eligibility.get(t.event.id)?.allowed === false
           ? (eligibility.get(t.event.id) as { reason: string }).reason
           : null,
+      faceValueDrops: t.faceValueDrops?.toString() ?? null,
+      // Same predicate listings.ts enforces with — see isPrimarySale's doc
+      // comment in resale-policy.ts. One shared function so the display here
+      // can never drift from what the server would actually accept.
+      ...(isPrimarySale({ organizerId: t.event.organizerId, sellerId: me.id, faceValueDrops: t.faceValueDrops })
+        ? {
+            resaleAllowed: true,
+            maxListingPriceDrops: null,
+            maxAuctionReserveDrops: null,
+            resaleBlockedReason: null,
+          }
+        : (() => {
+            const ceiling = resaleCeiling({
+              policy: t.event.resalePolicy,
+              capBps: t.event.resaleCapBps,
+              capDrops: t.event.resaleCapDrops,
+              faceValueDrops: t.faceValueDrops,
+            })
+            if (!ceiling.resaleAllowed) {
+              return {
+                resaleAllowed: false,
+                maxListingPriceDrops: null,
+                maxAuctionReserveDrops: null,
+                resaleBlockedReason: ceiling.reason,
+              }
+            }
+            // A listing's ask has the platform fee added on top for the
+            // buyer, so the ask itself must be capped below the organizer's
+            // stated limit — an auction reserve/bid IS the buyer's total
+            // already, so it compares against the raw cap unadjusted. Same
+            // split as listings.ts vs. open-auction.ts/bids.ts.
+            return {
+              resaleAllowed: true,
+              maxListingPriceDrops:
+                ceiling.maxDrops === null ? null : maxAskForCap(ceiling.maxDrops, t.event.platformBps).toString(),
+              maxAuctionReserveDrops: ceiling.maxDrops?.toString() ?? null,
+              resaleBlockedReason: null,
+            }
+          })()),
     })),
   })
 })

@@ -188,17 +188,46 @@ organizersRouter.post(
 
 // ------------------------------------------------------- event creation ----
 
-const CreateEventBody = z.object({
-  title: z.string().trim().min(3).max(120),
-  venue: z.string().trim().min(2).max(120).optional(),
-  description: z.string().trim().max(2000).optional(),
-  startsAt: z.coerce.date(),
-  ticketCount: z.coerce.number().int().min(1).max(100_000),
-  // Theirs to set, within policy.
-  royaltyBps: z.coerce.number().int().min(0),
-  slug: slugSchema.optional(),
-  // NOTE: platformBps is deliberately absent. It is policy, not input.
-})
+const CreateEventBody = z
+  .object({
+    title: z.string().trim().min(3).max(120),
+    venue: z.string().trim().min(2).max(120).optional(),
+    description: z.string().trim().max(2000).optional(),
+    startsAt: z.coerce.date(),
+    ticketCount: z.coerce.number().int().min(1).max(100_000),
+    // Theirs to set, within policy.
+    royaltyBps: z.coerce.number().int().min(0),
+    slug: slugSchema.optional(),
+    // NOTE: platformBps is deliberately absent. It is policy, not input.
+
+    // Create-time only — there is no event-edit route, same as the fields
+    // above. Governs resale price only; gifting is untouched regardless of
+    // policy, since the two are deliberately not coupled.
+    resalePolicy: z
+      .enum(['UNRESTRICTED', 'PERCENTAGE_CAP', 'FIXED_CAP', 'FACE_VALUE_ONLY', 'DISABLED'])
+      .default('UNRESTRICTED'),
+    // 10000 = 100% of face value, so 12000 = 120%.
+    resaleCapBps: z.coerce.number().int().positive().optional(),
+    resaleCapDrops: z
+      .string()
+      .regex(/^[1-9][0-9]{0,17}$/, 'resaleCapDrops must be a positive integer string of drops')
+      .optional(),
+  })
+  .superRefine((data, ctx) => {
+    const needs = { PERCENTAGE_CAP: 'resaleCapBps', FIXED_CAP: 'resaleCapDrops' } as const
+    for (const [policy, field] of Object.entries(needs)) {
+      const has = field === 'resaleCapBps' ? data.resaleCapBps !== undefined : data.resaleCapDrops !== undefined
+      if (data.resalePolicy === policy && !has) {
+        ctx.addIssue({ code: 'custom', path: [field], message: `${field} is required when resalePolicy is ${policy}` })
+      }
+    }
+    if (data.resalePolicy !== 'PERCENTAGE_CAP' && data.resaleCapBps !== undefined) {
+      ctx.addIssue({ code: 'custom', path: ['resaleCapBps'], message: 'resaleCapBps only applies to PERCENTAGE_CAP' })
+    }
+    if (data.resalePolicy !== 'FIXED_CAP' && data.resaleCapDrops !== undefined) {
+      ctx.addIssue({ code: 'custom', path: ['resaleCapDrops'], message: 'resaleCapDrops only applies to FIXED_CAP' })
+    }
+  })
 
 function slugify(s: string): string {
   return s
@@ -259,6 +288,9 @@ organizersRouter.post('/events', requireAuth, requireOrganizer, async (req, res)
       platformBps: env.PLATFORM_FEE_BPS,
       ticketCount: data.ticketCount,
       status: 'PUBLISHED',
+      resalePolicy: data.resalePolicy,
+      resaleCapBps: data.resaleCapBps ?? null,
+      resaleCapDrops: data.resaleCapDrops ? BigInt(data.resaleCapDrops) : null,
     },
   })
 
@@ -270,6 +302,9 @@ organizersRouter.post('/events', requireAuth, requireOrganizer, async (req, res)
     royaltyBps: event.royaltyBps,
     platformBps: event.platformBps,
     nftTaxon: event.nftTaxon,
+    resalePolicy: event.resalePolicy,
+    resaleCapBps: event.resaleCapBps,
+    resaleCapDrops: event.resaleCapDrops?.toString() ?? null,
   })
 })
 
