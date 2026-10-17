@@ -19,6 +19,27 @@ if (!window.matchMedia) {
     }) as MediaQueryList
 }
 
+// jsdom does not implement IntersectionObserver either — any component using
+// one (scroll-driven reveals, the phone showcase's active-step tracking)
+// throws on mount instead of just never firing a callback, which is the
+// accurate jsdom behaviour: there is no layout, so nothing would ever
+// intersect anyway.
+if (!window.IntersectionObserver) {
+  class NoopIntersectionObserver implements IntersectionObserver {
+    readonly root = null
+    readonly rootMargin = ''
+    readonly scrollMargin = ''
+    readonly thresholds: ReadonlyArray<number> = []
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+    takeRecords(): IntersectionObserverEntry[] {
+      return []
+    }
+  }
+  window.IntersectionObserver = NoopIntersectionObserver
+}
+
 // Unmount between tests so a leaked polling timer from one test cannot fire
 // into the next and make failures look random.
 afterEach(() => {
