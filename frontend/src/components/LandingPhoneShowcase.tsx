@@ -10,17 +10,23 @@
  * standard scrollytelling trick and needs nothing heavier than what the
  * browser already gives for free.
  *
- * The layout is `flex-col` below `lg:` and a two-column `grid` at `lg:` and
- * above, and the phone is `sticky` at EVERY width — not `lg:sticky`. That
- * matters for why mobile used to not work: `sticky`'s stuck range is bounded
- * by the element's own containing block, and a CSS grid with no explicit
- * `grid-template-rows` gives each column its OWN row when it collapses to
- * one column per breakpoint — so the phone's "row" was only as tall as the
- * phone itself, leaving no room for it to ever detach and scroll past.
- * `flex-col` keeps phone and steps as two blocks in the SAME flow, so the
- * phone's containing block is the whole section (phone height + all five
- * steps), exactly like the `lg:` grid case already did by placing both in
- * one shared row.
+ * It's a two-column `grid` at EVERY width, not just `lg:` — a narrow phone
+ * column beside the steps on mobile, widening at `lg:`. Two earlier attempts
+ * got this wrong in opposite directions:
+ *
+ * - `lg:sticky` (phone not sticky below `lg:`): the scroll effect simply did
+ *   not exist on mobile.
+ * - Switching to `flex-col` below `lg:` so sticky would have room to work:
+ *   it did, but a full-width sticky phone stacked above the steps now
+ *   overlapped them as they scrolled past underneath it — reported back as
+ *   "the background goes behind the phone."
+ *
+ * Grid at every width avoids both: the phone and the steps column are
+ * always SIDE BY SIDE, so there is never any overlap to go behind, and grid
+ * places both in the same row (sized to the taller one — the steps column),
+ * which is exactly the shared containing block `sticky` needs to have
+ * somewhere to scroll past. Same mechanism as the desktop case, just at
+ * mobile proportions.
  */
 import { useEffect, useRef, useState } from 'react'
 import { CheckCircle2 } from 'lucide-react'
@@ -375,8 +381,8 @@ export function LandingPhoneShowcase() {
   }, [])
 
   return (
-    <div className="flex flex-col gap-10 lg:grid lg:grid-cols-[1fr_1.05fr] lg:items-start lg:gap-12">
-      <div className="sticky top-20 z-10">
+    <div className="grid grid-cols-[38%_1fr] items-start gap-4 sm:grid-cols-[34%_1fr] sm:gap-6 lg:grid-cols-[1fr_1.05fr] lg:gap-12">
+      <div className="sticky top-20">
         <PhoneFrame screen={STEPS[active]!.screen} />
       </div>
 
@@ -387,13 +393,13 @@ export function LandingPhoneShowcase() {
             ref={(el) => {
               refs.current[i] = el
             }}
-            className="flex min-h-[40vh] flex-col justify-center py-6 sm:min-h-[55vh] lg:min-h-[65vh] lg:py-8"
+            className="flex min-h-[48vh] flex-col justify-center py-6 sm:min-h-[55vh] lg:min-h-[65vh] lg:py-8"
           >
             <span className="text-primary/70 font-mono text-xs tabular-nums">{s.eyebrow}</span>
-            <h3 className="mt-2 max-w-md text-2xl leading-snug font-medium tracking-tight text-balance">
+            <h3 className="mt-2 max-w-md text-lg leading-snug font-medium tracking-tight text-balance sm:text-xl lg:text-2xl">
               {s.title}
             </h3>
-            <p className="text-muted-foreground mt-3 max-w-sm text-sm leading-relaxed text-pretty">
+            <p className="text-muted-foreground mt-3 max-w-sm text-xs leading-relaxed text-pretty sm:text-sm">
               {s.body}
             </p>
           </div>
