@@ -11,6 +11,22 @@
  * uses for demo auctions — `t(u) = 1 - (1 - u) ** 2.6` — so what a visitor
  * watches here is shaped like a real auction's last-minute rush, not evenly
  * spaced placeholder data.
+ *
+ * The price line, fill and velocity bars read `var(--accent)` rather than
+ * `var(--color-chart-1)` (violet) — this card is mounted only inside
+ * `Landing.tsx`, which declares `--accent` on its root wrapper, so the colour
+ * change is scoped to the landing page's own styling. See that file's
+ * top-of-file comment for where the accent value comes from and how it was
+ * validated.
+ *
+ * 2026-10 Mercury-inspired rebuild: this component's own markup and colours
+ * are untouched — `--accent` already carries the same value it did under the
+ * prior pass, so nothing here needed to change for the new system to apply.
+ * What changed is where it's MOUNTED: `Landing.tsx` now sets it inside a
+ * fixed-dark hero panel instead of a light `bg-muted` mat, with a smaller
+ * static card peeking from behind it for depth. The root `bg-card` below
+ * already reads correctly against either backdrop in both app themes, so
+ * that composition lives entirely in `Landing.tsx`.
  */
 import { useEffect, useRef, useState } from 'react'
 
@@ -219,15 +235,15 @@ export function LandingAuctionDemo() {
           <line x1="0" y1={py(RESERVE)} x2={W} y2={py(RESERVE)} stroke="var(--color-muted-foreground)" strokeDasharray="4 4" strokeOpacity="0.6" />
           <defs>
             <linearGradient id="landing-price-fill" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="var(--color-chart-1)" stopOpacity="0.3" />
-              <stop offset="100%" stopColor="var(--color-chart-1)" stopOpacity="0.02" />
+              <stop offset="0%" stopColor="var(--accent)" stopOpacity="0.3" />
+              <stop offset="100%" stopColor="var(--accent)" stopOpacity="0.02" />
             </linearGradient>
           </defs>
           {frame.areaD && <path d={frame.areaD} fill="url(#landing-price-fill)" stroke="none" />}
           {frame.pathD && (
-            <path d={frame.pathD} fill="none" stroke="var(--color-chart-1)" strokeWidth="2" strokeLinejoin="round" />
+            <path d={frame.pathD} fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinejoin="round" />
           )}
-          {frame.phase !== 'gap' && <circle cx={frame.dotX} cy={frame.dotY} r="4.5" fill="var(--color-chart-1)" stroke="var(--color-card)" strokeWidth="2" />}
+          {frame.phase !== 'gap' && <circle cx={frame.dotX} cy={frame.dotY} r="4.5" fill="var(--accent)" stroke="var(--color-card)" strokeWidth="2" />}
         </svg>
       </div>
 
@@ -248,7 +264,7 @@ export function LandingAuctionDemo() {
                 y={on ? (44 - full).toFixed(1) : '44'}
                 height={on ? full : 0}
                 rx="2"
-                fill="var(--color-chart-1)"
+                fill="var(--accent)"
                 fillOpacity={bucketT > 0.7 ? 0.75 : 0.4}
                 style={{ transition: 'height 0.3s ease, y 0.3s ease' }}
               />
@@ -264,7 +280,7 @@ export function LandingAuctionDemo() {
         {frame.log.map((entry, i) => (
           <div key={`${entry.who}-${i}`} className="text-muted-foreground text-xs">
             <b className="text-foreground font-medium">{entry.who}</b> bid{' '}
-            <span className="text-chart-1 font-mono">{entry.price.toFixed(2)} XRP</span>
+            <span className="font-mono text-[var(--accent)]">{entry.price.toFixed(2)} XRP</span>
           </div>
         ))}
       </div>

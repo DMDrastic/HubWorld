@@ -34,9 +34,28 @@
  * worth seeing clearly and the step text only has to be readable in a
  * narrow column, not comfortable — smaller type than the `lg:` column uses,
  * same as the rest of this trade-off.
+ *
+ * The "01…05" step numbers read `var(--accent)` (declared by `Landing.tsx`
+ * on the subtree this mounts into) rather than `--primary`. The phone-screen
+ * mockups themselves — `TicketScreen`, `GiftScreen`, `AuctionScreen`,
+ * `CapScreen`, `DoorScreen` — deliberately keep `--primary` (violet)
+ * untouched: they reproduce real in-app UI, and recoloring a reproduction of
+ * the shipped app would make it lie about what the app actually looks like.
+ * Only the marketing chrome around the phone picks up the new accent.
+ *
+ * STEP COPY (2026-10 product-first pass). Titles and bodies were rewritten to
+ * drop ledger language ("XRPL NFT," "buy offer on the ledger," "signs with
+ * their own key") in favour of the benefit each step actually delivers — see
+ * `Landing.tsx`'s own file-top comment for why: the product is the pitch,
+ * the ledger is the machinery underneath it. The step TITLES render in the
+ * page's one body face (Geist) like everything else on this page — an
+ * earlier pass gave them a second display face via `--font-display`; that
+ * token no longer exists (Fraunces was removed), so this reverts to the
+ * single-typeface system the rest of the page already uses.
  */
 import { useEffect, useRef, useState } from 'react'
 import { CheckCircle2 } from 'lucide-react'
+import iphoneFrame from '@/assets/iphone-17-pro-cosmic-orange-portrait.png'
 
 function demoHue(slug: string): number {
   let h = 5381
@@ -55,32 +74,45 @@ type ScreenId = 'ticket' | 'gift' | 'auction' | 'cap' | 'door'
 const STEPS: { eyebrow: string; title: string; body: string; screen: ScreenId }[] = [
   {
     eyebrow: '01',
-    title: "It's in your wallet, not our database",
-    body: 'Every ticket is an XRPL NFT the moment it’s minted. We can show it to you — we were never holding it, and nobody can revoke it.',
+    title: 'Yours the moment you buy it',
+    // "nobody can revoke it" is a verified claim, not marketing language:
+    // `buildMintTx` in the backend mints with `TF_TRANSFERABLE | TF_MUTABLE`
+    // only — no `tfBurnable` — so neither HubWorld nor the organizer has any
+    // on-ledger way to seize or destroy a ticket once it's issued.
+    body: "Every ticket lands directly in your account. We can show it to you — but we can't take it back, and neither can anyone else.",
     screen: 'ticket',
   },
   {
     eyebrow: '02',
     title: 'Send it to a friend, free',
-    body: 'Two signatures, no fees, no re-issuing. A ticket moves exactly like anything else you own.',
+    body: 'A couple of taps. No fee, no re-issuing — just send it to someone else.',
     screen: 'gift',
   },
   {
     eyebrow: '03',
     title: 'Watch the price climb, live',
-    body: 'A bid is a buy offer on the ledger. The price only moves when one actually lands — never faked, never hidden.',
+    body: 'Real bids move the price. Follow the auction as it unfolds.',
     screen: 'auction',
   },
   {
     eyebrow: '04',
     title: 'Scalpers hit a real ceiling',
-    body: 'Organizers can cap resale at a percentage of face value, a flat price, or switch it off — enforced on every listing, reserve, and bid.',
+    // The enforcement clause is scoped to "through HubWorld" deliberately —
+    // `checkResalePrice` (src/resale-policy.ts, backend) is real and
+    // enforced server-side on listings, bids, and auction-open, but it has
+    // no power over a private sale made outside the app, and the claim
+    // should not imply otherwise.
+    body: 'Organizers can cap resale at face value, a percentage limit, or a fixed ceiling — or leave it unrestricted. Every resale through HubWorld follows the rule they set.',
     screen: 'cap',
   },
   {
     eyebrow: '05',
-    title: "A screenshot can't sign",
-    body: 'At the door, the attendee signs with their own key. A forwarded photo has nothing behind it to sign with.',
+    title: "A screenshot can't get you in",
+    // Precision matters here: nothing is technically "presented" and
+    // scanned at the door. The attendee's own device signs a challenge, and
+    // that signature is checked against who currently holds the ticket
+    // on-ledger — a photo has no key behind it to sign with.
+    body: "At the door, you prove it's really you — a live signature, checked against who actually holds the ticket right now. A screenshot has nothing behind it to sign with.",
     screen: 'door',
   },
 ]
@@ -288,93 +320,99 @@ const SCREENS: Record<ScreenId, () => React.JSX.Element> = {
 }
 
 /**
- * A chassis colour has to read against EITHER theme, and the first version
- * failed on dark: its bezel (`#0a0a0c`) was close enough to dark mode's
- * `--background` (`#09090d`) that the frame was functionally invisible. A
- * real device's colour doesn't change with the app running on it, so this
- * stays literal rather than a theme token — titanium's edge highlight does
- * the same job in promotional renders: a brushed-metal gradient reads as a
- * frame at a glance in a way a flat fill, dark OR light, does not.
+ * The real bezel: Apple's own "iPhone 17 Pro — Cosmic Orange — Portrait"
+ * product-bezel asset (developer.apple.com/design/resources — Product
+ * Bezels, free to use when showcasing an app), replacing the earlier
+ * hand-drawn titanium/body div stack.
+ *
+ * Apple's source canvas (1350×2760) carries a transparent margin AROUND the
+ * device silhouette (it doesn't touch the canvas edges) — harmless in
+ * Apple's own tooling, but a visible hairline artifact here: the frame
+ * `<img>` is scaled down for display, and that scaling left a faint but real
+ * fringe exactly at the image's own rectangular bounding box, outside the
+ * device's rounded silhouette — not inside the PNG's pixels (its alpha is
+ * verified 0 at every edge pixel) but introduced by the browser compositing
+ * a scaled image with transparent padding against the page behind it. The
+ * fix is to remove the thing the artifact has to attach to: the asset is
+ * cropped to the device's exact opaque bounding box (measured via the alpha
+ * channel's `getbbox()`, not eyeballed) before being saved, so the `<img>`'s
+ * own box edges coincide with the visible silhouette and there is no dead
+ * margin left for anything to fringe.
+ *
+ * `SCREEN` below is the transparent "screen cutout" rectangle, measured the
+ * same way, then re-expressed as a percentage of THIS cropped canvas (not
+ * the original 1350×2760 one — cropping shifts the origin, so the original
+ * measurement's raw pixel coordinates were offset by the crop before
+ * converting to percentages):
+ *   - left 4.249%, right 4.325%, top 7.324%, bottom 1.767% of the cropped
+ *     880×1814 canvas.
+ *   - corner radius: measured ~110px on a 1205×2470px screen rect (unchanged
+ *     by the crop, since it's internal to the screen rect). A single
+ *     percentage radius would reproduce the elongated-corner bug this file
+ *     hit once already (percentage border-radius resolves independently
+ *     against width and height) — so this uses CSS's `x% / y%` elliptical
+ *     radius form instead: 110/1205 ≈ 9.13% horizontal, 110/2470 ≈ 4.45%
+ *     vertical, which stays a true (non-egg-shaped) corner at any size.
+ * The content layer renders BELOW the frame image (z-0 vs the image's
+ * implicit stacking as the next sibling); the frame's own Dynamic-Island
+ * and camera cutouts are baked into the PNG, so they composite over the
+ * content for free instead of being redrawn by hand.
  */
-const TITANIUM =
-  'linear-gradient(155deg, #6b6b72 0%, #3a3a40 14%, #222226 50%, #3a3a40 86%, #6b6b72 100%)'
-const BODY = 'linear-gradient(155deg, #302f33 0%, #1c1b1e 50%, #302f33 100%)'
+const SCREEN = { left: 4.249, right: 4.325, top: 7.324, bottom: 1.767, radius: '9.13% / 4.45%' }
 
-/**
- * Every measurement below is a PERCENTAGE of the frame's own box, not a
- * fixed rem value, specifically so the chassis — buttons, island, screen
- * inset — stays in proportion whether this renders at mobile width or the
- * larger sticky desktop size, rather than looking right at one and wrong at
- * the other.
- */
 function PhoneFrame({ screen }: { screen: ScreenId }) {
   const Screen = SCREENS[screen]
   return (
     <div className="mx-auto w-full max-w-[300px]">
-      <div
-        className="elevate relative aspect-[9/19.5] overflow-hidden rounded-[3.1rem]"
-        style={{ background: TITANIUM, padding: '2.6%' }}
-      >
-        {/* Action button, then two volume buttons — left edge, top to bottom. */}
+      <div className="elevate relative aspect-[1318/2717]">
         <div
-          className="absolute -left-px h-[3.5%] w-[1.6%] rounded-l-sm"
-          style={{ top: '14%', background: 'rgba(0,0,0,0.45)' }}
-          aria-hidden
-        />
-        <div
-          className="absolute -left-px h-[6%] w-[1.6%] rounded-l-sm"
-          style={{ top: '20%', background: 'rgba(0,0,0,0.45)' }}
-          aria-hidden
-        />
-        <div
-          className="absolute -left-px h-[6%] w-[1.6%] rounded-l-sm"
-          style={{ top: '27.5%', background: 'rgba(0,0,0,0.45)' }}
-          aria-hidden
-        />
-        {/* Power button — right edge. */}
-        <div
-          className="absolute -right-px h-[9%] w-[1.6%] rounded-r-sm"
-          style={{ top: '18%', background: 'rgba(0,0,0,0.45)' }}
-          aria-hidden
-        />
-
-        <div
-          className="relative size-full overflow-hidden rounded-[2.6rem]"
-          style={{ background: BODY }}
+          /* `bg-card`, not `bg-background` — the screen sits inside a frame
+             on a page whose own body is `bg-background`, so matching that
+             token made the "lit screen" indistinguishable from a hole in
+             the page in dark mode (card is reliably a shade lighter than
+             background in both themes, which is also the direction a real
+             backlit screen should read). */
+          className="bg-card absolute z-0 overflow-hidden"
+          style={{
+            left: `${SCREEN.left}%`,
+            right: `${SCREEN.right}%`,
+            top: `${SCREEN.top}%`,
+            bottom: `${SCREEN.bottom}%`,
+            borderRadius: SCREEN.radius,
+          }}
         >
-          <div
-            /* `bg-card`, not `bg-background` — the screen sits inside a
-               titanium bezel on a page whose own body is `bg-background`,
-               so matching that token made the "lit screen" indistinguishable
-               from a hole in the page in dark mode (card is reliably a shade
-               lighter than background in both themes, which is also the
-               direction a real backlit screen should read). */
-            className="bg-card absolute overflow-hidden rounded-[2.2rem]"
-            style={{ inset: '7px' }}
-          >
-            <div
-              className="absolute left-1/2 z-10 -translate-x-1/2 rounded-full"
-              style={{ top: '2.4%', height: '3.3%', width: '32%', background: '#000' }}
-              aria-hidden
-            />
-            <div className="absolute inset-0" style={{ paddingTop: '8.5%' }}>
-              <div key={screen} className="screen-fade h-full">
-                <Screen />
-              </div>
-            </div>
-            {/* A faint diagonal gloss, the way a glass screen catches light in
-                product photography — purely decorative, so it's excluded from
-                the fade/remount key and never competes with the content. */}
-            <div
-              className="pointer-events-none absolute inset-0"
-              style={{
-                background:
-                  'linear-gradient(135deg, rgba(255,255,255,0.05) 0%, transparent 32%)',
-              }}
-              aria-hidden
-            />
+          {/* Full-bleed, no safe-area padding. A padded gap here was tried
+              first and reads WRONG rather than careful: it leaves bare
+              `bg-card` exposed with nothing drawn on it, invisible on the
+              dark-mode screens but a plain white seam under the island in
+              light mode — any screen that paints its own background
+              (`TicketScreen`'s photo) shows a hard edge where that background
+              stops short of the frame's own edge. A real iOS screenshot has
+              no such gap: content renders full-bleed under the island, which
+              is a hardware cutout sitting ON TOP of the display, not a
+              reserved blank strip. */}
+          <div key={screen} className="screen-fade absolute inset-0">
+            <Screen />
           </div>
+          {/* A faint diagonal gloss, the way a glass screen catches light in
+              product photography — purely decorative, so it's excluded from
+              the fade/remount key and never competes with the content. */}
+          <div
+            className="pointer-events-none absolute inset-0"
+            style={{
+              background: 'linear-gradient(135deg, rgba(255,255,255,0.05) 0%, transparent 32%)',
+            }}
+            aria-hidden
+          />
         </div>
+
+        <img
+          src={iphoneFrame}
+          alt=""
+          aria-hidden
+          draggable={false}
+          className="pointer-events-none relative z-10 size-full select-none"
+        />
       </div>
     </div>
   )
@@ -435,7 +473,7 @@ export function LandingPhoneShowcase() {
             }}
             className="flex min-h-[42vh] flex-col justify-center py-6 sm:min-h-[55vh] lg:min-h-[65vh] lg:py-8"
           >
-            <span className="text-primary/70 font-mono text-xs tabular-nums">{s.eyebrow}</span>
+            <span className="font-mono text-xs tabular-nums text-[var(--accent)]/70">{s.eyebrow}</span>
             <h3 className="mt-2 max-w-md text-base leading-snug font-medium tracking-tight text-balance sm:text-xl lg:text-2xl">
               {s.title}
             </h3>

@@ -67,6 +67,10 @@ auction. Keep it code-split, and keep it the only importer of `BidChart`.
 
 ## Frontend structure
 
+`frontend/CLAUDE.md` governs visual design standards (typography, color, layout,
+the "vibe-coded" hard bans) for anything rendered in the browser — read it before
+touching a page, component, or style. This file stays architecture and decisions.
+
 Signed out you get `Landing` — the product explained before anyone is asked to
 connect a wallet. Signed in, `/` is `Hub`: what you hold, what is happening now,
 and where to go next. Everything requiring a decision lives on its own page
