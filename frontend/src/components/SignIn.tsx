@@ -32,6 +32,7 @@ type Phase =
 export function SignIn({
   onAuthenticated,
   primaryButtonClassName,
+  primaryButtonLabel = 'Sign in',
 }: {
   onAuthenticated: (u: AuthUser) => void
   /**
@@ -43,6 +44,16 @@ export function SignIn({
    * resize every other `size="lg"` button app-wide.
    */
   primaryButtonClassName?: string
+  /**
+   * Text on the idle-state button only — every other mount keeps the literal
+   * "Sign in" default. The landing hero's CTA copy is "Explore Hubworld"
+   * rather than naming the auth mechanism; the action behind it is still a
+   * real sign-in (this is the one live `SignIn` instance on that page), so
+   * relabeling the button is honest — clicking it starts the same flow a
+   * "Sign in" label would, just described by what happens next rather than
+   * how.
+   */
+  primaryButtonLabel?: string
 }) {
   const [phase, setPhase] = useState<Phase>({ kind: 'idle' })
   const [busy, setBusy] = useState(false)
@@ -154,7 +165,7 @@ export function SignIn({
             size="lg"
             className={cn('w-full', primaryButtonClassName)}
           >
-            {busy ? 'Starting…' : 'Sign in'}
+            {busy ? 'Starting…' : primaryButtonLabel}
           </Button>
         )}
 
