@@ -315,11 +315,15 @@ export const DelegationPollSchema = z.discriminatedUnion('state', [
  * `unknown` means the ledger could not be read. It is NOT "not granted", and the
  * UI must not word it as though the grant had gone.
  */
+export const PermissionStateSchema = z.enum(['granted', 'not_granted', 'unknown'])
+
 export const DelegationMeSchema = z.union([
   z.object({ available: z.literal(false), state: z.literal('unavailable') }),
   z.object({
     available: z.literal(true),
-    state: z.enum(['granted', 'not_granted', 'unknown']),
+    state: PermissionStateSchema,
+    /** Each permission on its own; absent from a server that predates the second. */
+    permissions: z.object({ mint: PermissionStateSchema, offers: PermissionStateSchema }).optional(),
     delegateAddress: z.string(),
     grantedAt: z.string().nullable(),
     staleGrant: z.boolean(),
@@ -335,12 +339,19 @@ export function fetchDelegation(): Promise<DelegationMe> {
   return request('/delegation/me', DelegationMeSchema)
 }
 
-export function requestGrant(): Promise<DelegationRequest> {
-  return request('/delegation/grant', DelegationRequestSchema, { method: 'POST' })
+export type DelegationScope = 'mint' | 'offers'
+
+export function requestGrant(permission: DelegationScope = 'mint'): Promise<DelegationRequest> {
+  return request('/delegation/grant', DelegationRequestSchema, { method: 'POST', body: { permission } })
 }
 
-export function requestRevoke(): Promise<DelegationRequest> {
-  return request('/delegation/revoke', DelegationRequestSchema, { method: 'POST' })
+/**
+ * Takes back ONE permission and leaves the other in force. There is deliberately
+ * no "everything" here: a revoke button that quietly also ended minting is the
+ * kind of surprise this screen exists to prevent.
+ */
+export function requestRevoke(permission: DelegationScope = 'mint'): Promise<DelegationRequest> {
+  return request('/delegation/revoke', DelegationRequestSchema, { method: 'POST', body: { permission } })
 }
 
 export function pollDelegation(uuid: string): Promise<DelegationPoll> {

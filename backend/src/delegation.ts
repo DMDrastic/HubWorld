@@ -45,6 +45,49 @@ import * as stubLedger from './stub-ledger.js'
  */
 export const MINT_PERMISSION = 'NFTokenMint' as const
 
+/**
+ * The second permission, used only for the lazy primary sale.
+ *
+ * Far more dangerous than minting: minting only creates value for the organizer,
+ * whereas offer creation lets the delegate put the organizer's EXISTING tickets
+ * up for sale — measured, a zero-price offer to itself returns `tesSUCCESS`.
+ * Funds stay safe (`Payment` is still refused). It is therefore its own consent,
+ * never bundled into the mint grant, and revoked independently.
+ */
+export const OFFER_PERMISSION = 'NFTokenCreateOffer' as const
+
+/** Every permission Hubworld ever asks for. Anything else on a grant is not ours. */
+export const KNOWN_PERMISSIONS = [MINT_PERMISSION, OFFER_PERMISSION] as const
+export type KnownPermission = (typeof KNOWN_PERMISSIONS)[number]
+
+/**
+ * The permission set to send to GRANT `permission` while keeping what is held.
+ *
+ * `DelegateSet` replaces the whole set. Sending only the new permission silently
+ * revokes the old one, so a grant is always `current ∪ new`. Sorted and
+ * de-duplicated so equal sets compare equal.
+ */
+export function permissionsAfterGrant(current: readonly string[], add: string): string[] {
+  return [...new Set([...current, add])].sort()
+}
+
+/**
+ * The set to send to REVOKE `remove` (or everything, when omitted).
+ *
+ * An empty result is the revocation of the delegate entirely.
+ */
+export function permissionsAfterRevoke(current: readonly string[], remove?: string): string[] {
+  if (remove === undefined) return []
+  return [...new Set(current)].filter((p) => p !== remove).sort()
+}
+
+/** Same members, regardless of order or repeats. */
+export function samePermissions(a: readonly string[], b: readonly string[]): boolean {
+  const x = [...new Set(a)].sort()
+  const y = [...new Set(b)].sort()
+  return x.length === y.length && x.every((v, i) => v === y[i])
+}
+
 /** The amendment that must be active before any of this can be submitted. */
 export const DELEGATION_AMENDMENT = 'PermissionDelegationV1_1' as const
 
@@ -222,12 +265,9 @@ export async function readPermission(
   params: { organizerAddress: string; delegateAddress: string },
   permission: string,
 ): Promise<'granted' | 'absent' | 'unknown'> {
-  if (xamanMode === 'stub') {
-    return stubLedger.hasDelegation(params.organizerAddress, params.delegateAddress, permission)
-      ? 'granted'
-      : 'absent'
-  }
-  return readPermissionOnLedger(params, permission)
+  const set = await readPermissionSet(params)
+  if (set === 'unknown') return 'unknown'
+  return set.includes(permission) ? 'granted' : 'absent'
 }
 
 /**
@@ -238,6 +278,34 @@ export async function readPermissionOnLedger(
   params: { organizerAddress: string; delegateAddress: string },
   permission: string,
 ): Promise<'granted' | 'absent' | 'unknown'> {
+  const set = await readPermissionSetOnLedger(params)
+  if (set === 'unknown') return 'unknown'
+  return set.includes(permission) ? 'granted' : 'absent'
+}
+
+/**
+ * Everything this organizer has granted this delegate, as the ledger holds it.
+ *
+ * The WHOLE set matters, not one permission at a time: a `DelegateSet` replaces
+ * it, so computing a new grant or a partial revoke needs the current contents.
+ * `'unknown'` is "the ledger did not answer" and must never be treated as an
+ * empty set — building a revoke from a set we could not read could silently
+ * remove a permission the organizer meant to keep.
+ */
+export async function readPermissionSet(params: {
+  organizerAddress: string
+  delegateAddress: string
+}): Promise<string[] | 'unknown'> {
+  if (xamanMode === 'stub') {
+    return stubLedger.delegationSet(params.organizerAddress, params.delegateAddress)
+  }
+  return readPermissionSetOnLedger(params)
+}
+
+export async function readPermissionSetOnLedger(params: {
+  organizerAddress: string
+  delegateAddress: string
+}): Promise<string[] | 'unknown'> {
   let client
   try {
     client = await ledger()
@@ -254,20 +322,20 @@ export async function readPermissionOnLedger(
     // Via `unknown`: xrpl.js types account_objects as a union of every ledger
     // entry, and `Delegate` is not in that union in 5.0.0.
     const objects = res.result.account_objects as unknown as Array<Record<string, unknown>>
-    const found = objects.some((o) => {
-      if (o.Authorize !== params.delegateAddress) return false
-      const permissions = (o.Permissions ?? []) as Array<{
-        Permission?: { PermissionValue?: string }
-      }>
-      return permissions.some((p) => p.Permission?.PermissionValue === permission)
-    })
-    return found ? 'granted' : 'absent'
+    const held = new Set<string>()
+    for (const o of objects) {
+      if (o.Authorize !== params.delegateAddress) continue
+      for (const p of (o.Permissions ?? []) as Array<{ Permission?: { PermissionValue?: string } }>) {
+        if (p.Permission?.PermissionValue) held.add(p.Permission.PermissionValue)
+      }
+    }
+    return [...held].sort()
   } catch (err) {
     // An account with no delegate objects at all can answer actNotFound rather
     // than an empty set, and "no grant" is the correct reading of THAT. Any
     // other failure is a transport problem and says nothing about the grant.
     const message = err instanceof Error ? err.message : String(err)
-    return /actNotFound|Account not found/i.test(message) ? 'absent' : 'unknown'
+    return /actNotFound|Account not found/i.test(message) ? [] : 'unknown'
   }
 }
 

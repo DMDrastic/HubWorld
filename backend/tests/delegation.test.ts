@@ -21,6 +21,11 @@ import {
   buildRevokeMintTx,
   DELEGATION_AMENDMENT,
   MINT_PERMISSION,
+  OFFER_PERMISSION,
+  KNOWN_PERMISSIONS,
+  permissionsAfterGrant,
+  permissionsAfterRevoke,
+  samePermissions,
 } from '../src/delegation.js'
 import { buildMintTx } from '../src/ledger.js'
 
@@ -194,5 +199,31 @@ describe('constants', () => {
   it('names the permission and amendment exactly', () => {
     expect(MINT_PERMISSION).toBe('NFTokenMint')
     expect(DELEGATION_AMENDMENT).toBe('PermissionDelegationV1_1')
+  })
+})
+
+describe('permission set arithmetic', () => {
+  it('a grant is the union, sorted and de-duplicated', () => {
+    expect(permissionsAfterGrant(['NFTokenMint'], 'NFTokenCreateOffer')).toEqual(['NFTokenCreateOffer', 'NFTokenMint'])
+    expect(permissionsAfterGrant(['NFTokenMint'], 'NFTokenMint')).toEqual(['NFTokenMint'])
+    expect(permissionsAfterGrant([], 'NFTokenMint')).toEqual(['NFTokenMint'])
+  })
+
+  it('a revoke removes only what it names, and nothing means everything', () => {
+    expect(permissionsAfterRevoke(['NFTokenCreateOffer', 'NFTokenMint'], 'NFTokenCreateOffer')).toEqual(['NFTokenMint'])
+    expect(permissionsAfterRevoke(['NFTokenMint'], 'NFTokenCreateOffer')).toEqual(['NFTokenMint'])
+    expect(permissionsAfterRevoke(['NFTokenCreateOffer', 'NFTokenMint'])).toEqual([])
+  })
+
+  it('compares as sets', () => {
+    expect(samePermissions(['b', 'a'], ['a', 'b', 'b'])).toBe(true)
+    expect(samePermissions(['a'], ['a', 'b'])).toBe(false)
+    expect(samePermissions([], [])).toBe(true)
+  })
+
+  it('names the offer permission exactly, and it is not the mint one', () => {
+    expect(OFFER_PERMISSION).toBe('NFTokenCreateOffer')
+    expect(OFFER_PERMISSION).not.toBe(MINT_PERMISSION)
+    expect([...KNOWN_PERMISSIONS]).toEqual(['NFTokenMint', 'NFTokenCreateOffer'])
   })
 })

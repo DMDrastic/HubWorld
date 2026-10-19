@@ -461,6 +461,13 @@ model Delegation {
   kind   DelegationKind
   status DelegationStatus @default(PENDING)
 
+  /// The COMPLETE permission set this `DelegateSet` carries. The ledger replaces
+  /// the whole set rather than adding to it, so a grant is `current + new` and a
+  /// partial revoke is `current - removed`; an empty set is the full revocation.
+  /// Rows from before this column existed are empty: read them through
+  /// `targetPermissions`, which maps a legacy GRANT to the mint permission.
+  permissions String[] @default([])
+
   payloadUuid String @unique
 
   txHash        String?

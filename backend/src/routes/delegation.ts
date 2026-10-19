@@ -1,15 +1,27 @@
 /**
- * Granting and revoking delegated minting.
+ * Granting and revoking what Hubworld's delegate account may do as an organizer.
  *
- * An organizer authorises Hubworld's DELEGATE account to submit `NFTokenMint`
- * as them, and nothing else. They sign that once in Xaman instead of once per
- * ticket. Hubworld never signs the grant — it is the organizer's account that
- * is granting — so this has the same two-step shape as minting:
+ * Two permissions exist, each its own consent:
+ *
+ *   mint   — `NFTokenMint`. Lets Hubworld mint the event's tickets unattended.
+ *   offers — `NFTokenCreateOffer`. Lets Hubworld put ONE ticket up for sale at
+ *            checkout (the lazy primary sale). Far more dangerous: it can list
+ *            the organizer's existing tickets, so it is never bundled with mint.
+ *
+ * The organizer signs a `DelegateSet` in Xaman — Hubworld cannot, since it is the
+ * organizer's account that grants — so this has the same two-step shape as
+ * minting:
  *
  *   POST /api/delegation/grant   → build DelegateSet, create payload, return QR
  *   POST /api/delegation/revoke  → the inverse, equally easy
  *   GET  /api/delegation/:uuid   → poll until the LEDGER agrees
  *   GET  /api/delegation/me      → where things stand right now
+ *
+ * **`DelegateSet` REPLACES the whole permission set.** Granting `offers` by
+ * sending only that would silently revoke `mint`, and a revoke of one permission
+ * by sending an empty set would revoke both. So every request is built from the
+ * set the ledger currently holds, and an unreadable ledger refuses rather than
+ * guessing.
  *
  * The ledger is the authority throughout, not the `Delegation` row. A signature
  * is not a grant (it still has to validate), and an organizer can revoke in
@@ -28,11 +40,14 @@ import { issuesOf } from '../schemas.js'
 import { requireAuth, requireOrganizer } from '../session.js'
 import { txSucceeded, XAMAN_NETWORK } from '../ledger.js'
 import {
-  buildDelegateMintTx,
-  buildRevokeMintTx,
+  buildDelegateSetTx,
   delegationAvailable,
-  readPermission,
+  readPermissionSet,
+  permissionsAfterGrant,
+  permissionsAfterRevoke,
+  samePermissions,
   MINT_PERMISSION,
+  OFFER_PERMISSION,
 } from '../delegation.js'
 import { signedByOtherAccount } from '../signer.js'
 
@@ -41,8 +56,24 @@ export const delegationRouter = Router()
 const TTL_MS = SIGNIN_TTL_MINUTES * 60 * 1000
 const UuidParams = z.object({ uuid: z.string().uuid() })
 
+const SCOPE = { mint: MINT_PERMISSION, offers: OFFER_PERMISSION } as const
+
+const GrantBody = z.object({ permission: z.enum(['mint', 'offers']).default('mint') })
+const RevokeBody = z.object({ permission: z.enum(['mint', 'offers', 'all']).default('all') })
+
 async function organizerOf(userId: string) {
   return prisma.user.findUnique({ where: { id: userId } })
+}
+
+/**
+ * The set a request carried, as a list of permission names.
+ *
+ * Rows from before the column existed are empty; a legacy GRANT was always the
+ * mint permission alone, and a legacy REVOKE always the empty set.
+ */
+function targetPermissions(row: { kind: 'GRANT' | 'REVOKE'; permissions: string[] }): string[] {
+  if (row.permissions.length > 0) return row.permissions
+  return row.kind === 'GRANT' ? [MINT_PERMISSION] : []
 }
 
 /**
@@ -63,10 +94,17 @@ async function refuseUnavailable(res: Response): Promise<string | null> {
 }
 
 /**
- * POST /api/delegation/grant
+ * POST /api/delegation/grant   { permission?: 'mint' | 'offers' }
  * Organizer-only. Returns a Xaman payload for the organizer to sign.
  */
 delegationRouter.post('/delegation/grant', requireAuth, requireOrganizer, async (req, res) => {
+  const body = GrantBody.safeParse(req.body ?? {})
+  if (!body.success) {
+    res.status(400).json({ error: 'Invalid request', details: issuesOf(body.error) })
+    return
+  }
+  const wanted = SCOPE[body.data.permission]
+
   const delegate = await refuseUnavailable(res)
   if (!delegate) return
 
@@ -77,14 +115,23 @@ delegationRouter.post('/delegation/grant', requireAuth, requireOrganizer, async 
   }
   const pair = { organizerAddress: organizer.xrplAddress, delegateAddress: delegate }
 
-  // Already granted: say so rather than spending a payload on a no-op. The
-  // quota counts creations and cannot be reclaimed.
-  if ((await readPermission(pair, MINT_PERMISSION)) === 'granted') {
+  // The current set is the base of the new one — see the header. If it cannot be
+  // read, building a replacement would be a guess about what to keep.
+  const current = await readPermissionSet(pair)
+  if (current === 'unknown') {
+    res.status(503).json({ error: 'Could not read your current access just now. Try again shortly.' })
+    return
+  }
+
+  // Already granted: say so rather than spending a payload on a no-op. The quota
+  // counts creations and cannot be reclaimed.
+  if (current.includes(wanted)) {
     res.json({ state: 'granted' })
     return
   }
 
-  const txjson = buildDelegateMintTx(pair)
+  const target = permissionsAfterGrant(current, wanted)
+  const txjson = buildDelegateSetTx(pair, target)
   const payload = await xaman.createPayload(txjson as unknown as Record<string, unknown>, {
     flow: 'DELEGATE_GRANT',
     userId: organizer.id,
@@ -103,6 +150,7 @@ delegationRouter.post('/delegation/grant', requireAuth, requireOrganizer, async 
       // Frozen: see the column comment.
       delegateAddress: delegate,
       kind: 'GRANT',
+      permissions: target,
       payloadUuid: payload.uuid,
       expiresAt,
     },
@@ -118,21 +166,27 @@ delegationRouter.post('/delegation/grant', requireAuth, requireOrganizer, async 
 })
 
 /**
- * POST /api/delegation/revoke
+ * POST /api/delegation/revoke   { permission?: 'mint' | 'offers' | 'all' }
  * Organizer-only. Revocation is one transaction and takes effect on the next
  * ledger — it must stay as easy as granting, or "revocable" is a claim rather
  * than a property.
  */
 delegationRouter.post('/delegation/revoke', requireAuth, requireOrganizer, async (req, res) => {
+  const body = RevokeBody.safeParse(req.body ?? {})
+  if (!body.success) {
+    res.status(400).json({ error: 'Invalid request', details: issuesOf(body.error) })
+    return
+  }
+
   const organizer = await organizerOf(req.userId!)
   if (!organizer) {
     res.status(401).json({ error: 'Not signed in' })
     return
   }
 
-  // Revoke the delegate the grant NAMED, not whichever is configured now. After
-  // a key rotation the old grant still names the old account, and revoking the
-  // new one would leave it in force.
+  // Revoke the delegate the grant NAMED, not whichever is configured now. After a
+  // key rotation the old grant still names the old account, and revoking the new
+  // one would leave it in force.
   const lastGrant = await prisma.delegation.findFirst({
     where: { organizerId: organizer.id, network: NETWORK, kind: 'GRANT', status: 'ACTIVE' },
     orderBy: { createdAt: 'desc' },
@@ -144,12 +198,33 @@ delegationRouter.post('/delegation/revoke', requireAuth, requireOrganizer, async
   }
   const pair = { organizerAddress: organizer.xrplAddress, delegateAddress: delegate }
 
-  if ((await readPermission(pair, MINT_PERMISSION)) === 'absent') {
-    res.json({ state: 'revoked' })
-    return
+  const current = await readPermissionSet(pair)
+  const which = body.data.permission
+
+  let target: string[]
+  if (which === 'all') {
+    // Taking everything away needs no knowledge of what is held, so an
+    // unreadable ledger must not block someone trying to take access away.
+    if (current !== 'unknown' && current.length === 0) {
+      res.json({ state: 'revoked' })
+      return
+    }
+    target = []
+  } else {
+    // A partial revoke keeps the rest, which means knowing the rest. Sending a
+    // set built from a failed read could remove a permission they meant to keep.
+    if (current === 'unknown') {
+      res.status(503).json({ error: 'Could not read your current access just now. Try again shortly.' })
+      return
+    }
+    if (!current.includes(SCOPE[which])) {
+      res.json({ state: 'revoked' })
+      return
+    }
+    target = permissionsAfterRevoke(current, SCOPE[which])
   }
 
-  const txjson = buildRevokeMintTx(pair)
+  const txjson = buildDelegateSetTx(pair, target)
   const payload = await xaman.createPayload(txjson as unknown as Record<string, unknown>, {
     flow: 'DELEGATE_REVOKE',
     userId: organizer.id,
@@ -165,6 +240,7 @@ delegationRouter.post('/delegation/revoke', requireAuth, requireOrganizer, async
       organizerAddress: organizer.xrplAddress,
       delegateAddress: delegate,
       kind: 'REVOKE',
+      permissions: target,
       payloadUuid: payload.uuid,
       expiresAt,
     },
@@ -179,12 +255,18 @@ delegationRouter.post('/delegation/revoke', requireAuth, requireOrganizer, async
   })
 })
 
+type Reading = 'granted' | 'absent' | 'unknown'
+
 /**
  * GET /api/delegation/me
  *
- * `state` is read from the ledger on every call. `unknown` means the ledger
- * could not be read — it is NOT "revoked", and must not be rendered as such: an
- * organizer would be told their grant vanished every time a public node blinked.
+ * Each permission is read from the ledger on every call. `unknown` means the
+ * ledger could not be read — it is NOT "revoked", and must not be rendered as
+ * such: an organizer would be told their grant vanished every time a public node
+ * blinked.
+ *
+ * `state` is the mint permission, kept so a client written before there were two
+ * still reads the same thing.
  */
 delegationRouter.get('/delegation/me', requireAuth, requireOrganizer, async (req, res) => {
   const organizer = await organizerOf(req.userId!)
@@ -200,10 +282,10 @@ delegationRouter.get('/delegation/me', requireAuth, requireOrganizer, async (req
     return
   }
 
-  const state = await readPermission(
-    { organizerAddress: organizer.xrplAddress, delegateAddress: delegate },
-    MINT_PERMISSION,
-  )
+  const set = await readPermissionSet({ organizerAddress: organizer.xrplAddress, delegateAddress: delegate })
+  const read = (p: string): Reading => (set === 'unknown' ? 'unknown' : set.includes(p) ? 'granted' : 'absent')
+  const mint = read(MINT_PERMISSION)
+  const offers = read(OFFER_PERMISSION)
 
   // A grant that names an OLD delegate keeps working for that account only. Say
   // so, because the organizer is then "granted" in our table and not in effect.
@@ -212,13 +294,16 @@ delegationRouter.get('/delegation/me', requireAuth, requireOrganizer, async (req
     orderBy: { createdAt: 'desc' },
   })
 
+  const label = (r: Reading) => (r === 'granted' ? 'granted' : r === 'absent' ? 'not_granted' : 'unknown')
+
   res.json({
     available: true,
-    state: state === 'granted' ? 'granted' : state === 'absent' ? 'not_granted' : 'unknown',
+    state: label(mint),
+    permissions: { mint: label(mint), offers: label(offers) },
     delegateAddress: delegate,
     // Only meaningful while it is in force; after a revoke it would read as if
     // access were still held.
-    grantedAt: state === 'granted' ? (lastGrant?.resolvedAt?.toISOString() ?? null) : null,
+    grantedAt: mint === 'granted' ? (lastGrant?.resolvedAt?.toISOString() ?? null) : null,
     staleGrant: Boolean(lastGrant && lastGrant.delegateAddress !== delegate),
   })
 })
@@ -336,14 +421,24 @@ delegationRouter.get('/delegation/:uuid', requireAuth, async (req, res) => {
     return
   }
 
-  // Validated. Confirm against the Delegate object itself before saying so —
-  // the row is a cache, and this is the one place it is allowed to be written.
-  const now = await readPermission(
-    { organizerAddress: row.organizerAddress, delegateAddress: row.delegateAddress },
-    MINT_PERMISSION,
-  )
-  const wanted = row.kind === 'GRANT' ? 'granted' : 'absent'
-  if (now !== wanted) {
+  // Validated. Confirm against the Delegate object itself before saying so — the
+  // row is a cache, and this is the one place it is allowed to be written.
+  //
+  // Compared as sets against what the request CARRIED. A grant is confirmed when
+  // everything it asked for is held; a revoke when nothing beyond what it kept
+  // remains. (Exact equality would hang forever if the organizer touched another
+  // permission between the request and the signature.)
+  const target = targetPermissions(row)
+  const held = await readPermissionSet({
+    organizerAddress: row.organizerAddress,
+    delegateAddress: row.delegateAddress,
+  })
+  const confirmed =
+    held !== 'unknown' &&
+    (row.kind === 'GRANT'
+      ? target.every((p) => held.includes(p))
+      : held.every((p) => target.includes(p)) || samePermissions(held, target))
+  if (!confirmed) {
     // 'unknown' is a transport problem and a mismatch is most likely a read that
     // is a ledger behind. Neither is evidence the request failed, so stay pending
     // rather than writing a failure that would hide a good signature.

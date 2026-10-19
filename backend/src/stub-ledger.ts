@@ -170,6 +170,11 @@ export function applyDelegatedMint(organizer: string): { txHash: string; nfToken
   return { txHash, nfTokenId }
 }
 
+/** The permissions currently granted, sorted — the stub's answer to `readPermissionSet`. */
+export function delegationSet(organizer: string, delegate: string): string[] {
+  return [...(delegations.get(`${organizer}|${delegate}`) ?? [])].sort()
+}
+
 export function hasDelegation(organizer: string, delegate: string, permission: string): boolean {
   return delegations.get(`${organizer}|${delegate}`)?.has(permission) ?? false
 }
