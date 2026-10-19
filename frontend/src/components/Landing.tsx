@@ -94,6 +94,7 @@
  * sticky keeps resolving against the real page. Re-tested after the swap:
  * the phone's Y position holds within a few px across all five steps.
  */
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Link2, SlidersHorizontal, TrendingUp } from 'lucide-react'
 import { SignIn } from '@/components/SignIn'
 import { LandingAuctionDemo } from '@/components/LandingAuctionDemo'
@@ -115,6 +116,99 @@ function liveOn(network: Health['network']): string {
     ? `Live on XRPL ${network}`
     : 'Live on the XRP Ledger'
 }
+
+/**
+ * SURFACE PASS + SCROLL REVEAL (2026-10). Owner read on the colour work:
+ * "too white and no variance" in light mode. Screenshots confirmed it — the
+ * page was ONE tone (a ~#ecf0f4 canvas under white cards, a 5% luminance
+ * step), so nothing separated one section from the next and the cards only
+ * read through a violet-tinted blur shadow. It now has four tonal levels, the
+ * way a fintech dashboard does: a deeper cool-slate CANVAS, a recessed PANEL
+ * (the secondary-market section sits in one), hairline-bordered white CARDS
+ * with a crisp inset-highlight shadow, and an INK panel (the closing CTA).
+ * Tones are declared once on the root wrapper as `--canvas` / `--panel`, per
+ * theme, like `--accent` and the wash percentages already are. Light mode
+ * also scopes `--muted-foreground` and `--live` darker than the app default,
+ * because a deeper canvas costs contrast and measurement found the shipped
+ * `text-live` badge already below 4.5:1 on its own tint.
+ *
+ * `Reveal` is the ONE entrance used by §3-§6: opacity + an 20px rise,
+ * the same duration and exponential ease-out everywhere, staggered by at most
+ * three 90ms steps within a block. Same distance and curve on every unit is
+ * what makes it one rhythm rather than per-element effects. Not applied to
+ * the hero (own mount animation) or §2 (sticky mechanic).
+ */
+function useRevealed(): [React.RefObject<HTMLDivElement | null>, boolean] {
+  const ref = useRef<HTMLDivElement>(null)
+  // Nothing is ever hidden when it cannot be revealed: reduced motion, or no
+  // IntersectionObserver (jsdom, very old browsers), start out shown.
+  const [shown, setShown] = useState(
+    () =>
+      typeof window === 'undefined' ||
+      typeof IntersectionObserver === 'undefined' ||
+      window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true,
+  )
+  useEffect(() => {
+    const el = ref.current
+    if (shown || !el) return
+    const io = new IntersectionObserver(
+      (entries) => {
+        // Also reveal anything already ABOVE the viewport (anchor jump,
+        // restored scroll position) — it will never intersect again.
+        if (entries.some((e) => e.isIntersecting || e.boundingClientRect.top < 0)) {
+          setShown(true)
+          io.disconnect()
+        }
+      },
+      { rootMargin: '0px 0px -8% 0px', threshold: 0.12 },
+    )
+    io.observe(el)
+    // IntersectionObserver reports crossings, so a jump that skips a unit
+    // entirely (anchor link, scrollbar drag) never fires for it. This
+    // passive listener catches that one case: the unit is already behind us.
+    const onScroll = () => {
+      if (el.getBoundingClientRect().bottom < 0) {
+        setShown(true)
+        io.disconnect()
+      }
+    }
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => {
+      io.disconnect()
+      window.removeEventListener('scroll', onScroll)
+    }
+  }, [shown])
+  return [ref, shown]
+}
+
+function Reveal({
+  children,
+  step = 0,
+  className = '',
+}: {
+  children: ReactNode
+  /** 0-2: position in the block's stagger. */
+  step?: 0 | 1 | 2
+  className?: string
+}) {
+  const [ref, shown] = useRevealed()
+  return (
+    <div
+      ref={ref}
+      data-reveal={shown ? 'shown' : 'hidden'}
+      style={{ transitionDelay: shown ? `${step * 90}ms` : undefined }}
+      className={`transition-[opacity,transform] duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+        shown ? 'translate-y-0 opacity-100' : 'translate-y-5 opacity-0'
+      } ${className}`}
+    >
+      {children}
+    </div>
+  )
+}
+
+/** Card surface: hairline + crisp inset highlight, slate-tinted not violet. */
+const CARD_SURFACE =
+  'bg-card ring-1 ring-foreground/10 shadow-[inset_0_1px_0_rgb(255_255_255/0.85),0_1px_2px_rgb(15_23_42/0.07),0_10px_28px_-12px_rgb(15_23_42/0.18)] dark:shadow-[inset_0_1px_0_rgb(255_255_255/0.04),0_1px_2px_rgb(0_0_0/0.4),0_14px_32px_-14px_rgb(0_0_0/0.65)]'
 
 const LIFECYCLE = ['Buy', 'Gift', 'Resell', 'Auction', 'Check in'] as const
 
@@ -160,9 +254,11 @@ export function Landing({
 }) {
   return (
     <div
-      className="relative isolate w-screen space-y-20 overflow-x-clip bg-background pb-16
+      className="relative isolate w-screen space-y-20 overflow-x-clip bg-[linear-gradient(to_bottom,var(--canvas)_calc(100%-12rem),var(--background))] pb-16
+        [--canvas:#e3e8ef] [--panel:#d5dce7] [--lift:60%] [--muted-foreground:#4f5565] [--live:#116a30]
         [--accent:#007da2] [--wash-tint:3.5%] [--wash-1:12%] [--wash-2:9.5%] [--wash-3:8%] [--wash-4:9.5%] [--wash-5:9.5%] [--wash-6:11%] [--wash-glow:0%] [--wash-dot:20%]
         mx-[calc(50%-50vw)] sm:space-y-24
+        dark:[--canvas:#09090d] dark:[--panel:#0e151c] dark:[--lift:0%] dark:[--muted-foreground:#9b9aa7] dark:[--live:#3fb463]
         dark:[--accent:#00aed4] dark:[--wash-tint:6%] dark:[--wash-1:20%] dark:[--wash-2:17%] dark:[--wash-3:14%] dark:[--wash-4:17%] dark:[--wash-5:17%] dark:[--wash-6:19%] dark:[--wash-glow:15%] dark:[--wash-dot:30%]"
     >
       {/* COLOUR PASS (2026-10). Diagnosed from screenshots: five isolated
@@ -258,9 +354,13 @@ export function Landing({
             'radial-gradient(80vw 60vh at 0% 54%, color-mix(in oklch, var(--accent) var(--wash-4), transparent), transparent 72%)',
             'radial-gradient(80vw 56vh at 100% 76%, color-mix(in oklch, var(--accent) var(--wash-5), transparent), transparent 72%)',
             'radial-gradient(90vw 50vh at 50% 100%, color-mix(in oklch, var(--accent) var(--wash-6), transparent), transparent 72%)',
+            // Light-mode lift: the hero opens airy and the canvas deepens
+            // down the page. 0% (transparent) in dark.
+            'linear-gradient(180deg, color-mix(in oklch, white var(--lift), transparent), transparent 48vh)',
           ].join(', '),
           maskImage: 'linear-gradient(to bottom, transparent, black 5%, black 90%, transparent)',
-          WebkitMaskImage: 'linear-gradient(to bottom, transparent, black 5%, black 90%, transparent)',
+          WebkitMaskImage:
+            'linear-gradient(to bottom, transparent, black 5%, black 90%, transparent)',
         }}
       >
         <div
@@ -292,8 +392,8 @@ export function Landing({
             Every ticket you hold, in one hub.
           </h1>
           <p className="text-muted-foreground mx-auto mt-5 max-w-md text-lg leading-relaxed text-pretty">
-            Buy, gift, resell and check in — all from one place, while organizers stay connected
-            to what happens after the first sale.
+            Buy, gift, resell and check in — all from one place, while organizers stay connected to
+            what happens after the first sale.
           </p>
 
           <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
@@ -377,49 +477,67 @@ export function Landing({
           rather than leaving the claim unquantified. */}
       <section id="organizers" className="scroll-mt-20">
         <div className="mx-auto max-w-6xl px-4">
-          <div className="mx-auto max-w-xl text-center">
+          <Reveal className="mx-auto max-w-xl text-center">
             <h2 className="text-foreground text-3xl leading-snug font-semibold tracking-tight text-balance sm:text-4xl">
               Built for organizers who want a say in what happens next.
             </h2>
             <p className="text-muted-foreground mt-3 text-base leading-relaxed text-pretty">
-              Primary sales are only the start. Hubworld keeps you connected to every resale
-              after.
+              Primary sales are only the start. Hubworld keeps you connected to every resale after.
             </p>
-          </div>
+          </Reveal>
           <div className="mt-10 grid gap-5 sm:grid-cols-2">
-            {ORGANIZER_VALUE.map((c) => (
-              <div
+            {ORGANIZER_VALUE.map((c, i) => (
+              <Reveal
                 key={c.title}
-                className={`bg-card ring-foreground/8 elevate group rounded-2xl ring-1 transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:ring-foreground/14 ${
-                  c.featured
-                    ? 'flex flex-col justify-center p-7 sm:col-start-1 sm:row-start-1 sm:row-span-2 sm:p-8'
-                    : 'p-6 sm:col-start-2'
-                }`}
+                step={Math.min(i, 2) as 0 | 1 | 2}
+                className={
+                  c.featured ? 'sm:col-start-1 sm:row-span-2 sm:row-start-1' : 'sm:col-start-2'
+                }
               >
-                <c.icon
-                  aria-hidden
-                  className={`text-[var(--accent)] transition-transform duration-300 group-hover:scale-110 ${c.featured ? 'size-7' : 'size-5'}`}
-                  strokeWidth={1.75}
-                />
-                {c.figure && (
-                  // The page's one commercial number, so it is the display
-                  // element of its card rather than a clause in the body.
-                  // Sourced: MAX_ROYALTY_BPS default 2000 bps (backend/src/env.ts:61).
-                  <p className="text-foreground mt-5 text-5xl leading-none font-semibold tracking-[-0.03em] tabular-nums sm:text-6xl">
-                    {c.figure}
+                <div
+                  className={`${CARD_SURFACE} group h-full rounded-2xl transition-[transform,box-shadow] duration-300 hover:-translate-y-1 hover:ring-foreground/20 ${
+                    c.featured ? 'flex flex-col justify-center p-7 sm:p-8' : 'p-6'
+                  }`}
+                  style={
+                    c.featured
+                      ? {
+                          backgroundImage:
+                            'radial-gradient(120% 70% at 0% 0%, color-mix(in oklch, var(--accent) 9%, transparent), transparent 65%)',
+                        }
+                      : undefined
+                  }
+                >
+                  {/* Icon chip: the accent as a tinted tile, so it reads as a
+                    product-UI element rather than a floating glyph. */}
+                  <span
+                    className={`inline-flex items-center justify-center rounded-xl bg-[var(--accent)]/10 ring-1 ring-[var(--accent)]/20 ${c.featured ? 'size-12' : 'size-10'}`}
+                  >
+                    <c.icon
+                      aria-hidden
+                      className={`text-[var(--accent)] transition-transform duration-300 group-hover:scale-110 ${c.featured ? 'size-6' : 'size-5'}`}
+                      strokeWidth={1.75}
+                    />
+                  </span>
+                  {c.figure && (
+                    // The page's one commercial number, so it is the display
+                    // element of its card rather than a clause in the body.
+                    // Sourced: MAX_ROYALTY_BPS default 2000 bps (backend/src/env.ts:61).
+                    <p className="text-foreground mt-5 text-5xl leading-none font-semibold tracking-[-0.03em] tabular-nums sm:text-6xl">
+                      {c.figure}
+                    </p>
+                  )}
+                  <h3
+                    className={`text-foreground font-medium tracking-tight ${c.featured ? 'mt-3 text-lg' : 'mt-3 text-base'}`}
+                  >
+                    {c.title}
+                  </h3>
+                  <p
+                    className={`text-muted-foreground mt-1.5 leading-relaxed text-pretty ${c.featured ? 'max-w-xs text-sm' : 'text-sm'}`}
+                  >
+                    {c.body}
                   </p>
-                )}
-                <h3
-                  className={`text-foreground font-medium tracking-tight ${c.featured ? 'mt-3 text-lg' : 'mt-3 text-base'}`}
-                >
-                  {c.title}
-                </h3>
-                <p
-                  className={`text-muted-foreground mt-1.5 leading-relaxed text-pretty ${c.featured ? 'max-w-xs text-sm' : 'text-sm'}`}
-                >
-                  {c.body}
-                </p>
-              </div>
+                </div>
+              </Reveal>
             ))}
           </div>
         </div>
@@ -431,16 +549,20 @@ export function Landing({
           hero used to carry it with. */}
       <section>
         <div className="mx-auto max-w-6xl px-4">
-          <div className="mx-auto max-w-xl text-center">
-            <h2 className="text-foreground text-3xl leading-snug font-semibold tracking-tight text-balance sm:text-4xl">
-              A secondary market you&rsquo;re actually part of.
-            </h2>
-            <p className="text-muted-foreground mt-3 text-base leading-relaxed text-pretty">
-              Tickets can be resold at a fixed price or bid on in a live auction — and your resale
-              rules and royalty travel with every sale, automatically.
-            </p>
-          </div>
-          {/* `LandingAuctionDemo`'s own top-of-file comment describes "a
+          {/* The recessed PANEL tier: one deeper, hairline-bordered surface
+             that the white demo card sits on, so this section reads as its
+             own region of the page rather than more of the same canvas. */}
+          <div className="rounded-[32px] border border-foreground/[0.08] bg-[var(--panel)] px-4 py-12 shadow-[inset_0_1px_0_rgb(255_255_255/0.5)] sm:px-10 sm:py-16 dark:shadow-[inset_0_1px_0_rgb(255_255_255/0.04)]">
+            <Reveal className="mx-auto max-w-xl text-center">
+              <h2 className="text-foreground text-3xl leading-snug font-semibold tracking-tight text-balance sm:text-4xl">
+                A secondary market you&rsquo;re actually part of.
+              </h2>
+              <p className="text-muted-foreground mt-3 text-base leading-relaxed text-pretty">
+                Tickets can be resold at a fixed price or bid on in a live auction — and your resale
+                rules and royalty travel with every sale, automatically.
+              </p>
+            </Reveal>
+            {/* `LandingAuctionDemo`'s own top-of-file comment describes "a
               smaller static card peeking from behind it for depth" — that
               described an earlier pass and was never actually built here,
               which is exactly the kind of stale claim this project's
@@ -452,14 +574,15 @@ export function Landing({
               negative z-index this would render on top of the auction demo
               instead of behind it. `aria-hidden` throughout: it is purely
               decorative, nothing it shows is information, only depth. */}
-          <div className="relative mx-auto mt-10 max-w-3xl">
-            <div
-              aria-hidden
-              className="bg-card ring-foreground/6 elevate absolute -inset-x-3 -top-3 bottom-3 -z-10 rotate-[-1.5deg] rounded-[28px] ring-1 sm:-inset-x-4"
-            />
-            <div className="bg-muted rounded-[28px] p-3 shadow-[0_2px_4px_hsl(var(--shadow-color)/0.12),0_18px_40px_-10px_hsl(var(--shadow-color)/0.24),0_48px_100px_-28px_hsl(var(--shadow-color)/0.3)] sm:p-4">
-              <LandingAuctionDemo />
-            </div>
+            <Reveal step={1} className="relative mx-auto mt-10 max-w-3xl">
+              <div
+                aria-hidden
+                className="bg-card ring-foreground/6 absolute shadow-[0_1px_2px_rgb(15_23_42/0.08),0_14px_32px_-12px_rgb(15_23_42/0.2)] -inset-x-3 -top-3 bottom-3 -z-10 rotate-[-1.5deg] rounded-[28px] ring-1 sm:-inset-x-4"
+              />
+              <div className="bg-muted rounded-[28px] p-3 shadow-[0_2px_4px_rgb(15_23_42/0.1),0_18px_40px_-10px_rgb(15_23_42/0.22),0_48px_100px_-28px_rgb(15_23_42/0.3)] sm:p-4">
+                <LandingAuctionDemo />
+              </div>
+            </Reveal>
           </div>
         </div>
       </section>
@@ -480,7 +603,7 @@ export function Landing({
       <section>
         <div className="mx-auto max-w-4xl px-4">
           <div className="grid items-center gap-10 sm:grid-cols-[1.1fr_1fr] sm:gap-14">
-            <div className="text-center sm:text-left">
+            <Reveal className="text-center sm:text-left">
               <h2 className="text-foreground text-3xl leading-snug font-semibold tracking-tight text-balance sm:text-4xl">
                 Ownership you can verify.
               </h2>
@@ -488,23 +611,28 @@ export function Landing({
                 Every ticket carries its own history — who&rsquo;s held it, and when — so a
                 screenshot can never stand in for the real thing.
               </p>
-            </div>
-            <div aria-hidden className="mx-auto w-full max-w-[200px] sm:mx-0">
-              {PROVENANCE.map((step, i) => (
-                <div key={step} className="relative flex items-center gap-3 pb-7 last:pb-0">
-                  {i < PROVENANCE.length - 1 && (
-                    <span className="bg-border absolute top-3 left-[5px] h-full w-px" />
-                  )}
-                  <span
-                    className="relative z-10 size-2.5 shrink-0 rounded-full"
-                    style={{
-                      background: i === 0 || i === PROVENANCE.length - 1 ? 'var(--accent)' : 'var(--color-border)',
-                    }}
-                  />
-                  <span className="text-foreground text-sm font-medium">{step}</span>
-                </div>
-              ))}
-            </div>
+            </Reveal>
+            <Reveal step={1} className="mx-auto w-full max-w-[240px] sm:mx-0">
+              <div aria-hidden className={`${CARD_SURFACE} rounded-2xl p-6`}>
+                {PROVENANCE.map((step, i) => (
+                  <div key={step} className="relative flex items-center gap-3 pb-7 last:pb-0">
+                    {i < PROVENANCE.length - 1 && (
+                      <span className="bg-border absolute top-3 left-[5px] h-full w-px" />
+                    )}
+                    <span
+                      className="relative z-10 size-2.5 shrink-0 rounded-full"
+                      style={{
+                        background:
+                          i === 0 || i === PROVENANCE.length - 1
+                            ? 'var(--accent)'
+                            : 'var(--color-border)',
+                      }}
+                    />
+                    <span className="text-foreground text-sm font-medium">{step}</span>
+                  </div>
+                ))}
+              </div>
+            </Reveal>
           </div>
         </div>
       </section>
@@ -517,34 +645,47 @@ export function Landing({
           rather than a technical page that doesn't exist — Footer.tsx
           explains why an honest destination matters more than a tidy one. */}
       <section>
-        <div className="mx-auto max-w-2xl px-4 text-center">
-          <h2 className="text-foreground text-3xl leading-snug font-semibold tracking-tight text-balance sm:text-4xl">
-            Building an event?
-          </h2>
-          <p className="text-muted-foreground mx-auto mt-3 max-w-md text-base leading-relaxed text-pretty">
-            We&rsquo;re opening a small number of organizer pilots for a more flexible approach to
-            ticketing and resale.
-          </p>
-          <div className="mt-8 flex justify-center">
-            <Button
-              asChild
-              size="lg"
-              className="h-12 rounded-full bg-foreground px-7 text-[0.95rem] text-background transition-transform duration-200 hover:-translate-y-0.5 hover:bg-foreground/85 hover:shadow-lg"
+        <div className="mx-auto max-w-4xl px-4">
+          <Reveal>
+            {/* The INK tier. A deep navy panel in BOTH themes — the one place the
+            page goes dark on purpose — so the page closes on its strongest
+            contrast instead of fading out into the footer. */}
+            <div
+              className="overflow-hidden rounded-[32px] bg-[#0d1a2b] px-6 py-14 text-center text-white shadow-[0_24px_60px_-24px_rgb(13_26_43/0.55)] ring-1 ring-white/10 sm:px-12 sm:py-16"
+              style={{
+                backgroundImage:
+                  'radial-gradient(70% 90% at 50% 0%, color-mix(in oklch, var(--accent) 30%, transparent), transparent 70%)',
+              }}
             >
-              <a href="#hero-signin">Sign in to apply</a>
-            </Button>
-          </div>
-          <p className="text-muted-foreground mx-auto mt-6 max-w-sm text-sm leading-relaxed">
-            Built and tested through a full mainnet rehearsal — real tickets, real settlement.{' '}
-            <a
-              href={REPO}
-              target="_blank"
-              rel="noreferrer noopener"
-              className="text-foreground underline underline-offset-2"
-            >
-              See how it works
-            </a>
-          </p>
+              <h2 className="text-3xl leading-snug font-semibold tracking-tight text-balance text-white sm:text-4xl">
+                Building an event?
+              </h2>
+              <p className="mx-auto mt-3 max-w-md text-base leading-relaxed text-pretty text-white/75">
+                We&rsquo;re opening a small number of organizer pilots for a more flexible approach
+                to ticketing and resale.
+              </p>
+              <div className="mt-8 flex justify-center">
+                <Button
+                  asChild
+                  size="lg"
+                  className="h-12 rounded-full bg-white px-7 text-[0.95rem] text-[#0d1a2b] transition-transform duration-200 hover:-translate-y-0.5 hover:bg-white/90 hover:shadow-lg"
+                >
+                  <a href="#hero-signin">Sign in to apply</a>
+                </Button>
+              </div>
+              <p className="mx-auto mt-6 max-w-sm text-sm leading-relaxed text-white/75">
+                Built and tested through a full mainnet rehearsal — real tickets, real settlement.{' '}
+                <a
+                  href={REPO}
+                  target="_blank"
+                  rel="noreferrer noopener"
+                  className="underline underline-offset-2 text-white"
+                >
+                  See how it works
+                </a>
+              </p>
+            </div>
+          </Reveal>
         </div>
       </section>
 
