@@ -272,7 +272,7 @@ export function LandingAuctionDemo() {
           })}
         </svg>
       </div>
-      <div className="text-muted-foreground text-center text-[0.65rem] tracking-[0.14em] uppercase">
+      <div className="text-muted-foreground text-center text-[0.7rem] tracking-[0.14em] uppercase">
         bid velocity
       </div>
 

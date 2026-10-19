@@ -1,6 +1,26 @@
 /**
  * The signed-out landing page.
  *
+ * CRAFT PASS (2026-10, same three-file scope, content/architecture
+ * unchanged). The owner's read on rebuild #4 was "bland" in both themes —
+ * verified against actual screenshots, not assumed. What was flat, per
+ * section: the background gradient was present but nearly invisible on most
+ * surfaces (opacity/size tuned up, see the root wrapper below); the hero sat
+ * static with no entrance moment or button feedback; the organizer-value
+ * cards were three identical icon-less boxes (now a 2-up bento with real
+ * icons — see §3's own comment for why one is featured); the auction-demo
+ * card's own comment described a "peeking card" depth effect that was never
+ * actually built (now is, see §4); and the trust section was the fourth of
+ * six sections built as pure centered text, which is the literal pattern
+ * CLAUDE.md's §5 names as a default to avoid (now split into a claim + a
+ * small real provenance diagram, see §5). The single biggest flat stretch
+ * wasn't in this file at all — `LandingPhoneShowcase`'s step column reserves
+ * 42-65vh per step and most of that was empty space; see that file's own
+ * comment for the progress rail and active/inactive emphasis added there.
+ * Every addition is a plain CSS transition on state the page already
+ * computes, covered by index.css's existing global `prefers-reduced-motion`
+ * rule — no new motion plumbing.
+ *
  * VISUAL TREATMENT (2026-10 rebuild #4, scoped to this file + `LandingAuctionDemo`
  * + `LandingPhoneShowcase` only — see frontend/CLAUDE.md for why the rest of
  * the app, NavBar included, stays violet). The visual system — Mobbin's
@@ -44,7 +64,37 @@
  *
  * COLOR / TYPE / SHADOW: unchanged from the prior pass. See `--accent`
  * below and `LandingAuctionDemo`'s own comment for the validation.
+ *
+ * FULL-BLEED BACKGROUND (2026-10, following a layout report). `App.tsx`
+ * mounts this page inside `<main className="mx-auto max-w-6xl px-4 ...">`,
+ * so the root wrapper's own background — including the gradient below —
+ * was constrained to that 1152px column too: on any viewport wider than
+ * ~1200px, the true viewport edges showed plain, unstyled `--background`
+ * (near-black in dark mode) outside it, reading as flat black bars down
+ * both sides. The root wrapper now escapes that constraint with the
+ * standard `w-screen` / `mx-[calc(50%-50vw)]` full-bleed trick (pulling a
+ * 100vw-wide box's margins back to the true viewport edge) — applied once,
+ * to the whole page. Every section's own `mx-auto max-w-*` wrapper is
+ * unchanged and still centers its actual content at the same width as
+ * before; only the background (color + gradient) now paints to the true
+ * screen edge behind it.
+ *
+ * `overflow-x-clip`, NOT `overflow-x-hidden` — this is load-bearing, found
+ * by testing rather than reasoning about it in the abstract.
+ * `position: sticky` in `LandingPhoneShowcase` genuinely broke under
+ * `hidden`: a Playwright check scrolling through the five steps showed the
+ * phone's Y position drifting hundreds of pixels instead of holding
+ * steady, because an ancestor with `overflow-x: hidden` computes
+ * `overflow-y: auto` (CSS2.1's "the other axis becomes auto" rule), which
+ * is enough to make that ancestor the nearest scrolling container sticky
+ * resolves against — even though nothing about this wrapper actually
+ * scrolls independently of the page. `overflow-x: clip` solves the same
+ * 100vw-scrollbar problem `hidden` was added for, WITHOUT establishing a
+ * scroll container at all (clip deliberately does not, per spec), so
+ * sticky keeps resolving against the real page. Re-tested after the swap:
+ * the phone's Y position holds within a few px across all five steps.
  */
+import { Link2, SlidersHorizontal, TrendingUp } from 'lucide-react'
 import { SignIn } from '@/components/SignIn'
 import { LandingAuctionDemo } from '@/components/LandingAuctionDemo'
 import { LandingPhoneShowcase } from '@/components/LandingPhoneShowcase'
@@ -68,18 +118,35 @@ function liveOn(network: Health['network']): string {
 
 const LIFECYCLE = ['Buy', 'Gift', 'Resell', 'Auction', 'Check in'] as const
 
+/** The trust section's provenance diagram — real stages, not decoration. */
+const PROVENANCE = ['Minted', 'Held', 'Resold', 'Checked in'] as const
+
+/**
+ * The featured card's "up to 20%" is `MAX_ROYALTY_BPS`'s default (2000 bps,
+ * backend/src/env.ts) stated as a percentage — a real platform default, not a
+ * made-up figure, so it earns the emphasis the featured card gives it.
+ */
 const ORGANIZER_VALUE = [
   {
     title: 'Earn from resale',
-    body: "Set a royalty on every resale, and it's paid automatically — no chasing payments after the fact.",
+    body: 'Set your own royalty on every resale. It is paid automatically — no chasing payments after the fact.',
+    figure: 'Up to 20%',
+    icon: TrendingUp,
+    featured: true,
   },
   {
     title: 'Control resale',
     body: 'Cap resale at a percentage of face value, a fixed price, or turn it off entirely. Your event, your rules.',
+    icon: SlidersHorizontal,
+    figure: null,
+    featured: false,
   },
   {
     title: 'Stay connected',
     body: 'Primary sales, resale, auctions, and check-in all stay part of one system — not four disconnected tools.',
+    icon: Link2,
+    figure: null,
+    featured: false,
   },
 ] as const
 
@@ -93,46 +160,135 @@ export function Landing({
 }) {
   return (
     <div
-      className="space-y-20 pb-16 [--accent:#0d7a89] sm:space-y-24 dark:[--accent:#12a0b0]"
-      style={{
-        // Five blobs down the page rather than one or two near the top —
-        // a radial-gradient's radius is a percentage OF ITS OWN BOX, and
-        // that box is now the whole page (several thousand px tall across
-        // six sections), so a couple of top-anchored blobs sized the way
-        // the single-section version used to be would either balloon to
-        // cover the entire page (washing everything the same colour) or
-        // vanish within the first screenful, depending on which axis
-        // "percent" was read against. Sizing each blob in `vh` instead
-        // keeps every one a consistent, moderate size regardless of total
-        // page height; POSITION is still a percentage (`at X% Y%`), which
-        // is exactly what should scale with page length — it is what
-        // spreads the five down the page rather than bunching near the
-        // top. Alternating left/right keeps it from reading as one column
-        // of colour. Built from the landing page's own scoped `--accent`
-        // (teal, not the app's violet `--primary` — see the root class
-        // above), via the same `color-mix` technique the app's existing
-        // `.aurora` utility already proves (index.css, used on Hub) — not
-        // reused directly since `.aurora` is hardcoded to `--primary`.
-        // `color-mix` recomputes against `--accent` live, so this is
-        // already correct in both themes without a separate dark case.
-        backgroundImage: [
-          'radial-gradient(50vh 50vh at 18% 0%, color-mix(in oklch, var(--accent) 30%, transparent) 0%, transparent 70%)',
-          'radial-gradient(46vh 46vh at 86% 20%, color-mix(in oklch, var(--accent) 24%, transparent) 0%, transparent 70%)',
-          'radial-gradient(52vh 52vh at 8% 46%, color-mix(in oklch, var(--accent) 26%, transparent) 0%, transparent 70%)',
-          'radial-gradient(46vh 46vh at 92% 70%, color-mix(in oklch, var(--accent) 22%, transparent) 0%, transparent 70%)',
-          'radial-gradient(50vh 50vh at 20% 94%, color-mix(in oklch, var(--accent) 28%, transparent) 0%, transparent 70%)',
-        ].join(', '),
-      }}
+      className="relative isolate w-screen space-y-20 overflow-x-clip bg-background pb-16
+        [--accent:#007da2] [--wash-tint:3.5%] [--wash-1:12%] [--wash-2:9.5%] [--wash-3:8%] [--wash-4:9.5%] [--wash-5:9.5%] [--wash-6:11%] [--wash-glow:0%] [--wash-dot:20%]
+        mx-[calc(50%-50vw)] sm:space-y-24
+        dark:[--accent:#00aed4] dark:[--wash-tint:6%] dark:[--wash-1:20%] dark:[--wash-2:17%] dark:[--wash-3:14%] dark:[--wash-4:17%] dark:[--wash-5:17%] dark:[--wash-6:19%] dark:[--wash-glow:15%] dark:[--wash-dot:30%]"
     >
+      {/* COLOUR PASS (2026-10). Diagnosed from screenshots: five isolated
+          blobs read as smudges with flat, dead neutral between them, and the
+          phone-showcase step column (42-65vh per step) was the worst of it.
+          Replaced with one continuous atmosphere, in three quiet layers:
+          (1) the canvas itself carries ~2.5% of the accent, so there is no
+          pure-grey "nothing" anywhere; (2) wide, overlapping, low-chroma
+          washes that bleed into each other down the page instead of sitting
+          as islands, plus a single warm wash beside the phone that answers
+          its orange bezel; (3) a hairline dot grid, faded at top and bottom,
+          that gives empty stretches texture without adding content.
+          Lives in a -z-10 child of an `isolate`d root so it paints above the
+          root background and below every section, and changes nothing about
+          the sticky phone. Static, so reduced motion needs nothing.
+
+          Peak wash percentages were checked against math alone (a single
+          15% layer over a 2.5% canvas tint), which missed that several
+          washes genuinely overlap on screen — real pixel sampling of
+          rendered `text-muted-foreground` body copy over those overlap
+          zones measured as low as 2.46:1 in light mode, well under WCAG
+          AA's 4.5:1 floor for body text (frontend/CLAUDE.md §4). Percentages
+          below are reduced (~40%) from the first pass specifically so those
+          overlaps stay compliant; re-verified the same way — real
+          screenshots, real `getComputedStyle` text color, real pixel
+          sampling at each text element's position, not contrast math on the
+          intended values alone.
+
+          ACCENT SATURATION (2026-10, three rounds — "more vibrant," then
+          "still not vibrant enough," then "brighter, and dark mode looks
+          empty"). `--accent` has moved twice from its original
+          `#0b7280`/`#12a0b0`: first to `#00778d`/`#00a6bd` (chroma x1.4-1.5),
+          now to `#007da2`/`#00aed4` (chroma x2.3 light / x2.1 dark from the
+          ORIGINAL, not compounding on the first bump) — unchanged in this
+          third round. Same OKLCH lightness both times (L unchanged — 0.5068
+          light, 0.6464 dark) and same hue (~210° light, ~208° dark — still
+          teal, nowhere near the violet `frontend/CLAUDE.md` bans): only
+          chroma moved, which is why contrast math stays favourable even at
+          the second, more aggressive step (WCAG contrast is a luminance
+          ratio; chroma at fixed L barely moves it).
+
+          THIRD ROUND — per-theme wash intensity, not a shared bump. By the
+          second round light mode's worst measured body-text contrast had
+          already narrowed to 4.59:1 (real pixel sampling, not math) —
+          pushing it uniformly higher again risked a real AA failure. Dark
+          mode's worst case was 6.86:1, with real headroom to spend. So the
+          wash percentages (`--wash-tint`/`--wash-1`..`--wash-6`/`--wash-dot`
+          below) are now DIFFERENT per theme — declared as bracket-override
+          custom properties on the root wrapper, the exact same mechanism
+          `--accent` already uses for its own light/dark split — rather than
+          one shared set of numbers read by both. Light stayed at the
+          second-round values (12/9.5/8/9.5/9.5/11%, tint 3.5%, dots 20%);
+          dark went up substantially (20/17/14/17/17/19%, tint 6%, dots 30%),
+          since the measured headroom was there to spend.
+
+          A new `--wash-glow` stop was also added — one large, soft,
+          centre-weighted radial sitting behind every other wash in paint
+          order, 0% in light mode (so it costs nothing there, fully
+          transparent) and 15% in dark mode: the literal "add a gradient
+          overlay so dark mode doesn't look so empty" ask, implemented as a
+          genuinely new layer rather than just turning existing numbers up —
+          and dark-exclusive by VALUE on a shared custom property, the same
+          technique as everything else here, rather than a second
+          conditionally-rendered DOM element.
+
+          Re-verified the same way every round, not reasoned about in the
+          abstract: real screenshots, real `getComputedStyle` text colour,
+          real pixel sampling of rendered `text-muted-foreground` body copy
+          at each paragraph's actual on-screen position (not a flat-surface
+          assumption) — see the verification notes for the measured numbers
+          at each step, including this one. */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 -z-10"
+        style={{
+          // Canvas tint (layer 1 of the comment above) lives here rather
+          // than on the root so the mask below can fade it out at both
+          // ends — a tinted root ended in a hard seam against the footer.
+          backgroundImage: [
+            'linear-gradient(color-mix(in oklch, var(--accent) var(--wash-tint), transparent), color-mix(in oklch, var(--accent) var(--wash-tint), transparent))',
+            // The dark-mode-only "fill the emptiness" overlay: one large,
+            // soft, centre-weighted glow with nothing to compete against it
+            // (it sits BEHIND every other stop in paint order, so the
+            // existing washes still read as distinct shapes on top of it).
+            // `--wash-glow` is 0% in light mode, so this stop is fully
+            // transparent there and costs nothing — the overlay is additive
+            // and dark-exclusive by VALUE, not by a second conditional DOM
+            // element, the same technique `--accent` itself already uses.
+            'radial-gradient(85vw 70vh at 50% 45%, color-mix(in oklch, var(--accent) var(--wash-glow), transparent), transparent 75%)',
+            'radial-gradient(90vw 46vh at 50% 0%, color-mix(in oklch, var(--accent) var(--wash-1), transparent), transparent 72%)',
+            'radial-gradient(70vw 60vh at 100% 24%, color-mix(in oklch, var(--accent) var(--wash-2), transparent), transparent 72%)',
+            'radial-gradient(60vw 50vh at 0% 20%, color-mix(in oklch, oklch(0.8 0.1 65) var(--wash-3), transparent), transparent 72%)',
+            'radial-gradient(80vw 60vh at 0% 54%, color-mix(in oklch, var(--accent) var(--wash-4), transparent), transparent 72%)',
+            'radial-gradient(80vw 56vh at 100% 76%, color-mix(in oklch, var(--accent) var(--wash-5), transparent), transparent 72%)',
+            'radial-gradient(90vw 50vh at 50% 100%, color-mix(in oklch, var(--accent) var(--wash-6), transparent), transparent 72%)',
+          ].join(', '),
+          maskImage: 'linear-gradient(to bottom, transparent, black 5%, black 90%, transparent)',
+          WebkitMaskImage: 'linear-gradient(to bottom, transparent, black 5%, black 90%, transparent)',
+        }}
+      >
+        <div
+          className="absolute inset-0"
+          style={{
+            backgroundImage:
+              'radial-gradient(circle, color-mix(in oklch, var(--accent) var(--wash-dot), transparent) 1px, transparent 1.4px)',
+            backgroundSize: '28px 28px',
+          }}
+        />
+      </div>
       {/* ------------------------------------------------------------- 1.
           Hero. Headline, one line of subtext, two pill CTAs — nothing else.
           No XRPL mention, no proof card, no trust strip (trust lives in §5,
           where it's actually about something). Backdrop gradient now lives
           on the root wrapper above (see its own comment) so it carries
           through the whole page, not just this section. */}
-      <section className="pt-16 sm:pt-20">
-        <div className="mx-auto max-w-2xl px-4 text-center">
-          <h1 className="text-foreground text-5xl leading-[1.05] font-bold tracking-[-0.025em] text-balance sm:text-6xl">
+      <section className="!mt-0 pt-16 sm:pt-20">
+        {/* `animate-in` (tw-animate-css, already a project dependency) plays
+            once on mount — the "one orchestrated moment" CLAUDE.md asks for,
+            not a per-element effect scattered down the page. Reduced motion
+            is handled for free: index.css's global `prefers-reduced-motion`
+            rule collapses every animation/transition duration to 0.01ms, so
+            this and every other CSS-driven motion addition below need no
+            separate matchMedia check — only the already-existing rAF loop in
+            LandingAuctionDemo does, because it's JS-driven. */}
+        <div className="animate-in fade-in slide-in-from-bottom-3 mx-auto max-w-2xl px-4 text-center duration-700 ease-out">
+          <h1 className="text-foreground text-5xl leading-[1.03] font-bold tracking-[-0.03em] text-balance sm:text-6xl lg:text-7xl">
             Every ticket you hold, in one hub.
           </h1>
           <p className="text-muted-foreground mx-auto mt-5 max-w-md text-lg leading-relaxed text-pretty">
@@ -153,10 +309,21 @@ export function Landing({
               <SignIn
                 onAuthenticated={onAuthenticated}
                 primaryButtonLabel="Explore Hubworld"
-                primaryButtonClassName="h-12 rounded-full bg-foreground px-7 text-[0.95rem] text-background hover:bg-foreground/85"
+                // `active:translate-y-px` (press-down) already lives on the
+                // shared Button base; `hover:-translate-y-0.5` + the shadow
+                // pair it with a lift on approach, so the two together read
+                // as one tactile press rather than only a colour change —
+                // Button.tsx itself is out of scope, so this is layered on
+                // here via className rather than touching the shared component.
+                primaryButtonClassName="h-12 rounded-full bg-foreground px-7 text-[0.95rem] text-background transition-transform duration-200 hover:-translate-y-0.5 hover:bg-foreground/85 hover:shadow-lg"
               />
             </div>
-            <Button asChild variant="secondary" size="lg" className="h-12 rounded-full px-6 text-[0.95rem]">
+            <Button
+              asChild
+              variant="secondary"
+              size="lg"
+              className="h-12 rounded-full px-6 text-[0.95rem] transition-transform duration-200 hover:-translate-y-0.5 hover:shadow-md"
+            >
               <a href="#organizers">For organizers</a>
             </Button>
           </div>
@@ -198,10 +365,16 @@ export function Landing({
       </section>
 
       {/* ------------------------------------------------------------- 3.
-          Organizer value. The commercial core — three equal-weight cards,
-          practical and scannable rather than editorial. No featured card,
-          no bento asymmetry: that flourish belongs in sections that already
-          have a real visual (§2 and §4), not this one. */}
+          Organizer value. Three equal-weight, identically-shaped cards read
+          flat — exactly the "same-size icon+heading+text card grid" pattern
+          that reads as a lazy default rather than a composed page. Revised
+          into a 2-column bento: "Earn from resale" is the commercially
+          strongest claim of the three (royalties are revenue; the other two
+          are controls), so it leads as the tall, featured card rather than
+          winning by coin flip — each card also now carries a real icon
+          instead of bare text, and the featured card states the actual
+          royalty ceiling (`MAX_ROYALTY_BPS`, see ORGANIZER_VALUE above)
+          rather than leaving the claim unquantified. */}
       <section id="organizers" className="scroll-mt-20">
         <div className="mx-auto max-w-6xl px-4">
           <div className="mx-auto max-w-xl text-center">
@@ -213,11 +386,37 @@ export function Landing({
               after.
             </p>
           </div>
-          <div className="mt-10 grid gap-5 sm:grid-cols-3">
+          <div className="mt-10 grid gap-5 sm:grid-cols-2">
             {ORGANIZER_VALUE.map((c) => (
-              <div key={c.title} className="bg-card ring-foreground/8 elevate rounded-2xl p-6 ring-1">
-                <h3 className="text-foreground text-sm font-medium tracking-tight">{c.title}</h3>
-                <p className="text-muted-foreground mt-1.5 text-sm leading-relaxed text-pretty">
+              <div
+                key={c.title}
+                className={`bg-card ring-foreground/8 elevate group rounded-2xl ring-1 transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:ring-foreground/14 ${
+                  c.featured
+                    ? 'flex flex-col justify-center p-7 sm:col-start-1 sm:row-start-1 sm:row-span-2 sm:p-8'
+                    : 'p-6 sm:col-start-2'
+                }`}
+              >
+                <c.icon
+                  aria-hidden
+                  className={`text-[var(--accent)] transition-transform duration-300 group-hover:scale-110 ${c.featured ? 'size-7' : 'size-5'}`}
+                  strokeWidth={1.75}
+                />
+                {c.figure && (
+                  // The page's one commercial number, so it is the display
+                  // element of its card rather than a clause in the body.
+                  // Sourced: MAX_ROYALTY_BPS default 2000 bps (backend/src/env.ts:61).
+                  <p className="text-foreground mt-5 text-5xl leading-none font-semibold tracking-[-0.03em] tabular-nums sm:text-6xl">
+                    {c.figure}
+                  </p>
+                )}
+                <h3
+                  className={`text-foreground font-medium tracking-tight ${c.featured ? 'mt-3 text-lg' : 'mt-3 text-base'}`}
+                >
+                  {c.title}
+                </h3>
+                <p
+                  className={`text-muted-foreground mt-1.5 leading-relaxed text-pretty ${c.featured ? 'max-w-xs text-sm' : 'text-sm'}`}
+                >
                   {c.body}
                 </p>
               </div>
@@ -241,7 +440,23 @@ export function Landing({
               rules and royalty travel with every sale, automatically.
             </p>
           </div>
-          <div className="mx-auto mt-10 max-w-3xl">
+          {/* `LandingAuctionDemo`'s own top-of-file comment describes "a
+              smaller static card peeking from behind it for depth" — that
+              described an earlier pass and was never actually built here,
+              which is exactly the kind of stale claim this project's
+              mistakes log warns about. Built for real now: a second, inert
+              card sits behind the live one. It needs `-z-10`, not just DOM
+              order — the live card below is a plain static-position div, and
+              a static sibling paints ABOVE an absolutely-positioned one of
+              equal z-index regardless of source order, so without the
+              negative z-index this would render on top of the auction demo
+              instead of behind it. `aria-hidden` throughout: it is purely
+              decorative, nothing it shows is information, only depth. */}
+          <div className="relative mx-auto mt-10 max-w-3xl">
+            <div
+              aria-hidden
+              className="bg-card ring-foreground/6 elevate absolute -inset-x-3 -top-3 bottom-3 -z-10 rotate-[-1.5deg] rounded-[28px] ring-1 sm:-inset-x-4"
+            />
             <div className="bg-muted rounded-[28px] p-3 shadow-[0_2px_4px_hsl(var(--shadow-color)/0.12),0_18px_40px_-10px_hsl(var(--shadow-color)/0.24),0_48px_100px_-28px_hsl(var(--shadow-color)/0.3)] sm:p-4">
               <LandingAuctionDemo />
             </div>
@@ -253,16 +468,44 @@ export function Landing({
           Trust. Stated as a benefit, not a mechanism — no ledger
           explanation here. The three custody facts that used to sit in the
           hero as a trust strip belong here instead, where the section is
-          actually about trust. */}
+          actually about trust.
+
+          This was the fourth of six sections built as plain centered text —
+          exactly the "stack identical centered blocks" pattern CLAUDE.md's
+          §5 names directly. Split into two columns instead: the claim on the
+          left, and a small provenance diagram on the right that actually
+          shows what "carries its own history" means — mint, a hold, a
+          resale, a check-in, each a real stage a ticket moves through, not a
+          decorative sparkline standing in for content. */}
       <section>
-        <div className="mx-auto max-w-2xl px-4 text-center">
-          <h2 className="text-foreground text-3xl leading-snug font-semibold tracking-tight text-balance sm:text-4xl">
-            Ownership you can verify.
-          </h2>
-          <p className="text-muted-foreground mt-3 text-base leading-relaxed text-pretty">
-            Every ticket carries its own history — who&rsquo;s held it, and when — so a
-            screenshot can never stand in for the real thing.
-          </p>
+        <div className="mx-auto max-w-4xl px-4">
+          <div className="grid items-center gap-10 sm:grid-cols-[1.1fr_1fr] sm:gap-14">
+            <div className="text-center sm:text-left">
+              <h2 className="text-foreground text-3xl leading-snug font-semibold tracking-tight text-balance sm:text-4xl">
+                Ownership you can verify.
+              </h2>
+              <p className="text-muted-foreground mx-auto mt-3 max-w-md text-base leading-relaxed text-pretty sm:mx-0">
+                Every ticket carries its own history — who&rsquo;s held it, and when — so a
+                screenshot can never stand in for the real thing.
+              </p>
+            </div>
+            <div aria-hidden className="mx-auto w-full max-w-[200px] sm:mx-0">
+              {PROVENANCE.map((step, i) => (
+                <div key={step} className="relative flex items-center gap-3 pb-7 last:pb-0">
+                  {i < PROVENANCE.length - 1 && (
+                    <span className="bg-border absolute top-3 left-[5px] h-full w-px" />
+                  )}
+                  <span
+                    className="relative z-10 size-2.5 shrink-0 rounded-full"
+                    style={{
+                      background: i === 0 || i === PROVENANCE.length - 1 ? 'var(--accent)' : 'var(--color-border)',
+                    }}
+                  />
+                  <span className="text-foreground text-sm font-medium">{step}</span>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       </section>
 
@@ -286,12 +529,12 @@ export function Landing({
             <Button
               asChild
               size="lg"
-              className="h-12 rounded-full bg-foreground px-7 text-[0.95rem] text-background hover:bg-foreground/85"
+              className="h-12 rounded-full bg-foreground px-7 text-[0.95rem] text-background transition-transform duration-200 hover:-translate-y-0.5 hover:bg-foreground/85 hover:shadow-lg"
             >
-              <a href="#hero-signin">Talk to us</a>
+              <a href="#hero-signin">Sign in to apply</a>
             </Button>
           </div>
-          <p className="text-muted-foreground mx-auto mt-6 max-w-sm text-xs leading-relaxed">
+          <p className="text-muted-foreground mx-auto mt-6 max-w-sm text-sm leading-relaxed">
             Built and tested through a full mainnet rehearsal — real tickets, real settlement.{' '}
             <a
               href={REPO}

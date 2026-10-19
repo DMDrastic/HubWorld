@@ -35,8 +35,9 @@
  * narrow column, not comfortable — smaller type than the `lg:` column uses,
  * same as the rest of this trade-off.
  *
- * The "01…05" step numbers read `var(--accent)` (declared by `Landing.tsx`
- * on the subtree this mounts into) rather than `--primary`. The phone-screen
+ * The "01…05" step numbers and the progress rail beside the step list both
+ * read `var(--accent)` (declared by `Landing.tsx` on the subtree this mounts
+ * into) rather than `--primary`. The phone-screen
  * mockups themselves — `TicketScreen`, `GiftScreen`, `AuctionScreen`,
  * `CapScreen`, `DoorScreen` — deliberately keep `--primary` (violet)
  * untouched: they reproduce real in-app UI, and recoloring a reproduction of
@@ -71,9 +72,8 @@ function demoHue(slug: string): number {
 
 type ScreenId = 'ticket' | 'gift' | 'auction' | 'cap' | 'door'
 
-const STEPS: { eyebrow: string; title: string; body: string; screen: ScreenId }[] = [
+const STEPS: { title: string; body: string; screen: ScreenId }[] = [
   {
-    eyebrow: '01',
     title: 'Yours the moment you buy it',
     // "nobody can revoke it" is a verified claim, not marketing language:
     // `buildMintTx` in the backend mints with `TF_TRANSFERABLE | TF_MUTABLE`
@@ -83,19 +83,16 @@ const STEPS: { eyebrow: string; title: string; body: string; screen: ScreenId }[
     screen: 'ticket',
   },
   {
-    eyebrow: '02',
     title: 'Send it to a friend, free',
     body: 'A couple of taps. No fee, no re-issuing — just send it to someone else.',
     screen: 'gift',
   },
   {
-    eyebrow: '03',
     title: 'Watch the price climb, live',
     body: 'Real bids move the price. Follow the auction as it unfolds.',
     screen: 'auction',
   },
   {
-    eyebrow: '04',
     title: 'Scalpers hit a real ceiling',
     // The enforcement clause is scoped to "through HubWorld" deliberately —
     // `checkResalePrice` (src/resale-policy.ts, backend) is real and
@@ -106,7 +103,6 @@ const STEPS: { eyebrow: string; title: string; body: string; screen: ScreenId }[
     screen: 'cap',
   },
   {
-    eyebrow: '05',
     title: "A screenshot can't get you in",
     // Precision matters here: nothing is technically "presented" and
     // scanned at the door. The attendee's own device signs a challenge, and
@@ -339,32 +335,57 @@ const SCREENS: Record<ScreenId, () => React.JSX.Element> = {
  * own box edges coincide with the visible silhouette and there is no dead
  * margin left for anything to fringe.
  *
- * `SCREEN` below is the transparent "screen cutout" rectangle, measured the
- * same way, then re-expressed as a percentage of THIS cropped canvas (not
- * the original 1350×2760 one — cropping shifts the origin, so the original
- * measurement's raw pixel coordinates were offset by the crop before
- * converting to percentages):
- *   - left 4.249%, right 4.325%, top 7.324%, bottom 1.767% of the cropped
- *     880×1814 canvas.
- *   - corner radius: measured ~110px on a 1205×2470px screen rect (unchanged
- *     by the crop, since it's internal to the screen rect). A single
- *     percentage radius would reproduce the elongated-corner bug this file
- *     hit once already (percentage border-radius resolves independently
- *     against width and height) — so this uses CSS's `x% / y%` elliptical
- *     radius form instead: 110/1205 ≈ 9.13% horizontal, 110/2470 ≈ 4.45%
- *     vertical, which stays a true (non-egg-shaped) corner at any size.
- * The content layer renders BELOW the frame image (z-0 vs the image's
+ * `SCREEN` below is the transparent "screen cutout" rectangle, re-measured
+ * after a second pass on the asset (2026-10): Apple's own bezel render
+ * includes a genuine, OPAQUE black bezel ring between the metal rail and
+ * the display glass — real black pixels (alpha 255), not transparent —
+ * about 15-20px wide at this resolution, present on all four edges
+ * (verified by sampling raw RGBA values across each edge). That ring is an
+ * authentic part of the photographed device, but since the content layer
+ * renders BELOW the frame image, no CSS change can cover pixels the PNG
+ * itself draws opaque — enlarging the content div's box doesn't erase
+ * pixels painted on top of it. The ring made the content visibly inset
+ * from the metal edge ("black borders on the side"), which reads as
+ * unfilled dead space rather than a deliberate bezel.
+ *
+ * Fixed at the asset level: a bounded flood-erosion (see the one-off script
+ * that produced this file) scans inward from each edge, per row/column,
+ * and converts the first contiguous run of near-black opaque pixels that
+ * leads directly into the existing transparent hole into transparent
+ * pixels too — extending the hole out to the ring's outer edge, flush
+ * against the metal. The scan stops the instant it hits a transparent
+ * pixel, so it only ever touches the ONE ring immediately bordering the
+ * hole and never reaches the Dynamic Island (which sits isolated inside
+ * the hole, with transparent pixels on every side long before any scan
+ * from an outer edge could reach it) — confirmed by inspecting the eroded
+ * result; the island's shape is untouched.
+ *
+ * Re-measured post-erosion, as a percentage of the 880×1814 canvas (same
+ * crop as before — only the hole grew, the outer crop didn't change):
+ *   - left 2.386%, right 2.386%, top 3.252%, bottom 3.252% (now
+ *     near-symmetric, vs. the old 4.25/4.33/7.32/1.77 — the top ring was
+ *     noticeably thicker than the others before erosion).
+ *   - corner radius: measured ~115px on the new ~838×1696px screen rect.
+ *     Still the `x% / y%` elliptical form, not a single percentage, for
+ *     the same reason as before — a single percentage radius resolves
+ *     independently against width and height and reproduces the
+ *     elongated-corner bug this file hit once already: 115/838 ≈ 13.72%
+ *     horizontal, 115/1696 ≈ 6.78% vertical.
+ * The content layer renders BELOW the frame image (z-0 vs. the image's
  * implicit stacking as the next sibling); the frame's own Dynamic-Island
  * and camera cutouts are baked into the PNG, so they composite over the
  * content for free instead of being redrawn by hand.
  */
-const SCREEN = { left: 4.249, right: 4.325, top: 7.324, bottom: 1.767, radius: '9.13% / 4.45%' }
+const SCREEN = { left: 2.386, right: 2.386, top: 3.252, bottom: 3.252, radius: '13.72% / 6.78%' }
 
 function PhoneFrame({ screen }: { screen: ScreenId }) {
   const Screen = SCREENS[screen]
   return (
     <div className="mx-auto w-full max-w-[300px]">
-      <div className="elevate relative aspect-[1318/2717]">
+      {/* No `elevate` here: box-shadow follows the rectangular box, so a
+          light-mode shadow showed a hard-edged rectangle behind the rounded
+          device. `drop-shadow` on the frame <img> follows its alpha. */}
+      <div className="relative aspect-[1318/2717]">
         <div
           /* `bg-card`, not `bg-background` — the screen sits inside a frame
              on a page whose own body is `bg-background`, so matching that
@@ -411,7 +432,7 @@ function PhoneFrame({ screen }: { screen: ScreenId }) {
           alt=""
           aria-hidden
           draggable={false}
-          className="pointer-events-none relative z-10 size-full select-none"
+          className="pointer-events-none relative z-10 size-full select-none drop-shadow-[0_18px_22px_hsl(var(--shadow-color)/0.28)]"
         />
       </div>
     </div>
@@ -460,11 +481,33 @@ export function LandingPhoneShowcase() {
 
   return (
     <div className="grid grid-cols-[57%_1fr] items-start gap-3 sm:grid-cols-[45%_1fr] sm:gap-6 lg:grid-cols-[1fr_1.05fr] lg:gap-12">
-      <div className="sticky top-16 lg:top-24">
+      {/* Below `sm` the header is two rows (~110px), so the old `top-16`
+          (64px) parked the phone's top 46px UNDER it — island and status area
+          cropped, measured with Playwright. 7.25rem clears it; `sm:` returns to
+          the single-row header. */}
+      <div className="sticky top-[7.25rem] sm:top-20 lg:top-24">
         <PhoneFrame screen={STEPS[active]!.screen} />
       </div>
 
-      <div className="space-y-0">
+      {/* The step column used to be the blandest stretch of the whole page:
+          each block reserves 42-65vh (tuned for the sticky-scroll pacing
+          above, and left untouched here) for a few lines of text vertically
+          centered in otherwise empty space — several full screens of nothing
+          to look at while scrolling. A progress rail along the left edge
+          fills that space with something that is actually true (how far
+          through the five real steps you are, not a decorative filler), and
+          the active step brightening while its neighbours dim gives the
+          scroll a visible focal point instead of five identical-weight
+          blocks. Both are plain CSS transitions on already-computed `active`
+          state — no new motion plumbing, and already covered by index.css's
+          global `prefers-reduced-motion` rule. */}
+      <div className="relative space-y-0 pl-5 sm:pl-7">
+        <div aria-hidden className="bg-border/70 absolute top-1 bottom-1 left-0 w-px sm:left-0.5">
+          <div
+            className="absolute inset-x-0 top-0 bg-[var(--accent)] transition-[height] duration-500 ease-out"
+            style={{ height: `${((active + 1) / STEPS.length) * 100}%` }}
+          />
+        </div>
         {STEPS.map((s, i) => (
           <div
             key={s.title}
@@ -473,13 +516,23 @@ export function LandingPhoneShowcase() {
             }}
             className="flex min-h-[42vh] flex-col justify-center py-6 sm:min-h-[55vh] lg:min-h-[65vh] lg:py-8"
           >
-            <span className="font-mono text-xs tabular-nums text-[var(--accent)]/70">{s.eyebrow}</span>
-            <h3 className="mt-2 max-w-md text-base leading-snug font-medium tracking-tight text-balance sm:text-xl lg:text-2xl">
-              {s.title}
-            </h3>
-            <p className="text-muted-foreground mt-2.5 max-w-sm text-xs leading-relaxed text-pretty sm:mt-3 sm:text-sm">
-              {s.body}
-            </p>
+            {/* Only the TITLE dims. The body stays at full muted-foreground:
+                the old `opacity-45` on the whole block took the body to ~2.3:1
+                in dark mode (impeccable's live-DOM scan flagged four steps), and
+                the title is large text, which has 3:1 to spend. The rail and
+                the title carry the focal point; the body never needs to hide. */}
+            <div>
+              <h3
+                className={`max-w-md text-base leading-snug font-medium tracking-[-0.02em] text-balance transition-opacity duration-300 sm:text-xl lg:text-2xl ${
+                  i === active ? 'opacity-100' : 'opacity-50'
+                }`}
+              >
+                {s.title}
+              </h3>
+              <p className="text-muted-foreground mt-2.5 max-w-sm text-xs leading-relaxed text-pretty sm:mt-3 sm:text-sm">
+                {s.body}
+              </p>
+            </div>
           </div>
         ))}
       </div>
