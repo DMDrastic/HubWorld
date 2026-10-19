@@ -21,11 +21,12 @@ import { Router, type Response } from 'express'
 import { z } from 'zod'
 import { prisma } from '../prisma.js'
 import { NETWORK } from '../network.js'
-import { delegateMode, xamanMode } from '../env.js'
+import { xamanMode } from '../env.js'
+import { currentDelegate } from '../delegate-account.js'
 import { tryGetPayload, xaman, SIGNIN_TTL_MINUTES } from '../xaman.js'
 import { issuesOf } from '../schemas.js'
 import { requireAuth, requireOrganizer } from '../session.js'
-import { delegateAddress, txSucceeded, XAMAN_NETWORK } from '../ledger.js'
+import { txSucceeded, XAMAN_NETWORK } from '../ledger.js'
 import {
   buildDelegateMintTx,
   buildRevokeMintTx,
@@ -39,24 +40,6 @@ export const delegationRouter = Router()
 
 const TTL_MS = SIGNIN_TTL_MINUTES * 60 * 1000
 const UuidParams = z.object({ uuid: z.string().uuid() })
-
-/** Whether a signer exists to be authorised. Stub mode fabricates one. */
-const delegateConfigured = delegateMode === 'live' || xamanMode === 'stub'
-
-/**
- * The delegate account an organizer would authorise right now, or null when this
- * deployment has none. A bad seed is "not configured" too: deriving an address
- * asks whether the seed is USABLE, which is a different question from whether it
- * is present.
- */
-function currentDelegate(): string | null {
-  if (!delegateConfigured) return null
-  try {
-    return delegateAddress()
-  } catch {
-    return null
-  }
-}
 
 async function organizerOf(userId: string) {
   return prisma.user.findUnique({ where: { id: userId } })

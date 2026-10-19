@@ -103,6 +103,7 @@ model User {
   signInRequests  SignInRequest[]
   mintRequests    MintRequest[]
   delegations     Delegation[]
+  mintJobs        MintJob[]
   giftsSent       Gift[]          @relation("GiftSender")
   giftsReceived   Gift[]          @relation("GiftRecipient")
   redemptions     Redemption[]    @relation("RedeemedHolder")
@@ -299,6 +300,7 @@ model Event {
 
   tickets      Ticket[]
   mintRequests MintRequest[]
+  mintJobs     MintJob[]
   redemptions  Redemption[]
   staff        EventStaff[]
 
@@ -347,6 +349,75 @@ model MintRequest {
 
   @@index([status, expiresAt])
   @@index([eventId, createdAt])
+}
+
+/**
+ * An unattended run of delegated mints for one event.
+ *
+ * The organizer signed nothing per ticket: Hubworld's delegate account submits
+ * `NFTokenMint` with `Account` = organizer under the organizer's grant. This row
+ * is what survives a restart mid-run, so it records what was SENT before it
+ * records what landed — see `pendingWave`.
+ *
+ * `minted` counts tickets that are validated on the ledger and recorded, never
+ * transactions submitted. A transaction can be dropped, rejected, or applied
+ * with a `tec` code (which still burns its sequence and fee), and counting
+ * submissions would leave an event silently short.
+ */
+model MintJob {
+  id      String      @id @default(uuid())
+  network XrplNetwork
+
+  eventId String
+  event   Event  @relation(fields: [eventId], references: [id])
+
+  organizerId      String
+  organizer        User   @relation(fields: [organizerId], references: [id])
+  organizerAddress String
+
+  /// The delegate this job signs as, frozen from the grant it ran under.
+  delegateAddress String
+
+  total  Int
+  minted Int @default(0)
+  /// Transactions the ledger applied with a failure code. Each burned a sequence
+  /// and a fee for no ticket, so they are counted rather than hidden.
+  failedTxs Int @default(0)
+
+  status MintJobStatus @default(QUEUED)
+  /// Why it is paused / failed / waiting, in words for the organizer.
+  statusReason String?
+  /// When a transient wait (fee spike, throttled node) may be retried.
+  nextAttemptAt DateTime?
+
+  /// Asked to stop. A wave already in flight WILL land, so the worker settles it
+  /// and records those tickets before honouring this — cancelling by dropping the
+  /// job would leave tickets on the ledger that no row accounts for.
+  cancelRequested Boolean @default(false)
+
+  /// The wave currently in flight: the hashes, the sequence range and the
+  /// ledger index after which they can no longer land. Written BEFORE
+  /// submitting, because hashes are known once signed — so a crash between
+  /// submit and record is recoverable by asking the ledger about each hash,
+  /// rather than guessing from balances.
+  pendingWave Json?
+
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  startedAt  DateTime?
+  finishedAt DateTime?
+
+  @@index([status, nextAttemptAt])
+  @@index([eventId, createdAt])
+}
+
+enum MintJobStatus {
+  QUEUED // waiting for a worker (or for nextAttemptAt)
+  RUNNING
+  PAUSED // needs the organizer: grant revoked, account cannot fund the reserve
+  DONE
+  FAILED
+  CANCELLED
 }
 
 enum MintStatus {

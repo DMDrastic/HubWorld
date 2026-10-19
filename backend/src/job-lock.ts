@@ -47,6 +47,27 @@ export async function acquireLock(name: string, ttlMs: number): Promise<boolean>
 }
 
 /**
+ * Extend a lease we already hold.
+ *
+ * A long job — a bulk mint runs for minutes — cannot size its TTL to the worst
+ * case up front: too long and a crashed process blocks the job until it lapses,
+ * too short and it expires mid-run and a second worker starts a copy. So the
+ * lease is short and the holder renews it as it makes progress. Returns false
+ * when the lease is no longer ours (it lapsed and someone else took it), which
+ * the caller must treat as "stop now".
+ */
+export async function renewLock(name: string, ttlMs: number): Promise<boolean> {
+  const until = new Date(Date.now() + ttlMs)
+  const rows = await prisma.$queryRaw<Array<{ name: string }>>`
+    UPDATE "JobLock"
+       SET "lockedUntil" = ${until}, "updatedAt" = now()
+     WHERE "name" = ${name} AND "owner" = ${PROCESS_ID}
+    RETURNING "name"
+  `
+  return rows.length > 0
+}
+
+/**
  * Release a lease we hold.
  *
  * Scoped to `owner` so a process that overran its TTL cannot release a lease

@@ -2,6 +2,7 @@ import { Router } from 'express'
 import { prisma } from '../prisma.js'
 import { COMMIT_SHA, env } from '../env.js'
 import { brokerHealth } from '../broker-health.js'
+import { delegateHealth } from '../delegate-health.js'
 import { webhookMode } from '../env.js'
 import { webhooksArriving } from '../payload-store.js'
 
@@ -77,6 +78,7 @@ healthRouter.get('/health', async (_req, res) => {
     commit: COMMIT_SHA,
     network: env.XRPL_NETWORK,
     broker: await brokerHealth(),
+    delegate: await delegateHealth(),
     webhook: await webhookState(),
     uptime: Math.round(process.uptime()),
     timestamp: new Date().toISOString(),

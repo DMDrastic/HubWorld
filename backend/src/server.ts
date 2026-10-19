@@ -7,6 +7,9 @@ import { cancelAbandonedPayloads, reconcileStalePayloads } from './payload-store
 import { withLock } from './job-lock.js'
 import { attachRealtime, closeRealtime } from './realtime.js'
 import { assertDatabaseNetwork } from './network-guard.js'
+import { runDueMintJobs } from './bulk-mint.js'
+import { defaultMintLedger } from './mint-ledger.js'
+import { delegateConfigured } from './delegate-account.js'
 
 // Before anything is served. A process serving another ledger's rows is worse
 // than one that does not start: the failure is silent, and on mainnet it is
@@ -97,9 +100,44 @@ if (brokerMode === 'live') {
   console.warn('Auction settlement disabled: no platform broker account configured.')
 }
 
+/**
+ * Bulk-mint worker.
+ *
+ * Independent of the auction sweep on purpose: minting needs the delegate key,
+ * not the broker, and a deployment can have one without the other. Each job
+ * takes its own lease inside `runMintJob`, so two instances share the queue
+ * rather than one starving the other, and a job left RUNNING by a dead process
+ * is simply picked up again once its lease lapses.
+ */
+const MINT_SWEEP_MS = 10_000
+let mintSweeping = false
+const mintLedger = defaultMintLedger()
+
+const mintSweep = async () => {
+  if (mintSweeping) return
+  mintSweeping = true
+  try {
+    await runDueMintJobs({ ledger: mintLedger })
+  } catch (err) {
+    // Must never take the server down; the next sweep retries.
+    console.error('mint sweep failed:', err)
+  } finally {
+    mintSweeping = false
+  }
+}
+
+let mintTimer: NodeJS.Timeout | null = null
+if (delegateConfigured) {
+  mintTimer = setInterval(() => void mintSweep(), MINT_SWEEP_MS)
+  mintTimer.unref()
+} else {
+  console.warn('Bulk minting disabled: no DELEGATE_SEED configured.')
+}
+
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {
   process.on(signal, () => {
     if (timer) clearInterval(timer)
+    if (mintTimer) clearInterval(mintTimer)
     server.close(() => {
       void Promise.allSettled([closeRealtime(), disconnectLedger(), prisma.$disconnect()]).then(() =>
         process.exit(0),
