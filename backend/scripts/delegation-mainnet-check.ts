@@ -30,8 +30,9 @@ import {
   asDelegatedMint,
   buildDelegateMintTx,
   buildRevokeMintTx,
-  delegationAvailable,
-  hasMintPermission,
+  delegationAvailableOnLedger,
+  readPermissionOnLedger,
+  MINT_PERMISSION,
 } from '../src/delegation.js'
 import { env } from '../src/env.js'
 
@@ -152,8 +153,8 @@ async function main() {
   console.log('  stranded for good  : both base reserves + the NFT page reserve (account deletion is blocked by the NFT)')
 
   head('0. Is the amendment actually usable here?')
-  const available = await delegationAvailable()
-  console.log(`  delegationAvailable(): ${available}`)
+  const available = await delegationAvailableOnLedger()
+  console.log(`  delegationAvailableOnLedger(): ${available}`)
   if (!available) {
     console.log('  Refusing to continue — the gate the routes will use says no.')
     await disconnectLedger()
@@ -191,7 +192,7 @@ async function main() {
   }
   console.log('  Both funded.')
 
-  const pair = { organizerAddress: organizer.classicAddress, platformAddress: platform.classicAddress }
+  const pair = { organizerAddress: organizer.classicAddress, delegateAddress: platform.classicAddress }
   const outcome: Record<string, boolean> = {}
 
   try {
@@ -199,7 +200,7 @@ async function main() {
     const startP = (await balanceDrops(client, platform.classicAddress))!
 
     head('1. Before any grant, do we believe we have permission?')
-    const before = await hasMintPermission(pair)
+    const before = (await readPermissionOnLedger(pair, MINT_PERMISSION)) === 'granted'
     console.log(`  hasMintPermission(): ${before}  (expect false)`)
     outcome['no permission before grant'] = before === false
 
@@ -209,7 +210,7 @@ async function main() {
     const grantCode = await submit(client, organizer, grant, 'DelegateSet')
     outcome['grant accepted'] = grantCode === 'tesSUCCESS'
     if (grantCode !== 'tesSUCCESS') throw new Error('grant failed; stopping before any mint')
-    const after = await hasMintPermission(pair)
+    const after = (await readPermissionOnLedger(pair, MINT_PERMISSION)) === 'granted'
     console.log(`  hasMintPermission(): ${after}  (expect true)`)
     outcome['permission visible after grant'] = after === true
 
@@ -274,7 +275,7 @@ async function main() {
     head('6. Revocation takes effect immediately')
     const revokeCode = await submit(client, organizer, buildRevokeMintTx(pair), 'DelegateSet (revoke)')
     outcome['revoke accepted'] = revokeCode === 'tesSUCCESS'
-    const revoked = await hasMintPermission(pair)
+    const revoked = (await readPermissionOnLedger(pair, MINT_PERMISSION)) === 'granted'
     console.log(`  hasMintPermission(): ${revoked}  (expect false)`)
     outcome['permission gone after revoke'] = revoked === false
     const late = await submitExpectRefusal(
