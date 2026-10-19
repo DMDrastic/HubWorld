@@ -347,6 +347,55 @@ export function pollDelegation(uuid: string): Promise<DelegationPoll> {
   return request(`/delegation/${encodeURIComponent(uuid)}`, DelegationPollSchema)
 }
 
+// -------------------------------------------------------------- bulk mint --
+
+export const MintJobStatusSchema = z.enum(['QUEUED', 'RUNNING', 'PAUSED', 'DONE', 'FAILED', 'CANCELLED'])
+
+export const MintJobSchema = z.object({
+  id: z.string(),
+  eventSlug: z.string().optional(),
+  status: MintJobStatusSchema,
+  statusReason: z.string().nullable(),
+  total: z.number(),
+  minted: z.number(),
+  failedTxs: z.number(),
+  cancelRequested: z.boolean(),
+  createdAt: z.string(),
+  finishedAt: z.string().nullable(),
+})
+
+export const MintJobListSchema = z.object({ jobs: z.array(MintJobSchema) })
+
+export type MintJob = z.infer<typeof MintJobSchema>
+
+/** Open means still the organizer's concern: running, waiting, or paused for them. */
+export function isOpenJob(job: MintJob): boolean {
+  return job.status === 'QUEUED' || job.status === 'RUNNING' || job.status === 'PAUSED'
+}
+
+export function startBulkMint(slug: string, count: number): Promise<MintJob> {
+  return request(`/events/${encodeURIComponent(slug)}/mint/bulk`, MintJobSchema, {
+    method: 'POST',
+    body: { count },
+  })
+}
+
+export function fetchMintJobs(slug: string): Promise<MintJob[]> {
+  return request(`/events/${encodeURIComponent(slug)}/mint/jobs`, MintJobListSchema).then((r) => r.jobs)
+}
+
+export function fetchMintJob(id: string): Promise<MintJob> {
+  return request(`/mint/jobs/${encodeURIComponent(id)}`, MintJobSchema)
+}
+
+export function cancelMintJob(id: string): Promise<MintJob> {
+  return request(`/mint/jobs/${encodeURIComponent(id)}/cancel`, MintJobSchema, { method: 'POST' })
+}
+
+export function resumeMintJob(id: string): Promise<MintJob> {
+  return request(`/mint/jobs/${encodeURIComponent(id)}/resume`, MintJobSchema, { method: 'POST' })
+}
+
 // -------------------------------------------------------------- inventory --
 
 export const OwnedTicketSchema = z.object({

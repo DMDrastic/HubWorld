@@ -822,6 +822,11 @@ Hubworld out of the funds-custody path. Changing this changes who mints.
 | `POST /api/delegation/revoke` | organizer-only; the inverse, naming the delegate the grant named |
 | `GET /api/delegation/:uuid` | poll → `pending` / `granted` / `revoked` / `rejected` / `expired` / `failed` |
 | `GET /api/delegation/me` | organizer-only; ledger-read state: `granted` / `not_granted` / `unknown` / `unavailable` |
+| `POST /api/events/:slug/mint/bulk` | organizer-only; start an unattended run of N delegated mints (no signature) |
+| `GET /api/events/:slug/mint/jobs` | organizer-only; recent runs for the event |
+| `GET /api/mint/jobs/:id` | a run's progress: status, reason, minted of total |
+| `POST /api/mint/jobs/:id/cancel` | stop a run (a wave in flight still lands and is recorded) |
+| `POST /api/mint/jobs/:id/resume` | resume a paused run |
 | `GET /api/tickets/mine?verify=` | inventory; `verify=true` reconciles against the ledger |
 | `POST /api/tickets/:nfTokenId/gift` | owner-only; zero-amount offer to an @handle |
 | `POST /api/gifts/:id/accept` | recipient-only; sign the acceptance |
@@ -1247,11 +1252,15 @@ there are no routes or UI yet, so until the slice in `ROADMAP.md` §5b ships the
 low-hundreds ceiling still stands in practice. The thousand-ticket run has only
 been measured on devnet.
 
-**Grant and revoke are built; bulk minting is not.** `src/routes/delegation.ts`,
-`DelegationPanel` and the `Delegation` table cover signing the grant and taking it
-back. What they deliberately do not do is mint: the unattended worker and the lazy
-primary sale are the next two pieces (`~/.claude/plans/delegation-slice.md`
-records the design; `ROADMAP.md` §5b the decision).
+**Grant, revoke and unattended bulk minting are built; selling at scale is not.**
+`src/routes/delegation.ts`, `DelegationPanel` and the `Delegation` table cover the
+grant. `src/bulk-mint.ts` (the worker), `src/bulk-mint-policy.ts` (the rules),
+`src/mint-ledger.ts` (the ledger seam), `src/routes/bulk-mint.ts` and
+`BulkMintPanel` spend it. The lazy primary sale — the sell offer created at
+checkout, so an organizer never funds 1,000 offers — is the remaining piece
+(`ROADMAP.md` §5b has the decision). **Measured on real devnet through the shipped
+worker: 1,000 of 1,000 tickets in 347s (2.9/s), database and ledger in agreement,
+issuer the organizer, 0 failed transactions.** Not yet run on mainnet.
 
 Decisions worth keeping in view:
 
@@ -1277,6 +1286,39 @@ Decisions worth keeping in view:
   `readPermission`/`delegationAvailable` answer from the fake ledger in stub mode;
   `readPermissionOnLedger`/`delegationAvailableOnLedger` always ask the real one.
   Found when the devnet spike reported "not granted" for a grant that existed.
+
+**How the bulk-mint worker is shaped, because each rule was a silent failure:**
+
+- **Waves of 20, each confirmed before the next.** rippled holds only a few
+  future-sequence transactions per account and drops the rest; firing 1,000 at
+  once produced 402 tickets on devnet.
+- **`Sequence` belongs to the ORGANIZER (`Account`); the fee to the delegate.**
+  Using the delegate's sequence works by coincidence between two fresh accounts
+  and then mints nothing (`terPRE_SEQ`). Each wave re-reads the sequence from the
+  ledger, because one dropped transaction blocks every later one.
+- **Success is read per transaction from the validated result, never inferred.** A
+  `tec` still consumes its sequence and fee, so "the sequence advanced" is not "a
+  ticket exists". `MintJob.minted` counts recorded tickets, `failedTxs` the rest.
+- **A wave is written to `MintJob.pendingWave` BEFORE it is submitted** (hashes are
+  known once signed), so a crash between submit and record is recovered by asking
+  the ledger about each hash. The ticket and the counter are written in ONE
+  transaction; two writes would let a crash leave a ticket the job never counted,
+  and the re-run would mint a replacement — one past the advertised size.
+- **The grant is re-read before EVERY wave** and a withdrawn one pauses the run; an
+  unreadable ledger waits rather than pausing ("unknown" is not "revoked"). Fees
+  are re-quoted each wave and a spike waits rather than overpays.
+- **Cancelling lets the wave in flight land and be recorded, then stops** — it
+  will land whatever we decide, and dropping the job would orphan those tickets.
+- **The ledger is a seam, and it carries the permission read.** `MintLedger`
+  (real or stub) decides which ledger answers. The first run against devnet
+  reported "withdrawn" for a grant that existed because the worker asked a
+  mode-switched helper and the script had no Xaman credentials. The unit tests
+  use a fake that models strict sequence order, so they can drop and block
+  transactions on demand; `scripts/bulk-mint-devnet-check.ts` runs the shipped
+  worker against a real ledger and is the verification to repeat before mainnet.
+- **The worker runs from its own sweep (10s), independent of the broker**, under a
+  per-job lease that is renewed each wave, so two instances share the queue and a
+  job left RUNNING by a dead process is picked up once its lease lapses.
 
 **Batch transactions do not rescue this, on two counts.** The `Batch` amendment
 (XLS-56) would let one signature carry several inner mints, but a signature-
@@ -1514,7 +1556,7 @@ be moved in Xaman as a collectible; Hubworld just stops presenting it as a ticke
 
 ## Health check
 
-`GET /api/health` → `{ status, db, commit, network, broker, webhook, uptime, timestamp }`
+`GET /api/health` → `{ status, db, commit, network, broker, delegate, webhook, uptime, timestamp }`
 
 Always returns HTTP 200 so the UI can render a status even when Postgres is
 down; a dead database shows as `status: "degraded"`, `db: "unavailable"`. Check
@@ -1549,6 +1591,12 @@ outside the guard let a malformed seed throw straight through the route, which
 answered **500 to the one endpoint whose entire contract is that it always
 answers 200**. Local runs could never see it — a developer `.env` holds a real
 seed — while CI forces `brokerMode` live with none set.
+
+**`delegate` is the same question for bulk minting.** The delegate account pays the
+fee of every delegated mint, so a dry one stops every run on the platform, silently.
+It shares the broker's reading rules (`src/account-health.ts`): `unknown` is not
+`unfunded`, the reading is cached 60s and races a 2s timeout, and `status` stays a
+statement about the database alone.
 
 **`commit` answers "which build is live?"** Nothing did, so confirming a deploy
 had shipped meant probing an endpoint for a behaviour change and inferring it —

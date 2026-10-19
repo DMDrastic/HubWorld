@@ -99,9 +99,19 @@ mintRouter.post('/events/:slug/mint', requireAuth, requireOrganizer, async (req,
 
   // ticketCount is the cap the organizer advertised. Count minted tickets plus
   // mints already in flight, so rapid double-submits cannot overshoot it.
-  const inFlight = await prisma.mintRequest.count({
-    where: { eventId: event.id, status: { in: ['PENDING', 'SIGNED'] }, expiresAt: { gt: new Date() } },
-  })
+  //
+  // An open bulk run counts too, by what it still has to mint: otherwise a single
+  // mint slipped in beside a 500-ticket run would push the event past its size.
+  const [pendingRequests, openJobs] = await Promise.all([
+    prisma.mintRequest.count({
+      where: { eventId: event.id, status: { in: ['PENDING', 'SIGNED'] }, expiresAt: { gt: new Date() } },
+    }),
+    prisma.mintJob.findMany({
+      where: { eventId: event.id, status: { in: ['QUEUED', 'RUNNING', 'PAUSED'] } },
+      select: { total: true, minted: true },
+    }),
+  ])
+  const inFlight = pendingRequests + openJobs.reduce((n, j) => n + Math.max(0, j.total - j.minted), 0)
   if (event.ticketCount > 0 && event._count.tickets + inFlight >= event.ticketCount) {
     res.status(409).json({
       error: `All ${event.ticketCount} tickets for this event are minted or pending`,

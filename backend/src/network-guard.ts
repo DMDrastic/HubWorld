@@ -34,6 +34,7 @@ const MODELS = [
   'Transfer',
   'XamanPayload',
   'Delegation',
+  'MintJob',
 ] as const
 
 export type ForeignRows = {
@@ -83,6 +84,7 @@ async function countsOn(network: XrplNetwork): Promise<ForeignRows[]> {
     transfer,
     payload,
     delegation,
+    mintJob,
   ] = await Promise.all([
       prisma.event.count({ where }),
       prisma.mintRequest.count({ where }),
@@ -95,6 +97,7 @@ async function countsOn(network: XrplNetwork): Promise<ForeignRows[]> {
       prisma.transfer.count({ where }),
       prisma.xamanPayload.count({ where }),
       prisma.delegation.count({ where }),
+      prisma.mintJob.count({ where }),
     ])
 
   const counts: ForeignRows[] = [
@@ -109,6 +112,7 @@ async function countsOn(network: XrplNetwork): Promise<ForeignRows[]> {
     { model: 'Transfer', network, count: transfer },
     { model: 'XamanPayload', network, count: payload },
     { model: 'Delegation', network, count: delegation },
+    { model: 'MintJob', network, count: mintJob },
   ]
 
   return counts.filter((c) => c.count > 0)

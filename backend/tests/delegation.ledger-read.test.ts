@@ -29,6 +29,8 @@ const {
   MINT_PERMISSION,
 } = await import('../src/delegation.js')
 
+const { realMintLedger, stubMintLedger } = await import('../src/mint-ledger.js')
+
 const pair = { organizerAddress: ORGANIZER, delegateAddress: DELEGATE }
 
 const grantObject = (permission: string, authorize = DELEGATE) => ({
@@ -129,5 +131,25 @@ describe('delegationAvailableOnLedger', () => {
       result: { features: { ABC: { name: 'PermissionDelegationV1_1', enabled: true } } },
     })
     expect(await delegationAvailableOnLedger()).toBe(true)
+  })
+})
+
+describe('the MintLedger seam decides which ledger answers', () => {
+  it('a REAL mint ledger reads the real ledger even when Xaman is stubbed', async () => {
+    // The first run of the shipped worker against devnet reported "withdrawn" for
+    // a grant that existed, because the worker asked a mode-switched helper and
+    // the script had no Xaman credentials. The ledger you build is the ledger
+    // that answers.
+    request.mockResolvedValue({ result: { account_objects: [grantObject('NFTokenMint')] } })
+
+    expect(await realMintLedger().readPermission(ORGANIZER, DELEGATE)).toBe('granted')
+    expect(request).toHaveBeenCalledWith(expect.objectContaining({ command: 'account_objects' }))
+  })
+
+  it('a STUB mint ledger never touches the network', async () => {
+    request.mockResolvedValue({ result: { account_objects: [grantObject('NFTokenMint')] } })
+
+    expect(await stubMintLedger().readPermission(ORGANIZER, DELEGATE)).toBe('absent')
+    expect(request).not.toHaveBeenCalled()
   })
 })

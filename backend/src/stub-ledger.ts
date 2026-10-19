@@ -157,6 +157,19 @@ export function applyTransaction(
   return { txHash }
 }
 
+/**
+ * A delegated `NFTokenMint`: `Account` is the organizer and the delegate only
+ * signed, so the token belongs to the ORGANIZER — the whole point of delegation.
+ * `applyTransaction` cannot express that, since it assigns by signer.
+ */
+export function applyDelegatedMint(organizer: string): { txHash: string; nfTokenId: string } {
+  const txHash = fabricatedId('FEEDCAFE')
+  const nfTokenId = fabricatedId('FEEDC0DE')
+  nftOwners.set(nfTokenId, organizer)
+  transactions.set(txHash, { succeeded: true, nftokenId: nfTokenId })
+  return { txHash, nfTokenId }
+}
+
 export function hasDelegation(organizer: string, delegate: string, permission: string): boolean {
   return delegations.get(`${organizer}|${delegate}`)?.has(permission) ?? false
 }
