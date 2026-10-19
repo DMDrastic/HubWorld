@@ -33,6 +33,7 @@ const MODELS = [
   'Bid',
   'Transfer',
   'XamanPayload',
+  'Delegation',
 ] as const
 
 export type ForeignRows = {
@@ -60,7 +61,7 @@ export async function foreignNetworkRows(): Promise<ForeignRows[]> {
 }
 
 /**
- * The ten counts, for one foreign ledger.
+ * The counts, for one foreign ledger.
  *
  * Counted per network rather than "everything that is not us" so the message
  * can name the ledger. At most two foreign networks exist, so this is twenty
@@ -70,8 +71,19 @@ export async function foreignNetworkRows(): Promise<ForeignRows[]> {
 async function countsOn(network: XrplNetwork): Promise<ForeignRows[]> {
   const where = { network } as const
 
-  const [event, mintRequest, ticket, gift, redemption, listing, auction, bid, transfer, payload] =
-    await Promise.all([
+  const [
+    event,
+    mintRequest,
+    ticket,
+    gift,
+    redemption,
+    listing,
+    auction,
+    bid,
+    transfer,
+    payload,
+    delegation,
+  ] = await Promise.all([
       prisma.event.count({ where }),
       prisma.mintRequest.count({ where }),
       prisma.ticket.count({ where }),
@@ -82,6 +94,7 @@ async function countsOn(network: XrplNetwork): Promise<ForeignRows[]> {
       prisma.bid.count({ where }),
       prisma.transfer.count({ where }),
       prisma.xamanPayload.count({ where }),
+      prisma.delegation.count({ where }),
     ])
 
   const counts: ForeignRows[] = [
@@ -95,6 +108,7 @@ async function countsOn(network: XrplNetwork): Promise<ForeignRows[]> {
     { model: 'Bid', network, count: bid },
     { model: 'Transfer', network, count: transfer },
     { model: 'XamanPayload', network, count: payload },
+    { model: 'Delegation', network, count: delegation },
   ]
 
   return counts.filter((c) => c.count > 0)

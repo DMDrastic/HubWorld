@@ -24,8 +24,9 @@ import {
   asDelegatedMint,
   buildDelegateMintTx,
   buildRevokeMintTx,
-  delegationAvailable,
-  hasMintPermission,
+  delegationAvailableOnLedger,
+  MINT_PERMISSION,
+  readPermissionOnLedger,
 } from '../src/delegation.js'
 import { env } from '../src/env.js'
 
@@ -66,8 +67,8 @@ async function main() {
   const client = await ledger()
 
   head('0. Is the amendment actually usable here?')
-  const available = await delegationAvailable()
-  console.log(`  delegationAvailable(): ${available}`)
+  const available = await delegationAvailableOnLedger()
+  console.log(`  delegationAvailableOnLedger(): ${available}`)
   if (!available) {
     console.log('  Refusing to continue — the gate the routes will use says no.')
     await disconnectLedger()
@@ -82,11 +83,11 @@ async function main() {
 
   const pair = {
     organizerAddress: organizer.classicAddress,
-    platformAddress: platform.classicAddress,
+    delegateAddress: platform.classicAddress,
   }
 
   head('1. Before any grant, do we believe we have permission?')
-  console.log(`  hasMintPermission(): ${await hasMintPermission(pair)}  (expect false)`)
+  console.log(`  hasMintPermission(): ${((await readPermissionOnLedger(pair, MINT_PERMISSION)) === 'granted')}  (expect false)`)
 
   head('2. Organizer grants NFTokenMint — and only that')
   const grant = buildDelegateMintTx(pair)
@@ -95,7 +96,7 @@ async function main() {
     await disconnectLedger()
     return
   }
-  console.log(`  hasMintPermission(): ${await hasMintPermission(pair)}  (expect true)`)
+  console.log(`  hasMintPermission(): ${((await readPermissionOnLedger(pair, MINT_PERMISSION)) === 'granted')}  (expect true)`)
 
   head('3. Platform mints AS the organizer')
   const mint = buildMintTx({
@@ -151,7 +152,7 @@ async function main() {
 
   head('6. Revocation takes effect immediately')
   await submit(organizer, buildRevokeMintTx(pair), 'DelegateSet (revoke)')
-  console.log(`  hasMintPermission(): ${await hasMintPermission(pair)}  (expect false)`)
+  console.log(`  hasMintPermission(): ${((await readPermissionOnLedger(pair, MINT_PERMISSION)) === 'granted')}  (expect false)`)
   await submit(
     platform,
     asDelegatedMint(

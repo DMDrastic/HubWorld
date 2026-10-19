@@ -54,7 +54,7 @@ enum XrplNetwork {
  * does one attendee cost us, end to end?"*. That was unanswerable: every
  * creation looked identical once made.
  *
- * These are the eleven creation sites, one member each. A twelfth flow cannot be
+ * These are the creation sites, one member each. A twelfth flow cannot be
  * added without appearing here, because `PayloadOptions.flow` is required — so
  * the compiler, not a reviewer, is what keeps this list complete.
  *
@@ -75,6 +75,8 @@ enum PayloadFlow {
   LISTING_CANCEL
   AUCTION_OPEN
   AUCTION_BID
+  DELEGATE_GRANT
+  DELEGATE_REVOKE
 }
 
 // ---------------------------------------------------------------- identity --
@@ -100,6 +102,7 @@ model User {
   sessions        Session[]
   signInRequests  SignInRequest[]
   mintRequests    MintRequest[]
+  delegations     Delegation[]
   giftsSent       Gift[]          @relation("GiftSender")
   giftsReceived   Gift[]          @relation("GiftRecipient")
   redemptions     Redemption[]    @relation("RedeemedHolder")
@@ -353,6 +356,66 @@ enum MintStatus {
   REJECTED
   EXPIRED
   FAILED // signed but the ledger rejected it
+}
+
+/**
+ * An organizer's grant of `NFTokenMint` to Hubworld's delegate account.
+ *
+ * This is a CACHE of the ledger, like `Ticket.ownerId`. The authority is the
+ * `Delegate` object on the organizer's account: they can revoke in Xaman without
+ * telling us, so `ACTIVE` here means "we saw it granted", never "it is granted
+ * now". Anything that acts on the permission re-reads the ledger first.
+ *
+ * One live grant per organizer: `NFTokenMint` cannot be scoped to an event by
+ * the ledger, so which events may be minted is enforced by us, not by this row.
+ */
+model Delegation {
+  id      String      @id @default(uuid())
+  network XrplNetwork
+
+  organizerId String
+  organizer   User   @relation(fields: [organizerId], references: [id])
+  /// Snapshotted, like `Listing.sellerAddress`: the ledger object is keyed by
+  /// this address, not by our user row.
+  organizerAddress String
+
+  /// Which delegate account this grant names. FROZEN at creation, for the same
+  /// reason `Listing.brokerAddress` is: the grant authorises ONE account, so
+  /// resolving the delegate globally later would be wrong the moment the key is
+  /// rotated — the grant would still name the old account and quietly stop
+  /// working, with nothing recording which key it needed.
+  delegateAddress String
+
+  /// What this payload asks the organizer to sign.
+  kind   DelegationKind
+  status DelegationStatus @default(PENDING)
+
+  payloadUuid String @unique
+
+  txHash        String?
+  failureReason String?
+
+  createdAt  DateTime  @default(now())
+  expiresAt  DateTime
+  resolvedAt DateTime?
+
+  @@index([organizerId, createdAt])
+  @@index([status, expiresAt])
+}
+
+enum DelegationKind {
+  GRANT
+  REVOKE
+}
+
+enum DelegationStatus {
+  PENDING // waiting for the organizer to sign
+  SIGNED // signed, ledger state not yet confirmed
+  ACTIVE // GRANT confirmed on-ledger
+  REVOKED // REVOKE confirmed on-ledger
+  REJECTED
+  EXPIRED
+  FAILED
 }
 
 enum EventStatus {

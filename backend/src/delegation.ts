@@ -22,15 +22,19 @@
  *   - Revocation is one transaction and takes effect immediately.
  *   - The DELEGATE pays the transaction fee, not the organizer.
  *
- * **This is dormant until the amendment activates.** It is live on devnet,
- * pending on testnet and absent from mainnet, so every entry point here is
- * gated on `delegationAvailable()` rather than assuming support. Building it
- * now is deliberate: the alternative under consideration was an MPT tier, which
- * would have cost the royalty, brokered settlement, resale, auctions and the
- * door's per-ticket verdicts permanently. See `ROADMAP.md` §5b.
+ * The amendment is enabled on mainnet (checked 2026-10-19, and exercised with a
+ * real ticket by `scripts/delegation-mainnet-check.ts`). Every entry point is
+ * still gated on `delegationAvailable()`, read from the ledger, rather than
+ * assuming support from the network name. See `ROADMAP.md` §5b.
+ *
+ * "Delegate" here is the account that SIGNS delegated transactions — a key
+ * separate from the broker's, so that a leaked broker key does not mean "can
+ * mint as every organizer who ever granted".
  */
 import type { DelegateSet, NFTokenMint } from 'xrpl'
+import { xamanMode } from './env.js'
 import { ledger } from './ledger.js'
+import * as stubLedger from './stub-ledger.js'
 
 /**
  * The one permission Hubworld ever asks for.
@@ -54,9 +58,25 @@ export const DELEGATION_AMENDMENT = 'PermissionDelegationV1_1' as const
  */
 export function buildDelegateMintTx(params: {
   organizerAddress: string
-  platformAddress: string
+  delegateAddress: string
 }): DelegateSet {
-  if (params.organizerAddress === params.platformAddress) {
+  return buildDelegateSetTx(params, [MINT_PERMISSION])
+}
+
+/**
+ * A `DelegateSet` carrying exactly the permissions given.
+ *
+ * `DelegateSet` REPLACES the whole permission set for a delegate; it does not
+ * add to it. Granting a second permission by sending only the new one would
+ * silently revoke the first, so every grant must name the full set it intends
+ * the delegate to end up with. Callers add permissions here deliberately —
+ * nothing appends to the mint grant by accident.
+ */
+export function buildDelegateSetTx(
+  params: { organizerAddress: string; delegateAddress: string },
+  permissions: readonly string[],
+): DelegateSet {
+  if (params.organizerAddress === params.delegateAddress) {
     // Delegating to yourself is meaningless, and it usually means a caller has
     // confused the two addresses — which would be a silent no-op otherwise.
     throw new Error('cannot delegate to the same account')
@@ -64,8 +84,8 @@ export function buildDelegateMintTx(params: {
   return {
     TransactionType: 'DelegateSet',
     Account: params.organizerAddress,
-    Authorize: params.platformAddress,
-    Permissions: [{ Permission: { PermissionValue: MINT_PERMISSION } }],
+    Authorize: params.delegateAddress,
+    Permissions: permissions.map((PermissionValue) => ({ Permission: { PermissionValue } })),
   }
 }
 
@@ -79,12 +99,12 @@ export function buildDelegateMintTx(params: {
  */
 export function buildRevokeMintTx(params: {
   organizerAddress: string
-  platformAddress: string
+  delegateAddress: string
 }): DelegateSet {
   return {
     TransactionType: 'DelegateSet',
     Account: params.organizerAddress,
-    Authorize: params.platformAddress,
+    Authorize: params.delegateAddress,
     Permissions: [],
   }
 }
@@ -102,14 +122,14 @@ export function buildRevokeMintTx(params: {
  * (`buildMintTx`). A second builder would be a second chance to get the royalty
  * or the transferable flag wrong.
  */
-export function asDelegatedMint(mint: NFTokenMint, platformAddress: string): NFTokenMint {
-  if (mint.Account === platformAddress) {
+export function asDelegatedMint(mint: NFTokenMint, delegateAddress: string): NFTokenMint {
+  if (mint.Account === delegateAddress) {
     // Would mint an NFT ISSUED BY HUBWORLD — the royalty would accrue to us and
     // the organizer would never receive it. Worth refusing loudly: it is not a
     // crash, it is a silently wrong issuer discovered later on mainnet.
     throw new Error('a delegated mint must be issued by the organizer, not the platform')
   }
-  return { ...mint, Delegate: platformAddress }
+  return { ...mint, Delegate: delegateAddress }
 }
 
 /**
@@ -126,6 +146,21 @@ export function asDelegatedMint(mint: NFTokenMint, platformAddress: string): NFT
 let availability: boolean | null = null
 
 export async function delegationAvailable(): Promise<boolean> {
+  // The fake ledger supports everything HubWorld builds, and stub mode refuses
+  // to boot in production, so this can never claim support on a real network.
+  if (xamanMode === 'stub') return true
+  return delegationAvailableOnLedger()
+}
+
+/**
+ * The same question, always asked of the REAL ledger.
+ *
+ * `xamanMode === 'stub'` means "no Xaman credentials", which is also true of a
+ * script talking to devnet or mainnet with throwaway wallets. Those must never
+ * be answered by the fake ledger — a mainnet check that quietly read the stub
+ * would report on nothing. Scripts use this; the app uses `delegationAvailable`.
+ */
+export async function delegationAvailableOnLedger(): Promise<boolean> {
   if (availability !== null) return availability
 
   try {
@@ -157,18 +192,58 @@ export function resetDelegationCache(): void {
 }
 
 /**
- * Has this organizer actually granted us the mint permission, right now?
+ * Has this organizer actually granted the delegate this permission, right now?
  *
  * The ledger is the authority, not a column we set when they signed. An
  * organizer can revoke in Xaman without telling us — exactly as they can move a
  * ticket without telling us — so a cached "yes" would have us submitting mints
  * that fail one per ticket.
+ *
+ * Returns false when the ledger cannot be read as well as when there is no
+ * grant, which is the safe direction for a permission check: callers refuse to
+ * ACT on a doubtful answer. Anything that would report "revoked" to a person
+ * must use `readPermission` instead and keep "unknown" distinct.
  */
-export async function hasMintPermission(params: {
-  organizerAddress: string
-  platformAddress: string
-}): Promise<boolean> {
-  const client = await ledger()
+export async function hasPermission(
+  params: { organizerAddress: string; delegateAddress: string },
+  permission: string,
+): Promise<boolean> {
+  return (await readPermission(params, permission)) === 'granted'
+}
+
+/**
+ * Like `hasPermission`, but "we could not tell" is its own answer.
+ *
+ * "The ledger did not answer" and "there is no grant" are opposite facts:
+ * collapsing them would tell an organizer their grant was revoked every time a
+ * public node blinks — the same rule `/api/health` follows for the broker.
+ */
+export async function readPermission(
+  params: { organizerAddress: string; delegateAddress: string },
+  permission: string,
+): Promise<'granted' | 'absent' | 'unknown'> {
+  if (xamanMode === 'stub') {
+    return stubLedger.hasDelegation(params.organizerAddress, params.delegateAddress, permission)
+      ? 'granted'
+      : 'absent'
+  }
+  return readPermissionOnLedger(params, permission)
+}
+
+/**
+ * `readPermission` against the REAL ledger regardless of mode. See
+ * `delegationAvailableOnLedger` for why scripts must use this one.
+ */
+export async function readPermissionOnLedger(
+  params: { organizerAddress: string; delegateAddress: string },
+  permission: string,
+): Promise<'granted' | 'absent' | 'unknown'> {
+  let client
+  try {
+    client = await ledger()
+  } catch {
+    return 'unknown'
+  }
   try {
     const res = await client.request({
       command: 'account_objects',
@@ -179,16 +254,27 @@ export async function hasMintPermission(params: {
     // Via `unknown`: xrpl.js types account_objects as a union of every ledger
     // entry, and `Delegate` is not in that union in 5.0.0.
     const objects = res.result.account_objects as unknown as Array<Record<string, unknown>>
-    return objects.some((o) => {
-      if (o.Authorize !== params.platformAddress) return false
+    const found = objects.some((o) => {
+      if (o.Authorize !== params.delegateAddress) return false
       const permissions = (o.Permissions ?? []) as Array<{
         Permission?: { PermissionValue?: string }
       }>
-      return permissions.some((p) => p.Permission?.PermissionValue === MINT_PERMISSION)
+      return permissions.some((p) => p.Permission?.PermissionValue === permission)
     })
-  } catch {
-    // An account with no delegate objects at all can 404 rather than return an
-    // empty set, and "no grant" is the correct reading of that.
-    return false
+    return found ? 'granted' : 'absent'
+  } catch (err) {
+    // An account with no delegate objects at all can answer actNotFound rather
+    // than an empty set, and "no grant" is the correct reading of THAT. Any
+    // other failure is a transport problem and says nothing about the grant.
+    const message = err instanceof Error ? err.message : String(err)
+    return /actNotFound|Account not found/i.test(message) ? 'absent' : 'unknown'
   }
+}
+
+/** Has this organizer granted the mint permission? See `hasPermission`. */
+export async function hasMintPermission(params: {
+  organizerAddress: string
+  delegateAddress: string
+}): Promise<boolean> {
+  return hasPermission(params, MINT_PERMISSION)
 }

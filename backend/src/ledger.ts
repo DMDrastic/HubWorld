@@ -185,6 +185,37 @@ export function platformAddress(): string {
 }
 
 /**
+ * The key that signs delegated transactions. NOT the broker — see `DELEGATE_SEED`
+ * in `env.ts`. It can only act as an organizer for the permissions that
+ * organizer has granted, so it never holds a ticket or custodies a payment.
+ */
+let delegate: Wallet | null = null
+let stubDelegate: Wallet | null = null
+
+export function delegateWallet(): Wallet {
+  if (!env.DELEGATE_SEED) {
+    throw new Error('DELEGATE_SEED is not set — cannot sign a delegated transaction')
+  }
+  delegate ??= Wallet.fromSeed(env.DELEGATE_SEED)
+  return delegate
+}
+
+/**
+ * The address organizers authorise.
+ *
+ * Stub mode with no seed gets a generated one, so grants can be exercised end to
+ * end with no credentials; it can never be a real network because stub mode
+ * refuses to boot in production. Anywhere else a missing seed is an error.
+ */
+export function delegateAddress(): string {
+  if (!env.DELEGATE_SEED && xamanMode === 'stub') {
+    stubDelegate ??= Wallet.generate()
+    return stubDelegate.classicAddress
+  }
+  return delegateWallet().classicAddress
+}
+
+/**
  * Platform cut in drops, floored.
  *
  * BigInt throughout: drops are integers and a Number would lose precision above
