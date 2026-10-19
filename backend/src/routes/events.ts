@@ -34,15 +34,54 @@ eventsRouter.get('/events', async (req, res) => {
       imageUrl: true,
       status: true,
       ticketCount: true,
+      primaryPriceDrops: true,
+      organizerId: true,
       organizer: { select: { username: true, displayName: true } },
       _count: { select: { tickets: true } },
     },
   })
 
+  const forSale = await ticketsForSale(events)
   res.json({
-    events: events.map(({ _count, ...e }) => ({ ...e, ticketsMinted: _count.tickets })),
+    events: events.map(({ _count, organizerId, ...e }) => ({
+      ...e,
+      ticketsMinted: _count.tickets,
+      ticketsForSale: forSale.get(e.slug) ?? 0,
+    })),
   })
 })
+
+/**
+ * How many tickets a buyer could take right now, per event slug.
+ *
+ * Unsold means: minted, still the organizer's, and not held by someone's
+ * checkout (a held ticket is LISTED). Only events with a price have a box
+ * office; the rest report 0 rather than a number a buyer could not act on.
+ */
+async function ticketsForSale(
+  events: Array<{ slug: string; organizerId: string; primaryPriceDrops: bigint | null }>,
+): Promise<Map<string, number>> {
+  const priced = events.filter((e) => e.primaryPriceDrops !== null)
+  const out = new Map<string, number>()
+  if (priced.length === 0) return out
+
+  const rows = await prisma.ticket.groupBy({
+    by: ['eventId', 'ownerId'],
+    where: { event: { slug: { in: priced.map((e) => e.slug) } }, status: 'MINTED' },
+    _count: { _all: true },
+  })
+  const slugById = new Map(
+    (await prisma.event.findMany({ where: { slug: { in: priced.map((e) => e.slug) } }, select: { id: true, slug: true } })).map(
+      (e) => [e.id, e.slug] as const,
+    ),
+  )
+  const organizerBySlug = new Map(priced.map((e) => [e.slug, e.organizerId] as const))
+  for (const r of rows) {
+    const slug = slugById.get(r.eventId)
+    if (slug && organizerBySlug.get(slug) === r.ownerId) out.set(slug, (out.get(slug) ?? 0) + r._count._all)
+  }
+  return out
+}
 
 const SlugParams = z.object({ slug: slugSchema })
 
@@ -68,6 +107,8 @@ eventsRouter.get('/events/:slug', async (req, res) => {
       nftTaxon: true,
       royaltyBps: true,
       platformBps: true,
+      primaryPriceDrops: true,
+      organizerId: true,
       organizer: { select: { username: true, displayName: true, xrplAddress: true } },
       _count: { select: { tickets: true } },
     },
@@ -78,8 +119,9 @@ eventsRouter.get('/events/:slug', async (req, res) => {
     return
   }
 
-  const { _count, ...rest } = event
-  res.json({ ...rest, ticketsMinted: _count.tickets })
+  const { _count, organizerId, ...rest } = event
+  const forSale = await ticketsForSale([{ slug: event.slug, organizerId, primaryPriceDrops: event.primaryPriceDrops }])
+  res.json({ ...rest, ticketsMinted: _count.tickets, ticketsForSale: forSale.get(event.slug) ?? 0 })
 })
 
 /**

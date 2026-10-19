@@ -98,6 +98,7 @@ model User {
   ticketsOwned    Ticket[]        @relation("TicketOwner")
   listingsSelling Listing[]       @relation("ListingSeller")
   listingsBuying  Listing[]       @relation("ListingBuyer")
+  listingsReserved Listing[]      @relation("ListingReservedFor")
   bids            Bid[]
   sessions        Session[]
   signInRequests  SignInRequest[]
@@ -285,6 +286,12 @@ model Event {
   // NFTokenAcceptOffer and takes platformBps from the spread.
   royaltyBps  Int @default(0)
   platformBps Int @default(0)
+
+  /// What one ticket costs at the box office, in drops. Null means the event has
+  /// no checkout: tickets are minted to hold, gifted, or sold by the organizer
+  /// one listing at a time. Set at creation like every other term, and BigInt
+  /// drops like all money — never a float.
+  primaryPriceDrops BigInt?
 
   /// Organizer-set, create-time only — there is no event-edit route, same as
   /// royaltyBps/platformBps/ticketCount. UNRESTRICTED is a safe, honest
@@ -777,6 +784,18 @@ model Listing {
   cancelPayloadUuid String? @unique
   cancelTxHash      String?
 
+  /// Set when this listing was created BY A CHECKOUT, for exactly one buyer: the
+  /// lazy primary sale creates the sell offer at the moment of purchase and the
+  /// ticket is that buyer's until the hold lapses.
+  ///
+  /// Such a listing must NEVER appear in the marketplace or be buyable by anyone
+  /// else, for the same reason an auction's is not: it is not an open offer, it
+  /// is one person's reserved purchase. Its presence is also what tells the poll
+  /// to RELEASE the ticket and cancel the offer when the buyer backs out, rather
+  /// than returning it to sale for nobody.
+  reservedForId String?
+  reservedFor   User?   @relation("ListingReservedFor", fields: [reservedForId], references: [id])
+
   /// Set when this sell offer exists to back an AUCTION rather than a
   /// fixed-price sale. Such a listing must NEVER appear in the marketplace or be
   /// directly buyable — its price is the auction floor, so buying it outright
@@ -795,6 +814,7 @@ model Listing {
   @@index([status, createdAt])
   @@index([ticketId, createdAt])
   @@index([sellerId, status])
+  @@index([reservedForId, status])
 }
 
 enum ListingStatus {

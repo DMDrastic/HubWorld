@@ -24,6 +24,8 @@ import { brokerMode, xamanMode } from '../env.js'
 import { tryGetPayload, xaman, SIGNIN_TTL_MINUTES } from '../xaman.js'
 import { issuesOf } from '../schemas.js'
 import { requireAuth } from '../session.js'
+import { releaseHold } from '../primary-sale.js'
+import { defaultPrimarySaleLedger } from '../primary-sale-ledger.js'
 import { checkResalePrice, maxAskForCap, isPrimarySale } from '../resale-policy.js'
 import {
   brokerSale,
@@ -40,6 +42,9 @@ import {
 } from '../ledger.js'
 
 export const listingsRouter = Router()
+
+// Used only to release a checkout's hold when its buyer backs out.
+const primaryLedger = defaultPrimarySaleLedger()
 
 /** Unsigned-payload TTL. Not the listing's lifetime — see gift-policy.ts. */
 const LIST_TTL_MINUTES = 60
@@ -300,7 +305,11 @@ listingsRouter.get('/listings', async (_req, res) => {
     // auctionId null: an auction's sell offer is priced at the FLOOR, so showing
     // it here would advertise a ticket for its reserve and let a buyer take it
     // without bidding.
-    where: { status: 'ACTIVE', auctionId: null },
+    //
+    // reservedForId null: a checkout's listing belongs to ONE buyer for the length
+    // of their hold. It is not an open offer, and advertising it would invite a
+    // second buyer to bid on a ticket already spoken for.
+    where: { status: 'ACTIVE', auctionId: null, reservedForId: null },
     include: listingInclude,
     orderBy: { listedAt: 'desc' },
     take: 100,
@@ -361,6 +370,13 @@ listingsRouter.post('/listings/:id/buy', requireAuth, async (req, res) => {
       error: 'This ticket is being auctioned — place a bid instead of buying it outright',
       auctionId: listing.auctionId,
     })
+    return
+  }
+  if (listing.reservedForId) {
+    // A checkout's listing is one person's reserved purchase. It is made by the
+    // checkout, which also creates the buyer's payload, so there is nothing for
+    // anyone to buy through here.
+    res.status(409).json({ error: 'This ticket is reserved for another buyer' })
     return
   }
   if (listing.status !== 'ACTIVE' || !listing.offerIndex) {
@@ -666,7 +682,19 @@ listingsRouter.get('/listings/:id', requireAuth, async (req, res) => {
       res.json(view())
       return
     }
+
+    // A checkout's listing is ONE buyer's reserved purchase, not an open offer.
+    // When that buyer backs out there is nobody to return it to sale for, so the
+    // ticket is released and its offer taken off the ledger instead.
+    const backOut = async (reason: string): Promise<boolean> => {
+      if (!listing.reservedForId) return false
+      await releaseHold(listing.id, primaryLedger, reason)
+      res.json({ ...view(), status: 'CANCELLED', state: 'cancelled', reason })
+      return true
+    }
+
     if (status?.cancelled) {
+      if (await backOut('The purchase was declined')) return
       // The buyer backed out. The sell offer is untouched, so the listing
       // returns to sale rather than dying.
       await prisma.listing.update({
@@ -678,6 +706,7 @@ listingsRouter.get('/listings/:id', requireAuth, async (req, res) => {
     }
     if (!status?.signed) {
       if (payloadExpired || status?.expired) {
+        if (await backOut('The purchase expired')) return
         await prisma.listing.update({
           where: { id: listing.id },
           data: { status: 'ACTIVE', buyerId: null, buyerAddress: null, buyPayloadUuid: null },
@@ -699,6 +728,7 @@ listingsRouter.get('/listings/:id', requireAuth, async (req, res) => {
       return
     }
     if (!ok) {
+      if (await backOut('The ledger rejected the bid')) return
       await prisma.listing.update({
         where: { id: listing.id },
         data: { status: 'ACTIVE', buyerId: null, buyerAddress: null, buyPayloadUuid: null, buyTxHash: status.txid },

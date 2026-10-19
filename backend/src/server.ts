@@ -10,6 +10,8 @@ import { assertDatabaseNetwork } from './network-guard.js'
 import { runDueMintJobs } from './bulk-mint.js'
 import { defaultMintLedger } from './mint-ledger.js'
 import { delegateConfigured } from './delegate-account.js'
+import { releaseExpiredHolds } from './primary-sale.js'
+import { defaultPrimarySaleLedger } from './primary-sale-ledger.js'
 
 // Before anything is served. A process serving another ledger's rows is worse
 // than one that does not start: the failure is silent, and on mainnet it is
@@ -56,6 +58,7 @@ const HYGIENE_LOCK = 'payload-hygiene'
 const HYGIENE_LOCK_TTL_MS = 60_000
 
 let sweeping = false
+const saleLedger = defaultPrimarySaleLedger()
 
 const sweep = async () => {
   if (sweeping) return
@@ -74,6 +77,11 @@ const sweep = async () => {
       const freed = await cancelAbandonedPayloads()
       if (freed > 0) console.log(`cancelled ${freed} abandoned Xaman payload(s)`)
     })
+
+    // Checkouts nobody finished: give the ticket back and take its offer off the
+    // ledger. Idempotent, so two instances doing it together is harmless.
+    const reclaimed = await releaseExpiredHolds(saleLedger)
+    if (reclaimed > 0) console.log(`released ${reclaimed} abandoned checkout hold(s)`)
 
     // Not wrapped in a lease here: each auction takes its own, so an instance
     // that loses one simply moves to the next instead of skipping the sweep.

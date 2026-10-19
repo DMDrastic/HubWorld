@@ -29,6 +29,7 @@ import { Prisma } from '@prisma/client'
 import { prisma } from './prisma.js'
 import { NETWORK } from './network.js'
 import { renewLock, acquireLock, releaseLock } from './job-lock.js'
+import { withOrganizerLease } from './organizer-lease.js'
 import { assertPublicBaseUrl, ticketMetadataUri } from './nft-metadata.js'
 import { buildMintTx } from './ledger.js'
 import { asDelegatedMint } from './delegation.js'
@@ -47,6 +48,8 @@ export type WorkerDeps = {
   maxFeeDrops?: number
   /** How long one run may hold the job before yielding to the next sweep. */
   budgetMs?: number
+  /** How long a wave waits for the organizer's account before backing off. */
+  accountWaitMs?: number
 }
 
 /** Ledgers a wave stays valid for. ~4s each, so roughly 80s to land. */
@@ -60,6 +63,7 @@ const DEFAULT_BUDGET_MS = 4 * 60_000
 
 const THROTTLE_BACKOFF_MS = 30_000
 const FEE_BACKOFF_MS = 60_000
+const ACCOUNT_BUSY_BACKOFF_MS = 10_000
 
 type PendingWave = { hashes: string[]; firstSequence: number; lastLedgerSequence: number }
 
@@ -155,99 +159,114 @@ export async function runMintJob(jobId: string, deps: WorkerDeps): Promise<void>
         })
       }
 
-      // A wave already in flight WILL land whatever we decide next, so it is
-      // settled and recorded before anything else — including cancelling.
-      const pending = parsePending(job.pendingWave)
-      if (pending) {
-        const settled = await settleWave(job.id, pending, deps.ledger, sleep)
-        if (settled.kind === 'waiting') return // still in flight; the next sweep resumes it
+      // Everything below submits as the ORGANIZER, so it consumes THEIR sequence. A
+      // checkout creating a sell offer on the same account at the same moment
+      // would read the same number, and one of the two would be lost — or block
+      // the ones behind it. Take the account's lease for the whole wave.
+      const leased = await withOrganizerLease(
+        job.organizerAddress,
+        async () => {
+        // A wave already in flight WILL land whatever we decide next, so it is
+        // settled and recorded before anything else — including cancelling.
+        const pending = parsePending(job.pendingWave)
+        if (pending) {
+          const settled = await settleWave(job.id, pending, deps.ledger, sleep)
+          if (settled.kind === 'waiting') return // still in flight; the next sweep resumes it
 
-        const verdict = judgeWave({
-          codes: settled.codes,
-          minted: settled.minted,
-          stalledWaves: settled.minted === 0 ? stalledWaves + 1 : 0,
-        })
-        stalledWaves = settled.minted === 0 ? stalledWaves + 1 : 0
-        if (verdict.kind === 'pause') return void (await finish(job.id, 'PAUSED', verdict.reason))
-        if (verdict.kind === 'fail') return void (await finish(job.id, 'FAILED', verdict.reason))
-        continue
-      }
+          const verdict = judgeWave({
+            codes: settled.codes,
+            minted: settled.minted,
+            stalledWaves: settled.minted === 0 ? stalledWaves + 1 : 0,
+          })
+          stalledWaves = settled.minted === 0 ? stalledWaves + 1 : 0
+          if (verdict.kind === 'pause') return void (await finish(job.id, 'PAUSED', verdict.reason))
+          if (verdict.kind === 'fail') return void (await finish(job.id, 'FAILED', verdict.reason))
+          return 'again' as const
+        }
 
-      if (job.cancelRequested) return void (await finish(job.id, 'CANCELLED', 'Cancelled'))
+        if (job.cancelRequested) return void (await finish(job.id, 'CANCELLED', 'Cancelled'))
 
-      if (job.minted >= job.total) return void (await finish(job.id, 'DONE', null))
+        if (job.minted >= job.total) return void (await finish(job.id, 'DONE', null))
 
-      if (Date.now() > deadline) return // yield; the next sweep carries on
+        if (Date.now() > deadline) return // yield; the next sweep carries on
 
-      // The grant is the authority, and the organizer can withdraw it in Xaman
-      // without telling us. Re-read it before EVERY wave: submitting against a
-      // revoked grant burns a fee per ticket for nothing.
-      const permission = await deps.ledger.readPermission(job.organizerAddress, job.delegateAddress)
-      if (permission === 'absent') {
-        return void (await finish(job.id, 'PAUSED', 'Your minting permission was withdrawn. Approve it again to continue.'))
-      }
-      if (permission === 'unknown') {
-        return void (await wait(job.id, THROTTLE_BACKOFF_MS, 'Could not read the ledger; retrying shortly'))
-      }
+        // The grant is the authority, and the organizer can withdraw it in Xaman
+        // without telling us. Re-read it before EVERY wave: submitting against a
+        // revoked grant burns a fee per ticket for nothing.
+        const permission = await deps.ledger.readPermission(job.organizerAddress, job.delegateAddress)
+        if (permission === 'absent') {
+          return void (await finish(job.id, 'PAUSED', 'Your minting permission was withdrawn. Approve it again to continue.'))
+        }
+        if (permission === 'unknown') {
+          return void (await wait(job.id, THROTTLE_BACKOFF_MS, 'Could not read the ledger; retrying shortly'))
+        }
 
-      // Never mint past the advertised size, whatever else has happened: a ticket
-      // past `ticketCount` cannot be taken back.
-      const room = await capRoom(job.eventId, job.event.ticketCount)
-      const size = nextWaveSize(Math.min(job.total - job.minted, room))
-      if (size === 0) {
-        return void (await finish(job.id, 'DONE', job.minted >= job.total ? null : 'The event is full'))
-      }
+        // Never mint past the advertised size, whatever else has happened: a ticket
+        // past `ticketCount` cannot be taken back.
+        const room = await capRoom(job.eventId, job.event.ticketCount)
+        const size = nextWaveSize(Math.min(job.total - job.minted, room))
+        if (size === 0) {
+          return void (await finish(job.id, 'DONE', job.minted >= job.total ? null : 'The event is full'))
+        }
 
-      try {
-        assertPublicBaseUrl()
-      } catch (err) {
-        return void (await finish(job.id, 'FAILED', err instanceof Error ? err.message : 'Metadata URL is not public'))
-      }
+        try {
+          assertPublicBaseUrl()
+        } catch (err) {
+          return void (await finish(job.id, 'FAILED', err instanceof Error ? err.message : 'Metadata URL is not public'))
+        }
 
-      const fee = decideFee(await deps.ledger.feeQuote(), maxFee)
-      if (!fee.ok) return void (await wait(job.id, FEE_BACKOFF_MS, fee.reason))
+        const fee = decideFee(await deps.ledger.feeQuote(), maxFee)
+        if (!fee.ok) return void (await wait(job.id, FEE_BACKOFF_MS, fee.reason))
 
-      // Sequence comes from the LEDGER every wave. One dropped transaction
-      // blocks every later sequence on the account, so a local counter marching
-      // on regardless would silently abandon the rest of the event.
-      const firstSequence = await deps.ledger.organizerSequence(job.organizerAddress)
-      const lastLedgerSequence = (await deps.ledger.validatedLedgerIndex()) + LAST_LEDGER_BUFFER
+        // Sequence comes from the LEDGER every wave. One dropped transaction
+        // blocks every later sequence on the account, so a local counter marching
+        // on regardless would silently abandon the rest of the event.
+        const firstSequence = await deps.ledger.organizerSequence(job.organizerAddress)
+        const lastLedgerSequence = (await deps.ledger.validatedLedgerIndex()) + LAST_LEDGER_BUFFER
 
-      const uri = ticketMetadataUri(job.event.slug)
-      const txs: MintToSign[] = []
-      for (let i = 0; i < size; i++) {
-        txs.push({
-          ...asDelegatedMint(
-            buildMintTx({
-              issuerAddress: job.organizerAddress,
-              taxon: job.event.nftTaxon,
-              royaltyBps: job.event.royaltyBps,
-              uri,
-            }),
-            job.delegateAddress,
-          ),
-          Sequence: firstSequence + i,
-          Fee: String(fee.feeDrops),
-          LastLedgerSequence: lastLedgerSequence,
-        })
-      }
-      const signed = deps.ledger.sign(txs)
+        const uri = ticketMetadataUri(job.event.slug)
+        const txs: MintToSign[] = []
+        for (let i = 0; i < size; i++) {
+          txs.push({
+            ...asDelegatedMint(
+              buildMintTx({
+                issuerAddress: job.organizerAddress,
+                taxon: job.event.nftTaxon,
+                royaltyBps: job.event.royaltyBps,
+                uri,
+              }),
+              job.delegateAddress,
+            ),
+            Sequence: firstSequence + i,
+            Fee: String(fee.feeDrops),
+            LastLedgerSequence: lastLedgerSequence,
+          })
+        }
+        const signed = deps.ledger.sign(txs)
 
-      // Recorded BEFORE submitting. Hashes are known once signed, so a crash
-      // between submit and record is recoverable by asking the ledger about each
-      // one — instead of guessing from balances.
-      const wave: PendingWave = { hashes: signed.map((s) => s.hash), firstSequence, lastLedgerSequence }
-      await prisma.mintJob.update({ where: { id: job.id }, data: { pendingWave: wave as unknown as Prisma.InputJsonValue } })
+        // Recorded BEFORE submitting. Hashes are known once signed, so a crash
+        // between submit and record is recoverable by asking the ledger about each
+        // one — instead of guessing from balances.
+        const wave: PendingWave = { hashes: signed.map((s) => s.hash), firstSequence, lastLedgerSequence }
+        await prisma.mintJob.update({ where: { id: job.id }, data: { pendingWave: wave as unknown as Prisma.InputJsonValue } })
 
-      const submitted = await Promise.all(
-        signed.map((s) => deps.ledger.submit(s.blob).then(() => 'ok' as const, (e: unknown) => e)),
+        const submitted = await Promise.all(
+          signed.map((s) => deps.ledger.submit(s.blob).then(() => 'ok' as const, (e: unknown) => e)),
+        )
+        if (submitted.every((r) => r instanceof MintSubmitThrottled)) {
+          // The node is refusing us for load. Nothing landed, and hammering it is
+          // how a throttle becomes a ban.
+          return void (await wait(job.id, THROTTLE_BACKOFF_MS, 'The network node is busy; retrying shortly'))
+        }
+        // Loop round: the pending wave is settled at the top.
+          return 'again' as const
+        },
+        deps.accountWaitMs ?? 30_000,
       )
-      if (submitted.every((r) => r instanceof MintSubmitThrottled)) {
-        // The node is refusing us for load. Nothing landed, and hammering it is
-        // how a throttle becomes a ban.
-        return void (await wait(job.id, THROTTLE_BACKOFF_MS, 'The network node is busy; retrying shortly'))
+      if (leased.busy) {
+        return void (await wait(job.id, ACCOUNT_BUSY_BACKOFF_MS, 'Waiting for a sale on your account to finish'))
       }
-      // Loop round: the pending wave is settled at the top.
+      if (leased.value !== 'again') return
     }
   } finally {
     await releaseLock(lockName(jobId)).catch(() => undefined)

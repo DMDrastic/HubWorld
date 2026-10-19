@@ -442,6 +442,34 @@ describe('cancelling', () => {
   })
 })
 
+describe('the organizer\'s account', () => {
+  it('waits, spending nothing, while a checkout is using the same account', async () => {
+    const { job, organizer } = await mkJob({ total: 20 })
+    const ledger = new FakeLedger()
+    // A checkout is mid-offer on this organizer: it holds their sequence.
+    expect(await acquireLock(`org-seq:${organizer.xrplAddress}`, 60_000)).toBe(true)
+
+    await run(job.id, ledger, { accountWaitMs: 300 })
+
+    const waiting = await reload(job.id)
+    expect(waiting.status).toBe('QUEUED')
+    expect(waiting.statusReason).toMatch(/sale on your account/i)
+    expect(waiting.nextAttemptAt!.getTime()).toBeGreaterThan(Date.now())
+    // Two things signing as one account at once would read the same sequence.
+    expect(ledger.submitted).toBe(0)
+    await releaseLock(`org-seq:${organizer.xrplAddress}`)
+  })
+
+  it('takes the account for a wave and gives it back', async () => {
+    const { job, organizer } = await mkJob({ total: 20 })
+    await run(job.id, new FakeLedger())
+
+    // Released: a checkout can have the account the moment the wave is over.
+    expect(await acquireLock(`org-seq:${organizer.xrplAddress}`, 5_000)).toBe(true)
+    await releaseLock(`org-seq:${organizer.xrplAddress}`)
+  })
+})
+
 describe('who may work a job', () => {
   it('does nothing while another worker holds the lease', async () => {
     const { job } = await mkJob({ total: 20 })

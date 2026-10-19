@@ -206,6 +206,13 @@ const CreateEventBody = z
     resalePolicy: z
       .enum(['UNRESTRICTED', 'PERCENTAGE_CAP', 'FIXED_CAP', 'FACE_VALUE_ONLY', 'DISABLED'])
       .default('UNRESTRICTED'),
+    // The box-office price of one ticket, in drops. Optional: an event without
+    // one has no checkout (tickets are held, gifted or listed by hand). Money is
+    // a string of integer drops, never a float.
+    primaryPriceDrops: z
+      .string()
+      .regex(/^[1-9][0-9]{0,17}$/, 'primaryPriceDrops must be a positive integer string of drops')
+      .optional(),
     // 10000 = 100% of face value, so 12000 = 120%.
     resaleCapBps: z.coerce.number().int().positive().optional(),
     resaleCapDrops: z
@@ -291,6 +298,7 @@ organizersRouter.post('/events', requireAuth, requireOrganizer, async (req, res)
       resalePolicy: data.resalePolicy,
       resaleCapBps: data.resaleCapBps ?? null,
       resaleCapDrops: data.resaleCapDrops ? BigInt(data.resaleCapDrops) : null,
+      primaryPriceDrops: data.primaryPriceDrops ? BigInt(data.primaryPriceDrops) : null,
     },
   })
 
@@ -305,6 +313,7 @@ organizersRouter.post('/events', requireAuth, requireOrganizer, async (req, res)
     resalePolicy: event.resalePolicy,
     resaleCapBps: event.resaleCapBps,
     resaleCapDrops: event.resaleCapDrops?.toString() ?? null,
+    primaryPriceDrops: event.primaryPriceDrops?.toString() ?? null,
   })
 })
 
