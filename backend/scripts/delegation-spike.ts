@@ -11,8 +11,9 @@
  * organizer or the delegate? If it is the delegate, `TransferFee` pays Hubworld,
  * the organizer never sees their royalty, and the whole path is dead.
  *
- * Must run against **devnet** — `PermissionDelegationV1_1` is active there,
- * pending on testnet, absent from mainnet:
+ * Must run against **devnet** — `PermissionDelegationV1_1` is active there and
+ * (since 2026-10-19) on mainnet, where `delegation-mainnet-check.ts` repeats it
+ * with real XRP:
  *
  *   XRPL_NETWORK=devnet npx tsx scripts/delegation-spike.ts
  *

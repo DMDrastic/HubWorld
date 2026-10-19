@@ -400,7 +400,7 @@ Three pending amendments bear directly on constraints documented in `CLAUDE.md`:
   (every holder currently funds their own reserve). Relevant to any
   thousands-scale plan regardless of which token primitive wins.
 
-## 5b. Delegation supersedes the MPT tier — spiked on devnet, 2026-08-02
+## 5b. Delegation supersedes the MPT tier — spiked on devnet 2026-08-02, verified on mainnet 2026-10-19
 
 **Do not build the MPT tier.** `scripts/delegation-spike.ts`, run against
 **devnet** where `PermissionDelegationV1_1` is already active, answers the
@@ -449,26 +449,42 @@ deliberately rather than because it is convenient.
 The mitigating fact: the delegation is granted by the organizer, scoped to one
 transaction type, and cannot touch their funds — proven above, not asserted.
 
-### The one real caveat
+### The caveat is gone — and the decision is made
 
-**`PermissionDelegationV1_1` is not on mainnet.** It is active on devnet,
-pending on testnet, absent from mainnet. So this is a bet on activation rather
-than something shippable today, and until it activates the low-hundreds ceiling
-stands exactly as documented.
+**`PermissionDelegationV1_1` is ENABLED on mainnet** (checked 2026-10-19 against
+`xrplcluster.com`, `s1.ripple.com` and `s2.ripple.com`; all agree), and
+`scripts/delegation-mainnet-check.ts` repeated the devnet table above with real
+XRP on throwaway wallets, one ticket. Every row held: `Issuer` = the organizer,
+`TransferFee` 5000 on-ledger (5%), the delegate paid the 12-drop fee, a
+delegated `Payment` was refused with `terNO_DELEGATE_PERMISSION`, and a mint
+after revocation was refused the same way. Transactions: grant
+`3D05F13FB712996B3022D7B71B5C1231D6019E1559DCB3377D308873C52EE48B`, mint
+`A5A9918FE3B809027F39DB586D9C4A4EBEC4A28121FDAE98F44B6351DF6309F7`, revoke
+`7590A30BE3E29964FB2A59308F0DDEE81C5BAAA3C0C18169F4C9A08C92DFFACF`.
 
-That still argues for waiting rather than building MPT: the MPT tier is weeks of
-work that delegation would render pointless, and it would cost the royalty, the
-secondary market and the door's precision permanently.
+**Not yet verified on mainnet:** the thousand-ticket run (devnet only), a resale
+royalty paid out against a delegated issuer, and wave-based bulk minting.
 
-### What to do about it
+**The product question above is answered:** the founder accepts "HubWorld can
+mint tickets as you, nothing else, and only while you allow it" in exchange for
+events in the thousands, provided core functionality (royalties, brokered
+resale, auctions, per-ticket door verdicts) is kept. That is the design brief,
+not licence to widen the grant: `NFTokenMint` stays the only permission asked
+for at event creation.
 
-- **Watch `PermissionDelegationV1_1` toward mainnet.** It is now the single
-  highest-value amendment to this product.
-- **Design the delegated minting flow now** — organizer grants once at event
-  creation, HubWorld mints the run unattended, revocation surfaced in the UI —
-  so it can ship when the amendment lands.
-- **Re-run `scripts/delegation-spike.ts` on testnet once it activates there**,
-  before trusting any of the above on a network that carries value.
+### What to do now
+
+- **Build the slice**: grant and revoke endpoints, unattended bulk minting
+  driven off `hasMintPermission()`, revocation surfaced in the organizer UI.
+  The builders and the `delegationAvailable()` gate already exist in
+  `src/delegation.ts`.
+- **Mint in waves** (submit, wait for the sequence to advance, repeat) — see
+  5b-i; fire-and-forget loses most of an event.
+- **Selling stays a separate, explicit grant** (5b-ii): `NFTokenCreateOffer` lets
+  the delegate give tickets away, so it is never bundled with the mint grant.
+  Create sell offers lazily at checkout.
+- **Re-run the thousand-ticket measurement on mainnet** before promising a
+  customer that size; devnet throughput is not a mainnet guarantee.
 - **Do not start the MPT tier.**
 
 ### If the MPT tier ever proceeds anyway, do these first

@@ -1225,9 +1225,10 @@ an organizer granting it would also be granting the ability to send payments fro
 their account. Granular per-transaction-type delegation would be a better shape
 if it becomes available, but it still ends the claim above.
 
-**It now exists, and it works.** `PermissionDelegationV1_1` is **active on
-devnet** (pending on testnet, absent from mainnet). Measured 2026-08-02 with
-`scripts/delegation-spike.ts`:
+**It now exists, and it works.** `PermissionDelegationV1_1` is **enabled on
+mainnet** (checked 2026-10-19) and was first measured on devnet 2026-08-02 with
+`scripts/delegation-spike.ts`; `scripts/delegation-mainnet-check.ts` repeated it
+on mainnet with one real ticket and every result below held:
 
 - An organizer can `DelegateSet` **only** `NFTokenMint` to Hubworld.
 - Hubworld mints with `Account` = organizer, `Delegate` = Hubworld, signed by
@@ -1245,9 +1246,11 @@ takes minting off the Xaman quota entirely, since Hubworld signs directly.
 
 **It still weakens "Hubworld cannot act as you"**, to "Hubworld can mint tickets
 as you, nothing else, and only while you allow it". Narrower, ledger-enforced
-and revocable, but a product decision rather than a free win. And it is **not on
-mainnet**, so the low-hundreds ceiling stands until it activates. See
-`ROADMAP.md` §5b.
+and revocable, and that trade is now **accepted** in exchange for events in the
+thousands. What is built is the transaction builders and the capability gate;
+there are no routes or UI yet, so until the slice in `ROADMAP.md` §5b ships the
+low-hundreds ceiling still stands in practice. The thousand-ticket run has only
+been measured on devnet.
 
 **Grant, revoke and unattended bulk minting are built; selling at scale is not.**
 `src/routes/delegation.ts`, `DelegationPanel` and the `Delegation` table cover the
