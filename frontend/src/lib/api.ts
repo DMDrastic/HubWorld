@@ -27,6 +27,10 @@ export const EventSummarySchema = z.object({
   status: z.enum(['DRAFT', 'PUBLISHED', 'SOLD_OUT', 'COMPLETED', 'CANCELLED']),
   ticketCount: z.number(),
   ticketsMinted: z.number(),
+  /** Box-office price in drops, a string like all money. Null: no checkout. */
+  primaryPriceDrops: z.string().nullable().optional(),
+  /** Tickets a buyer could take right now. Absent from a server that predates it. */
+  ticketsForSale: z.number().optional(),
   organizer: z.object({
     username: z.string(),
     displayName: z.string().nullable(),
@@ -61,10 +65,16 @@ export class ApiError extends Error {
   // Written out longhand rather than as a constructor parameter property,
   // which `erasableSyntaxOnly` disallows.
   readonly status: number | undefined
+  /** A machine-readable reason where the server gives one (e.g. `SOLD_OUT`). */
+  readonly code: string | undefined
+  /** Set when the refusal points at something already under way (`IN_PROGRESS`). */
+  readonly listingId: string | undefined
 
-  constructor(message: string, status?: number) {
+  constructor(message: string, status?: number, extra?: { code?: string; listingId?: string }) {
     super(message)
     this.status = status
+    this.code = extra?.code
+    this.listingId = extra?.listingId
   }
 }
 
@@ -135,8 +145,15 @@ async function request<T>(
     // even where the caller swallows the error.
     if (res.status === 401) reportAuthLost()
     // The API reports failures as { error, details? } — surface that, not a bare code.
-    const body = (await res.json().catch(() => null)) as { error?: string } | null
-    throw new ApiError(body?.error ?? `Backend returned ${res.status}`, res.status)
+    const body = (await res.json().catch(() => null)) as {
+      error?: string
+      code?: string
+      listingId?: string
+    } | null
+    throw new ApiError(body?.error ?? `Backend returned ${res.status}`, res.status, {
+      code: body?.code,
+      listingId: body?.listingId,
+    })
   }
 
   const parsed = schema.safeParse(await res.json())
@@ -623,6 +640,28 @@ export function buyListing(listingId: string): Promise<ListingCreated> {
   })
 }
 
+// --------------------------------------------------------------- checkout --
+
+export const CheckoutCreatedSchema = z.object({
+  listingId: z.string(),
+  uuid: z.string(),
+  next: z.string(),
+  qrPng: z.string(),
+  mode: z.enum(['live', 'stub']),
+  /** What the buyer signs for: the price plus the platform fee, in drops. */
+  paysDrops: z.string(),
+  expiresAt: z.string(),
+})
+
+export type CheckoutCreated = z.infer<typeof CheckoutCreatedSchema>
+
+/** Hold one ticket for the signed-in buyer and get their signing request. */
+export function checkout(slug: string): Promise<CheckoutCreated> {
+  return request(`/events/${encodeURIComponent(slug)}/checkout`, CheckoutCreatedSchema, {
+    method: 'POST',
+  })
+}
+
 export const ListingCancelSchema = z.union([
   ListingCreatedSchema,
   z.object({ state: z.literal('cancelled'), listingId: z.string() }),
@@ -934,6 +973,7 @@ export const CreatedEventSchema = z.object({
   resalePolicy: ResalePolicySchema,
   resaleCapBps: z.number().nullable(),
   resaleCapDrops: z.string().nullable(),
+  primaryPriceDrops: z.string().nullable().optional(),
 })
 
 export type Policy = z.infer<typeof PolicySchema>
@@ -987,6 +1027,8 @@ export function createEvent(body: {
   resalePolicy?: ResalePolicyMode
   resaleCapBps?: number
   resaleCapDrops?: string
+  /** Box-office price in drops. Omit for an event with no checkout. */
+  primaryPriceDrops?: string
 }): Promise<z.infer<typeof CreatedEventSchema>> {
   return request('/events', CreatedEventSchema, { method: 'POST', body })
 }

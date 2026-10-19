@@ -146,7 +146,7 @@ export function realMintLedger(): MintLedger {
  */
 export function stubMintLedger(): MintLedger {
   const sequences = new Map<string, number>()
-  const pending = new Map<string, { account: string }>()
+  const pending = new Map<string, { account: string; taxon: number }>()
   const done = new Map<string, TxLookup>()
   let ledgerIndex = 1_000
 
@@ -170,7 +170,7 @@ export function stubMintLedger(): MintLedger {
     sign(txs) {
       return txs.map((tx) => {
         const hash = randomBytes(32).toString('hex').toUpperCase()
-        pending.set(hash, { account: tx.Account })
+        pending.set(hash, { account: tx.Account, taxon: tx.NFTokenTaxon })
         return { blob: `stub:${hash}`, hash }
       })
     },
@@ -180,7 +180,7 @@ export function stubMintLedger(): MintLedger {
       if (!tx) return 'tefFAILURE'
       pending.delete(hash)
       sequences.set(tx.account, (sequences.get(tx.account) ?? 100) + 1)
-      const minted = stubLedger.applyDelegatedMint(tx.account)
+      const minted = stubLedger.applyDelegatedMint(tx.account, tx.taxon)
       done.set(hash, { state: 'validated', result: 'tesSUCCESS', nfTokenId: minted.nfTokenId })
       return 'tesSUCCESS'
     },

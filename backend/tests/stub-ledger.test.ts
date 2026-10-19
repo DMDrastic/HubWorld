@@ -206,3 +206,40 @@ describe('applyTransaction: DelegateSet', () => {
     expect(hasDelegation(org, BROKER, 'NFTokenMint')).toBe(false)
   })
 })
+
+describe('stubNftId', () => {
+  it('makes a REAL NFTokenID: it parses back to the issuer and taxon it was made for', async () => {
+    const { Wallet, parseNFTokenID } = await import('xrpl')
+    const { stubNftId } = await import('../src/stub-ledger.js')
+    const issuer = Wallet.generate().classicAddress
+
+    const parsed = parseNFTokenID(stubNftId(issuer, 4321))
+
+    // The primary sale refuses to list a ticket it cannot prove the organizer
+    // issued for this event, by reading exactly these fields.
+    expect(parsed.Issuer).toBe(issuer)
+    expect(parsed.Taxon).toBe(4321)
+  })
+
+  it('gives every mint a different id', async () => {
+    const { Wallet } = await import('xrpl')
+    const { stubNftId } = await import('../src/stub-ledger.js')
+    const issuer = Wallet.generate().classicAddress
+    expect(new Set(Array.from({ length: 50 }, () => stubNftId(issuer, 7))).size).toBe(50)
+  })
+
+  it('falls back to an opaque id for a placeholder address instead of throwing', async () => {
+    const { stubNftId } = await import('../src/stub-ledger.js')
+    const id = stubNftId('rNOTAREALADDRESS', 1)
+    expect(id).toMatch(/^[0-9A-F]{64}$/)
+  })
+
+  it('NFTokenMint through applyTransaction yields an id owned by, and issued by, the minter', async () => {
+    const { Wallet, parseNFTokenID } = await import('xrpl')
+    const issuer = Wallet.generate().classicAddress
+    const { txHash } = applyTransaction({ TransactionType: 'NFTokenMint', Account: issuer, NFTokenTaxon: 99 }, issuer)
+    const id = (await nftokenIdFromTx(txHash))!
+    expect(parseNFTokenID(id)).toMatchObject({ Issuer: issuer, Taxon: 99 })
+    expect(await holdsNft(issuer, id)).toBe(true)
+  })
+})

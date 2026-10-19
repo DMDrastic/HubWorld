@@ -827,6 +827,7 @@ Hubworld out of the funds-custody path. Changing this changes who mints.
 | `GET /api/mint/jobs/:id` | a run's progress: status, reason, minted of total |
 | `POST /api/mint/jobs/:id/cancel` | stop a run (a wave in flight still lands and is recorded) |
 | `POST /api/mint/jobs/:id/resume` | resume a paused run |
+| `POST /api/events/:slug/checkout` | buy from the box office: holds one ticket, lists it lazily, returns the buyer's signing payload |
 | `GET /api/tickets/mine?verify=` | inventory; `verify=true` reconciles against the ledger |
 | `POST /api/tickets/:nfTokenId/gift` | owner-only; zero-amount offer to an @handle |
 | `POST /api/gifts/:id/accept` | recipient-only; sign the acceptance |
@@ -1319,6 +1320,54 @@ Decisions worth keeping in view:
 - **The worker runs from its own sweep (10s), independent of the broker**, under a
   per-job lease that is renewed each wave, so two instances share the queue and a
   job left RUNNING by a dead process is picked up once its lease lapses.
+
+**The lazy primary sale: nothing is listed until someone buys it.** Listing a whole
+event up front puts one sell offer per ticket on the ledger, and every open offer
+locks 0.2 XRP of the organizer's reserve (~200 XRP per 1,000 tickets). So
+`POST /events/:slug/checkout` (`src/primary-sale.ts`) claims ONE unsold ticket for
+the buyer, the delegate creates ONE sell offer for it AS the organizer (restricted
+to the broker), the buyer signs ONE bid, and the existing brokered settlement
+matches the pair. The offer stands only for a checkout, so reserve exposure is
+(checkouts in flight) x 0.2 XRP — capped at 100 concurrent holds, 20 XRP.
+**Measured on real devnet through the shipped code: 25 simultaneous buyers checked
+out in 14s, all 25 sold, the organizer received the full price (a primary sale
+skips the royalty), no offers were left open.** Not yet run on mainnet.
+
+It needs a SECOND, separate grant — `NFTokenCreateOffer` — because it is not the
+same size of trust as minting: it lets the delegate list ANY ticket in the
+organizer's account at ANY price to ANY destination, and a zero-price offer to the
+delegate itself returns `tesSUCCESS`. The ledger cannot narrow it, so these hold:
+
+- **`checkSellOffer` (`primary-sale-policy.ts`) checks the exact transaction before
+  it is signed**: destination = the broker, a sell offer created as the organizer,
+  amount >= the price, and a ticket the organizer ISSUED for THIS event (read from
+  the NFTokenID itself). Every clause is pinned alone and mutation-checked.
+- **`DelegateSet` replaces the whole permission set.** Granting offers sends
+  `current + offers`; a partial revoke sends `current - removed`; an unreadable set
+  refuses rather than guessing, but revoking everything never needs to read it.
+  Verified on real devnet in both directions.
+- **The claim is `UPDATE ... FOR UPDATE SKIP LOCKED` in one transaction with its
+  Listing**, so two buyers are never handed the same ticket. Pinned
+  deterministically (hold one claim open, prove a second does not wait behind it):
+  a crowd test only overlaps by chance and let the mutation survive.
+- **Only the SUBMIT is one-at-a-time per organizer account** (`organizer-lease.ts`:
+  an in-process FIFO line in front of a database lease, shared with the bulk-mint
+  worker). It reads and spends the organizer's sequence; the wait for validation
+  does not, and holding the lease through it made one organizer strictly one
+  checkout per ledger close — measured at ~6s each, ten a minute.
+- **Reserved listings are one buyer's purchase, not open offers.**
+  `Listing.reservedForId` keeps them out of the marketplace and out of `/buy`, and
+  makes the poll RELEASE the ticket when the buyer backs out rather than return it
+  to sale for nobody. The sweep reclaims expired holds (never under a live
+  signature or inside the grace period), and the BROKER cancels the leftover offer
+  — it is the offer's `Destination`, which may cancel it, so no third permission.
+- **Fails closed at every step.** A refused or half-finished checkout releases its
+  claim; whatever is left on the ledger is inert, since only the broker can match
+  it, and merely holds a little reserve until cancelled.
+- **Known gaps:** an offer created and then lost before its index was recorded is an
+  orphan nothing detects yet (a `ledger:sync` check for organizer offers with no
+  Listing is planned); sale settlement is poll-driven by the buyer's client, as
+  resale already is.
 
 **Batch transactions do not rescue this, on two counts.** The `Batch` amendment
 (XLS-56) would let one signature carry several inner mints, but a signature-

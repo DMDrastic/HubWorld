@@ -474,17 +474,24 @@ for at event creation.
 
 ### What to do now
 
-- **Build the slice**: grant and revoke endpoints, unattended bulk minting
-  driven off `hasMintPermission()`, revocation surfaced in the organizer UI.
-  The builders and the `delegationAvailable()` gate already exist in
-  `src/delegation.ts`.
-- **Mint in waves** (submit, wait for the sequence to advance, repeat) — see
-  5b-i; fire-and-forget loses most of an event.
-- **Selling stays a separate, explicit grant** (5b-ii): `NFTokenCreateOffer` lets
-  the delegate give tickets away, so it is never bundled with the mint grant.
-  Create sell offers lazily at checkout.
-- **Re-run the thousand-ticket measurement on mainnet** before promising a
-  customer that size; devnet throughput is not a mainnet guarantee.
+**Built, and verified on real devnet through the shipped code (2026-10-19):**
+
+- grant and revoke, per permission (#95); unattended bulk minting, 1,000 of 1,000
+  tickets in 347s (#96);
+- the lazy primary sale: 25 simultaneous buyers checked out in 14s, all sold, the
+  organizer paid in full, no offers left open, peak reserve 5 XRP against 50 XRP to
+  list them up front.
+
+**Still to do:**
+
+- **A mainnet run of both workers**, with a funded `DELEGATE_SEED` and the broker.
+  The thousand-ticket and 25-buyer measurements are devnet; mainnet fees and node
+  limits can differ, and `WAVE_SIZE`/the fee ceiling should be tuned there.
+- **Detect orphan offers**: a `ledger:sync` check for offers on an organizer's
+  account with no `Listing`, which is also how delegate misuse would show.
+- **Throughput past ~2 checkouts/s per organizer** if a flash sale needs it: a
+  pre-listed pool of offers, sized by the reserve the organizer will lock.
+- **Sale settlement that does not depend on the buyer's tab** being open.
 - **Do not start the MPT tier.**
 
 ### If the MPT tier ever proceeds anyway, do these first

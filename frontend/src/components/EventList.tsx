@@ -27,11 +27,14 @@ export function EventList({
   events,
   auctionSlugs,
   onOpenAuction,
+  onBuy,
 }: {
   events: EventSummary[]
   /** Slugs with a live auction, from GET /api/auctions. */
   auctionSlugs: ReadonlySet<string>
   onOpenAuction: (event: EventSummary) => void
+  /** Opens the box office for an event that has tickets on sale. */
+  onBuy?: (event: EventSummary) => void
 }) {
   if (events.length === 0) {
     return (
@@ -135,7 +138,7 @@ export function EventList({
           <ul className="grid grid-cols-2 gap-x-4 gap-y-7 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
             {rest.map((e) => (
               <li key={e.slug}>
-                <EventPoster event={e} live={false} onOpenAuction={onOpenAuction} />
+                <EventPoster event={e} live={false} onOpenAuction={onOpenAuction} onBuy={onBuy} />
               </li>
             ))}
           </ul>
