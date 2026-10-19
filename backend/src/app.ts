@@ -10,6 +10,7 @@ import { eventsRouter } from './routes/events.js'
 import { eventImageRouter } from './routes/event-image.js'
 import { authRouter } from './routes/auth.js'
 import { mintRouter } from './routes/mint.js'
+import { delegationRouter } from './routes/delegation.js'
 import { giftsRouter } from './routes/gifts.js'
 import { ticketsRouter } from './routes/tickets.js'
 import { listingsRouter } from './routes/listings.js'
@@ -127,6 +128,7 @@ export function createApp() {
   app.use('/api', eventsRouter)
   app.use('/api', eventImageRouter)
   app.use('/api', mintRouter)
+  app.use('/api', delegationRouter)
   app.use('/api', giftsRouter)
   app.use('/api', ticketsRouter)
   app.use('/api', listingsRouter)

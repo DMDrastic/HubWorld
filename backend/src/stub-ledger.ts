@@ -50,6 +50,8 @@ type StubTx = {
 }
 
 const nftOwners = new Map<string, string>()
+/** `organizer|delegate` -> the permissions currently granted. */
+const delegations = new Map<string, Set<string>>()
 const offers = new Map<string, StubOffer>()
 const transactions = new Map<string, StubTx>()
 
@@ -126,6 +128,21 @@ export function applyTransaction(
       break
     }
 
+    case 'DelegateSet': {
+      // Like the real ledger, the permission set is REPLACED, and an empty one
+      // deletes the grant — which is what makes revocation one transaction.
+      const key = `${String(txjson.Account)}|${String(txjson.Authorize)}`
+      const permissions = Array.isArray(txjson.Permissions)
+        ? (txjson.Permissions as Array<{ Permission?: { PermissionValue?: string } }>)
+            .map((p) => p.Permission?.PermissionValue)
+            .filter((v): v is string => typeof v === 'string')
+        : []
+      if (permissions.length === 0) delegations.delete(key)
+      else delegations.set(key, new Set(permissions))
+      transactions.set(txHash, { succeeded: true })
+      break
+    }
+
     case 'NFTokenCancelOffer': {
       const indexes = Array.isArray(txjson.NFTokenOffers) ? (txjson.NFTokenOffers as string[]) : []
       for (const idx of indexes) offers.delete(idx)
@@ -138,6 +155,10 @@ export function applyTransaction(
   }
 
   return { txHash }
+}
+
+export function hasDelegation(organizer: string, delegate: string, permission: string): boolean {
+  return delegations.get(`${organizer}|${delegate}`)?.has(permission) ?? false
 }
 
 export async function holdsNft(address: string, nfTokenId: string): Promise<boolean> {

@@ -288,6 +288,65 @@ export function pollMint(uuid: string): Promise<MintPoll> {
   return request(`/mint/${encodeURIComponent(uuid)}`, MintPollSchema)
 }
 
+// ------------------------------------------------------------ delegation --
+
+/** Same payload shape as a mint: a QR, a deep link and an expiry. */
+export const DelegationCreatedSchema = MintCreatedSchema
+
+/**
+ * Asking for a grant that is already in force, or a revoke with nothing to
+ * revoke, answers with the state instead of spending a signing payload.
+ */
+export const DelegationRequestSchema = z.union([
+  DelegationCreatedSchema,
+  z.object({ state: z.enum(['granted', 'revoked']) }),
+])
+
+export const DelegationPollSchema = z.discriminatedUnion('state', [
+  z.object({ state: z.literal('pending'), signed: z.boolean().optional() }),
+  z.object({ state: z.literal('granted') }),
+  z.object({ state: z.literal('revoked') }),
+  z.object({ state: z.literal('rejected') }),
+  z.object({ state: z.literal('expired') }),
+  z.object({ state: z.literal('failed'), reason: z.string() }),
+])
+
+/**
+ * `unknown` means the ledger could not be read. It is NOT "not granted", and the
+ * UI must not word it as though the grant had gone.
+ */
+export const DelegationMeSchema = z.union([
+  z.object({ available: z.literal(false), state: z.literal('unavailable') }),
+  z.object({
+    available: z.literal(true),
+    state: z.enum(['granted', 'not_granted', 'unknown']),
+    delegateAddress: z.string(),
+    grantedAt: z.string().nullable(),
+    staleGrant: z.boolean(),
+  }),
+])
+
+export type DelegationCreated = z.infer<typeof DelegationCreatedSchema>
+export type DelegationRequest = z.infer<typeof DelegationRequestSchema>
+export type DelegationPoll = z.infer<typeof DelegationPollSchema>
+export type DelegationMe = z.infer<typeof DelegationMeSchema>
+
+export function fetchDelegation(): Promise<DelegationMe> {
+  return request('/delegation/me', DelegationMeSchema)
+}
+
+export function requestGrant(): Promise<DelegationRequest> {
+  return request('/delegation/grant', DelegationRequestSchema, { method: 'POST' })
+}
+
+export function requestRevoke(): Promise<DelegationRequest> {
+  return request('/delegation/revoke', DelegationRequestSchema, { method: 'POST' })
+}
+
+export function pollDelegation(uuid: string): Promise<DelegationPoll> {
+  return request(`/delegation/${encodeURIComponent(uuid)}`, DelegationPollSchema)
+}
+
 // -------------------------------------------------------------- inventory --
 
 export const OwnedTicketSchema = z.object({

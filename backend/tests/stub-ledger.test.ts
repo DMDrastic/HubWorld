@@ -15,6 +15,7 @@ import {
   accountFunding,
   brokerSale,
   brokerCancelOffers,
+  hasDelegation,
 } from '../src/stub-ledger.js'
 
 const ISSUER = 'rISSUERADDR1111111111111111111111'
@@ -164,5 +165,44 @@ describe('accountFunding', () => {
     const funding = await accountFunding('rANYTHING1111111111111111111111')
     expect(funding.spendableDrops).toBeGreaterThan(1_000n * 1_000_000n)
     expect(funding.reserveIncDrops).toBe(200_000n)
+  })
+})
+
+describe('applyTransaction: DelegateSet', () => {
+  const grant = (permissions: string[], organizer = ISSUER, delegate = BROKER) =>
+    applyTransaction(
+      {
+        TransactionType: 'DelegateSet',
+        Account: organizer,
+        Authorize: delegate,
+        Permissions: permissions.map((PermissionValue) => ({ Permission: { PermissionValue } })),
+      },
+      organizer,
+    )
+
+  it('records a grant for exactly the named delegate', async () => {
+    const { txHash } = grant(['NFTokenMint'], 'rGRANTORAAAAAAAAAAAAAAAAAAAAAAAAA')
+    expect(await txSucceeded(txHash)).toBe(true)
+    expect(hasDelegation('rGRANTORAAAAAAAAAAAAAAAAAAAAAAAAA', BROKER, 'NFTokenMint')).toBe(true)
+    // Not another delegate, and not another permission.
+    expect(hasDelegation('rGRANTORAAAAAAAAAAAAAAAAAAAAAAAAA', BUYER, 'NFTokenMint')).toBe(false)
+    expect(hasDelegation('rGRANTORAAAAAAAAAAAAAAAAAAAAAAAAA', BROKER, 'Payment')).toBe(false)
+  })
+
+  it('REPLACES the permission set rather than adding to it, like the real ledger', () => {
+    const org = 'rGRANTORBBBBBBBBBBBBBBBBBBBBBBBBB'
+    grant(['NFTokenMint'], org)
+    grant(['NFTokenCreateOffer'], org)
+    // Sending only the new permission silently revoked the first.
+    expect(hasDelegation(org, BROKER, 'NFTokenCreateOffer')).toBe(true)
+    expect(hasDelegation(org, BROKER, 'NFTokenMint')).toBe(false)
+  })
+
+  it('treats an empty permission set as revocation', () => {
+    const org = 'rGRANTORCCCCCCCCCCCCCCCCCCCCCCCCC'
+    grant(['NFTokenMint'], org)
+    expect(hasDelegation(org, BROKER, 'NFTokenMint')).toBe(true)
+    grant([], org)
+    expect(hasDelegation(org, BROKER, 'NFTokenMint')).toBe(false)
   })
 })

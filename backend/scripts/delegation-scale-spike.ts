@@ -23,7 +23,7 @@
  */
 import type { Wallet } from 'xrpl'
 import { ledger, disconnectLedger, buildMintTx } from '../src/ledger.js'
-import { asDelegatedMint, buildDelegateMintTx, delegationAvailable } from '../src/delegation.js'
+import { asDelegatedMint, buildDelegateMintTx, delegationAvailableOnLedger } from '../src/delegation.js'
 import { env } from '../src/env.js'
 
 const TAXON = 70_003
@@ -98,8 +98,8 @@ async function main() {
   const client = await ledger()
 
   head(`Minting an event of ${COUNT} tickets, unattended`)
-  if (!(await delegationAvailable())) {
-    console.error('delegationAvailable() is false — cannot continue.')
+  if (!(await delegationAvailableOnLedger())) {
+    console.error('delegationAvailableOnLedger() is false — cannot continue.')
     await disconnectLedger()
     return
   }
@@ -114,7 +114,7 @@ async function main() {
   const grant = await client.autofill(
     buildDelegateMintTx({
       organizerAddress: organizer.classicAddress,
-      platformAddress: platform.classicAddress,
+      delegateAddress: platform.classicAddress,
     }) as never,
   )
   await client.submitAndWait(organizer.sign(grant).tx_blob)

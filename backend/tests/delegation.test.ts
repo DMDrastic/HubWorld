@@ -17,6 +17,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   asDelegatedMint,
   buildDelegateMintTx,
+  buildDelegateSetTx,
   buildRevokeMintTx,
   DELEGATION_AMENDMENT,
   MINT_PERMISSION,
@@ -32,7 +33,7 @@ afterEach(() => {
 
 describe('buildDelegateMintTx', () => {
   it('grants exactly one permission, and it is NFTokenMint', () => {
-    const tx = buildDelegateMintTx({ organizerAddress: ORGANIZER, platformAddress: PLATFORM })
+    const tx = buildDelegateMintTx({ organizerAddress: ORGANIZER, delegateAddress: PLATFORM })
 
     expect(tx.TransactionType).toBe('DelegateSet')
     expect(tx.Account).toBe(ORGANIZER) // the organizer grants
@@ -49,7 +50,7 @@ describe('buildDelegateMintTx', () => {
    * ever quietly append to it.
    */
   it('never grants payment or account-control permissions', () => {
-    const tx = buildDelegateMintTx({ organizerAddress: ORGANIZER, platformAddress: PLATFORM })
+    const tx = buildDelegateMintTx({ organizerAddress: ORGANIZER, delegateAddress: PLATFORM })
     const granted = tx.Permissions.map((p) => p.Permission.PermissionValue)
 
     for (const forbidden of [
@@ -72,7 +73,7 @@ describe('buildDelegateMintTx', () => {
    */
   it('refuses to delegate an account to itself', () => {
     expect(() =>
-      buildDelegateMintTx({ organizerAddress: ORGANIZER, platformAddress: ORGANIZER }),
+      buildDelegateMintTx({ organizerAddress: ORGANIZER, delegateAddress: ORGANIZER }),
     ).toThrow(/same account/i)
   })
 })
@@ -85,7 +86,7 @@ describe('buildRevokeMintTx', () => {
    * with terNO_DELEGATE_PERMISSION.
    */
   it('withdraws everything, addressed to the same delegate', () => {
-    const tx = buildRevokeMintTx({ organizerAddress: ORGANIZER, platformAddress: PLATFORM })
+    const tx = buildRevokeMintTx({ organizerAddress: ORGANIZER, delegateAddress: PLATFORM })
 
     expect(tx.TransactionType).toBe('DelegateSet')
     expect(tx.Account).toBe(ORGANIZER)
@@ -94,8 +95,8 @@ describe('buildRevokeMintTx', () => {
   })
 
   it('is the exact inverse of the grant', () => {
-    const grant = buildDelegateMintTx({ organizerAddress: ORGANIZER, platformAddress: PLATFORM })
-    const revoke = buildRevokeMintTx({ organizerAddress: ORGANIZER, platformAddress: PLATFORM })
+    const grant = buildDelegateMintTx({ organizerAddress: ORGANIZER, delegateAddress: PLATFORM })
+    const revoke = buildRevokeMintTx({ organizerAddress: ORGANIZER, delegateAddress: PLATFORM })
 
     // Same account, same delegate — only the permission set differs. A
     // revocation aimed at a different delegate would silently leave the real
@@ -103,6 +104,37 @@ describe('buildRevokeMintTx', () => {
     expect(revoke.Account).toBe(grant.Account)
     expect(revoke.Authorize).toBe(grant.Authorize)
     expect(revoke.Permissions).toHaveLength(0)
+  })
+})
+
+describe('buildDelegateSetTx', () => {
+  const pair = { organizerAddress: ORGANIZER, delegateAddress: PLATFORM }
+
+  /**
+   * `DelegateSet` REPLACES a delegate's permissions. Granting a second one by
+   * sending only the new value would silently revoke minting, so a caller must
+   * name the full set — and the builder must carry exactly what it is given.
+   */
+  it('carries exactly the permissions it is given, in order', () => {
+    const tx = buildDelegateSetTx(pair, ['NFTokenMint', 'NFTokenCreateOffer'])
+    expect(tx.Permissions.map((p) => p.Permission.PermissionValue)).toEqual([
+      'NFTokenMint',
+      'NFTokenCreateOffer',
+    ])
+  })
+
+  it('an empty set is the revocation', () => {
+    expect(buildDelegateSetTx(pair, [])).toEqual(buildRevokeMintTx(pair))
+  })
+
+  it('the mint grant is the single-permission case of it', () => {
+    expect(buildDelegateMintTx(pair)).toEqual(buildDelegateSetTx(pair, [MINT_PERMISSION]))
+  })
+
+  it('still refuses to delegate to the same account', () => {
+    expect(() =>
+      buildDelegateSetTx({ organizerAddress: ORGANIZER, delegateAddress: ORGANIZER }, [MINT_PERMISSION]),
+    ).toThrow(/same account/)
   })
 })
 

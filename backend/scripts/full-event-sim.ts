@@ -24,7 +24,7 @@
  */
 import type { Wallet } from 'xrpl'
 import { ledger, disconnectLedger, buildMintTx } from '../src/ledger.js'
-import { asDelegatedMint, delegationAvailable } from '../src/delegation.js'
+import { asDelegatedMint, delegationAvailableOnLedger } from '../src/delegation.js'
 import { env } from '../src/env.js'
 
 const TAXON = 70_020
@@ -198,8 +198,8 @@ async function main() {
   const WAVE = arg('wave', 10)
 
   const client = await ledger()
-  if (!(await delegationAvailable())) {
-    console.error('delegationAvailable() is false')
+  if (!(await delegationAvailableOnLedger())) {
+    console.error('delegationAvailableOnLedger() is false')
     await disconnectLedger()
     return
   }

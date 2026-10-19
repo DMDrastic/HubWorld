@@ -19,6 +19,7 @@ import {
   type User,
 } from '@/lib/api'
 import { MintPanel } from '@/components/MintPanel'
+import { DelegationPanel } from '@/components/DelegationPanel'
 import { GiftPanel } from '@/components/GiftPanel'
 import { SellPanel } from '@/components/SellPanel'
 import { DoorPanel } from '@/components/DoorPanel'
@@ -381,6 +382,7 @@ export default function App() {
             </div>
             <OrganizerPanel role={me.role} onChanged={handleMinted} />
             <EventImagePanel events={organizing} onChanged={handleMinted} />
+            <DelegationPanel />
             <MintPanel events={organizing} onMinted={handleMinted} />
           </section>
         )}

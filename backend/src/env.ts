@@ -49,6 +49,15 @@ const EnvSchema = z.object({
   // created and browsed, but sales cannot settle.
   PLATFORM_SEED: z.string().min(1).optional(),
 
+  // The account that signs DELEGATED transactions (minting as an organizer who
+  // has granted `NFTokenMint`). Deliberately NOT PLATFORM_SEED: the broker key is
+  // documented as unable to mint, and reusing it would turn "a leaked broker key
+  // can settle sales on bad terms" into "...and mint tickets as every organizer
+  // who ever granted". It pays the transaction fee of every delegated mint, so it
+  // must stay funded. Optional: without it, grants are refused rather than
+  // created for a signer that does not exist.
+  DELEGATE_SEED: z.string().min(1).optional(),
+
   // Hubworld's cut of every resale, in basis points. This is PLATFORM POLICY and
   // must never be organizer-supplied: an organizer choosing their own platform
   // fee would choose zero. Capped so a misconfigured deploy cannot quietly take
@@ -134,6 +143,16 @@ if (!parsed.success) {
 export const env = parsed.data
 export type Env = typeof env
 
+// The separation is the point of having two keys. Refuse the one configuration
+// that silently defeats it, rather than discovering it in an incident.
+if (env.DELEGATE_SEED && env.DELEGATE_SEED === env.PLATFORM_SEED) {
+  console.error(
+    'Refusing to start: DELEGATE_SEED must differ from PLATFORM_SEED. ' +
+      'The delegate key is separate so a leaked broker key cannot mint as organizers.',
+  )
+  process.exit(1)
+}
+
 /**
  * The commit this process was built from, or 'unknown'.
  *
@@ -166,6 +185,13 @@ if (xamanMode === 'stub' && env.NODE_ENV === 'production') {
  * not, because settlement requires our signature.
  */
 export const brokerMode: 'live' | 'disabled' = env.PLATFORM_SEED ? 'live' : 'disabled'
+
+/**
+ * Whether delegated minting has a signer. Grants are refused without one, since
+ * an organizer would be authorising an account that cannot act. Stub mode needs
+ * no seed — see `delegateAddress()`.
+ */
+export const delegateMode: 'live' | 'disabled' = env.DELEGATE_SEED ? 'live' : 'disabled'
 
 /**
  * Whether Xaman calls us back when a payload resolves.

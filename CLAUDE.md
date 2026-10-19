@@ -818,6 +818,10 @@ Hubworld out of the funds-custody path. Changing this changes who mints.
 | `POST /api/events/:slug/image` | organizer-only; upload the event poster (raw image body) |
 | `POST /api/events/:slug/mint` | organizer-only; build an NFTokenMint → Xaman payload |
 | `GET /api/mint/:uuid` | poll → `pending` / `minted` / `rejected` / `expired` / `failed` |
+| `POST /api/delegation/grant` | organizer-only; Xaman payload to authorise the delegate for `NFTokenMint` |
+| `POST /api/delegation/revoke` | organizer-only; the inverse, naming the delegate the grant named |
+| `GET /api/delegation/:uuid` | poll → `pending` / `granted` / `revoked` / `rejected` / `expired` / `failed` |
+| `GET /api/delegation/me` | organizer-only; ledger-read state: `granted` / `not_granted` / `unknown` / `unavailable` |
 | `GET /api/tickets/mine?verify=` | inventory; `verify=true` reconciles against the ledger |
 | `POST /api/tickets/:nfTokenId/gift` | owner-only; zero-amount offer to an @handle |
 | `POST /api/gifts/:id/accept` | recipient-only; sign the acceptance |
@@ -1242,6 +1246,37 @@ thousands. What is built is the transaction builders and the capability gate;
 there are no routes or UI yet, so until the slice in `ROADMAP.md` §5b ships the
 low-hundreds ceiling still stands in practice. The thousand-ticket run has only
 been measured on devnet.
+
+**Grant and revoke are built; bulk minting is not.** `src/routes/delegation.ts`,
+`DelegationPanel` and the `Delegation` table cover signing the grant and taking it
+back. What they deliberately do not do is mint: the unattended worker and the lazy
+primary sale are the next two pieces (`~/.claude/plans/delegation-slice.md`
+records the design; `ROADMAP.md` §5b the decision).
+
+Decisions worth keeping in view:
+
+- **The delegate is a separate key (`DELEGATE_SEED`), not the broker's.** The
+  broker key is documented as unable to mint; sharing it would make a leaked broker
+  key mean "can mint as every organizer who granted". The server refuses to start
+  if the two seeds are equal. The grant is per organizer, because the ledger cannot
+  scope `NFTokenMint` to an event — "only your own events" is enforced by us.
+- **The delegate address is frozen on the `Delegation` row**, like
+  `Listing.brokerAddress`: a grant authorises one account, so after a key rotation
+  the old grant still names the old one. Revoke reads it from the row for that
+  reason, and `GET /delegation/me` reports `staleGrant`.
+- **The ledger is the authority, never the row.** A grant is `granted` only after
+  the organizer's `Delegate` object is read back, and a revoke is confirmed by it
+  being gone. `unknown` (ledger unreadable) is its own answer and is never worded
+  as a revocation — the same rule `/api/health` follows for the broker balance.
+- **`DelegateSet` replaces the whole permission set.** `buildDelegateSetTx` takes
+  the full list on purpose; sending only a new permission would silently revoke the
+  old one. An empty list is the revocation.
+- **Scripts use the `...OnLedger` readers, the app uses the stub-aware ones.**
+  `xamanMode === 'stub'` means "no Xaman credentials", which is also true of a
+  script talking to devnet or mainnet with throwaway wallets. The app's
+  `readPermission`/`delegationAvailable` answer from the fake ledger in stub mode;
+  `readPermissionOnLedger`/`delegationAvailableOnLedger` always ask the real one.
+  Found when the devnet spike reported "not granted" for a grant that existed.
 
 **Batch transactions do not rescue this, on two counts.** The `Batch` amendment
 (XLS-56) would let one signature carry several inner mints, but a signature-
