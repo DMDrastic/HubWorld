@@ -1642,9 +1642,13 @@ switchable after creation because nothing about a ticket depends on it):
 
 **Why a second way exists.** Each signature check-in creates a Xaman payload per
 attendee (`DOOR_CHECKIN`, the vendor quota the roadmap names as the top risk) and
-takes roughly 10-20 seconds a person (an estimate, not yet measured at a real door),
-which is hours through one door at 1,000 attendees. That is at odds with an event
-that can now be minted in the thousands.
+takes a few seconds a person at the front: **5-8 seconds in one informal test by its
+owner, who knew the flow** (a single run, not a crowd; plan on 8-12 for strangers in a
+queue, who fumble, fail Face ID, or lose signal). One lane is therefore roughly 300-700
+guests an hour, which is fine for 100, workable for 1,000 with two or three lanes (each
+lane is one more staff phone), and slow for one lane at 1,000. The code door removes the
+Xaman payload and brings it to about a couple of seconds, which is the case for it on
+large general-admission events.
 
 **Proof is a signature, not a display — in `SIGNATURE` mode.** A QR on an attendee's
 phone can be screenshotted and forwarded; a Xaman signature cannot, because it needs

@@ -99,8 +99,8 @@ exhausted it.
 **The door was one of the two per-attendee payloads, and no longer has to be**
 (2026-10-20). An event can now let people in by a short-lived code the attendee
 displays and staff scan (`Event.doorMode = QR`, see `CLAUDE.md` "Check-in at the
-door"), which creates no Xaman payload and takes a couple of seconds a guest instead
-of an estimated 10-20. The signature door remains, per event, for the cases that need
+door"), which creates no Xaman payload and takes an estimated couple of seconds a guest instead
+of the 5-8 measured once, informally, for the signature door. The signature door remains, per event, for the cases that need
 a wallet key at the door. That removes one payload per attendee from the quota and
 one Xaman dependency from the busiest minute of an event, but it is built, not
 proven: **still to do** is a real-device pass (iPhone Safari as the staff scanner, a
