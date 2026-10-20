@@ -24,7 +24,7 @@ type PayloadStatus = {
 const createPayload =
   vi.fn<(txjson: Record<string, unknown>, opts: Record<string, unknown>) => Promise<unknown>>()
 const tryGetPayload = vi.fn<(uuid: string) => Promise<PayloadStatus | null | 'unavailable'>>()
-const readPermission = vi.fn<() => Promise<'granted' | 'absent' | 'unknown'>>()
+const readPermissionSet = vi.fn<() => Promise<string[] | 'unknown'>>()
 const delegationAvailable = vi.fn<() => Promise<boolean>>()
 const txSucceeded = vi.fn<(hash: string) => Promise<boolean | null>>()
 let delegateOverride: (() => string) | null = null
@@ -43,7 +43,7 @@ vi.mock('../src/delegation.js', async () => {
   return {
     ...actual,
     delegationAvailable: () => delegationAvailable(),
-    readPermission: (...a: unknown[]) => readPermission(...(a as [])),
+    readPermissionSet: (...a: unknown[]) => readPermissionSet(...(a as [])),
   }
 })
 
@@ -145,8 +145,8 @@ beforeEach(async () => {
     }
   })
   tryGetPayload.mockReset()
-  readPermission.mockReset()
-  readPermission.mockResolvedValue('absent')
+  readPermissionSet.mockReset()
+  readPermissionSet.mockResolvedValue([])
   delegationAvailable.mockReset()
   delegationAvailable.mockResolvedValue(true)
   txSucceeded.mockReset()
@@ -207,7 +207,7 @@ describe('POST /delegation/grant', () => {
 
   it('does not spend a payload when the ledger already says granted', async () => {
     const org = await mkUser('org')
-    readPermission.mockResolvedValue('granted')
+    readPermissionSet.mockResolvedValue(['NFTokenMint'])
 
     const res = await request(app).post('/api/delegation/grant').set('Authorization', as(org))
 
@@ -247,7 +247,7 @@ describe('POST /delegation/revoke', () => {
     const org = await mkUser('org')
     // The grant was made to a delegate that has since been rotated out.
     await mkRow(org, { kind: 'GRANT', status: 'ACTIVE', delegate: OLD_DELEGATE })
-    readPermission.mockResolvedValue('granted')
+    readPermissionSet.mockResolvedValue(['NFTokenMint'])
 
     const res = await request(app).post('/api/delegation/revoke').set('Authorization', as(org))
 
@@ -264,7 +264,7 @@ describe('POST /delegation/revoke', () => {
 
   it('does not spend a payload when there is nothing to revoke', async () => {
     const org = await mkUser('org')
-    readPermission.mockResolvedValue('absent')
+    readPermissionSet.mockResolvedValue([])
 
     const res = await request(app).post('/api/delegation/revoke').set('Authorization', as(org))
 
@@ -276,7 +276,7 @@ describe('POST /delegation/revoke', () => {
   it('still builds a revoke when the ledger cannot be read', async () => {
     // "We could not tell" must not block someone trying to take access away.
     const org = await mkUser('org')
-    readPermission.mockResolvedValue('unknown')
+    readPermissionSet.mockResolvedValue('unknown')
 
     const res = await request(app).post('/api/delegation/revoke').set('Authorization', as(org))
 
@@ -373,7 +373,7 @@ describe('GET /delegation/:uuid', () => {
     txSucceeded.mockResolvedValue(null)
 
     expect((await get(org, row.payloadUuid)).body).toEqual({ state: 'pending', signed: true })
-    expect(readPermission).not.toHaveBeenCalled()
+    expect(readPermissionSet).not.toHaveBeenCalled()
   })
 
   it('fails when the ledger applied the transaction unsuccessfully', async () => {
@@ -390,7 +390,7 @@ describe('GET /delegation/:uuid', () => {
     const row = await mkRow(org)
     tryGetPayload.mockResolvedValue({ signed: true, cancelled: false, expired: false, account: org.address, txid: 'AB'.repeat(32) })
     txSucceeded.mockResolvedValue(true)
-    readPermission.mockResolvedValue('absent')
+    readPermissionSet.mockResolvedValue([])
 
     const res = await get(org, row.payloadUuid)
 
@@ -404,7 +404,7 @@ describe('GET /delegation/:uuid', () => {
     const org = await mkUser('org')
     const row = await mkRow(org)
     tryGetPayload.mockResolvedValue({ signed: true, cancelled: false, expired: false, account: org.address, txid: 'AB'.repeat(32) })
-    readPermission.mockResolvedValue('unknown')
+    readPermissionSet.mockResolvedValue('unknown')
 
     expect((await get(org, row.payloadUuid)).body.state).toBe('pending')
   })
@@ -413,7 +413,7 @@ describe('GET /delegation/:uuid', () => {
     const org = await mkUser('org')
     const row = await mkRow(org)
     tryGetPayload.mockResolvedValue({ signed: true, cancelled: false, expired: false, account: org.address, txid: 'AB'.repeat(32) })
-    readPermission.mockResolvedValue('granted')
+    readPermissionSet.mockResolvedValue(['NFTokenMint'])
 
     expect((await get(org, row.payloadUuid)).body).toEqual({ state: 'granted' })
     const after = await prisma.delegation.findUniqueOrThrow({ where: { id: row.id } })
@@ -432,10 +432,10 @@ describe('GET /delegation/:uuid', () => {
     tryGetPayload.mockResolvedValue({ signed: true, cancelled: false, expired: false, account: org.address, txid: 'CD'.repeat(32) })
 
     // Still granted after the signature: not revoked yet.
-    readPermission.mockResolvedValue('granted')
+    readPermissionSet.mockResolvedValue(['NFTokenMint'])
     expect((await get(org, row.payloadUuid)).body.state).toBe('pending')
 
-    readPermission.mockResolvedValue('absent')
+    readPermissionSet.mockResolvedValue([])
     expect((await get(org, row.payloadUuid)).body).toEqual({ state: 'revoked' })
     expect((await prisma.delegation.findUniqueOrThrow({ where: { id: row.id } })).status).toBe('REVOKED')
   })
@@ -448,13 +448,13 @@ describe('GET /delegation/me', () => {
     const org = await mkUser('org')
     const get = () => request(app).get('/api/delegation/me').set('Authorization', as(org))
 
-    readPermission.mockResolvedValue('granted')
+    readPermissionSet.mockResolvedValue(['NFTokenMint'])
     expect((await get()).body).toMatchObject({ available: true, state: 'granted', delegateAddress: DELEGATE })
 
-    readPermission.mockResolvedValue('absent')
+    readPermissionSet.mockResolvedValue([])
     expect((await get()).body.state).toBe('not_granted')
 
-    readPermission.mockResolvedValue('unknown')
+    readPermissionSet.mockResolvedValue('unknown')
     expect((await get()).body.state).toBe('unknown')
   })
 
@@ -463,17 +463,17 @@ describe('GET /delegation/me', () => {
     await mkRow(org, { kind: 'GRANT', status: 'ACTIVE' })
     const get = () => request(app).get('/api/delegation/me').set('Authorization', as(org))
 
-    readPermission.mockResolvedValue('granted')
+    readPermissionSet.mockResolvedValue(['NFTokenMint'])
     expect((await get()).body.grantedAt).not.toBeNull()
 
-    readPermission.mockResolvedValue('absent')
+    readPermissionSet.mockResolvedValue([])
     expect((await get()).body.grantedAt).toBeNull()
   })
 
   it('says so when the grant on file names a delegate that is no longer current', async () => {
     const org = await mkUser('org')
     await mkRow(org, { kind: 'GRANT', status: 'ACTIVE', delegate: OLD_DELEGATE })
-    readPermission.mockResolvedValue('absent')
+    readPermissionSet.mockResolvedValue([])
 
     const res = await request(app).get('/api/delegation/me').set('Authorization', as(org))
 
@@ -494,5 +494,202 @@ describe('GET /delegation/me', () => {
     const user = await mkUser('plain', 'USER')
     const res = await request(app).get('/api/delegation/me').set('Authorization', as(user))
     expect(res.status).toBe(403)
+  })
+})
+
+// ------------------------------------------------- two permissions at once --
+
+describe('mint and offers are separate consents', () => {
+  const post = (actor: Actor, path: string, body: object = {}) =>
+    request(app).post(`/api/delegation/${path}`).set('Authorization', as(actor)).send(body)
+
+  const sentPermissions = () =>
+    ((createPayload.mock.calls.at(-1)![0] as { Permissions: Array<{ Permission: { PermissionValue: string } }> })
+      .Permissions.map((p) => p.Permission.PermissionValue))
+
+  it('granting offers KEEPS mint — DelegateSet replaces the whole set', async () => {
+    const org = await mkUser('org')
+    readPermissionSet.mockResolvedValue(['NFTokenMint'])
+
+    const res = await post(org, 'grant', { permission: 'offers' })
+
+    expect(res.status).toBe(201)
+    // Sending only the new permission would have silently revoked minting.
+    expect(sentPermissions()).toEqual(['NFTokenCreateOffer', 'NFTokenMint'])
+    const row = await prisma.delegation.findFirstOrThrow({ where: { organizerId: org.id } })
+    expect(row.permissions).toEqual(['NFTokenCreateOffer', 'NFTokenMint'])
+  })
+
+  it('granting offers on its own does not smuggle mint in', async () => {
+    const org = await mkUser('org')
+    readPermissionSet.mockResolvedValue([])
+
+    await post(org, 'grant', { permission: 'offers' })
+
+    expect(sentPermissions()).toEqual(['NFTokenCreateOffer'])
+  })
+
+  it('the default grant is still mint alone', async () => {
+    const org = await mkUser('org')
+    await post(org, 'grant')
+    expect(sentPermissions()).toEqual(['NFTokenMint'])
+  })
+
+  it('does not spend a payload on a permission already held, whichever one', async () => {
+    const org = await mkUser('org')
+    readPermissionSet.mockResolvedValue(['NFTokenCreateOffer'])
+
+    expect((await post(org, 'grant', { permission: 'offers' })).body).toEqual({ state: 'granted' })
+    expect(createPayload).not.toHaveBeenCalled()
+    // ...but mint is not held, so that one still asks.
+    expect((await post(org, 'grant', { permission: 'mint' })).status).toBe(201)
+  })
+
+  it('refuses to build a grant from a set it could not read', async () => {
+    const org = await mkUser('org')
+    readPermissionSet.mockResolvedValue('unknown')
+
+    const res = await post(org, 'grant', { permission: 'offers' })
+
+    // Guessing what to keep could revoke a permission the organizer meant to keep.
+    expect(res.status).toBe(503)
+    expect(createPayload).not.toHaveBeenCalled()
+  })
+
+  it('revoking offers leaves mint in force', async () => {
+    const org = await mkUser('org')
+    readPermissionSet.mockResolvedValue(['NFTokenCreateOffer', 'NFTokenMint'])
+
+    const res = await post(org, 'revoke', { permission: 'offers' })
+
+    expect(res.status).toBe(201)
+    expect(sentPermissions()).toEqual(['NFTokenMint'])
+  })
+
+  it('revoking mint leaves offers in force', async () => {
+    const org = await mkUser('org')
+    readPermissionSet.mockResolvedValue(['NFTokenCreateOffer', 'NFTokenMint'])
+
+    await post(org, 'revoke', { permission: 'mint' })
+
+    expect(sentPermissions()).toEqual(['NFTokenCreateOffer'])
+  })
+
+  it('revoking everything sends the empty set', async () => {
+    const org = await mkUser('org')
+    readPermissionSet.mockResolvedValue(['NFTokenCreateOffer', 'NFTokenMint'])
+
+    await post(org, 'revoke', { permission: 'all' })
+
+    expect(sentPermissions()).toEqual([])
+  })
+
+  it('a partial revoke refuses on an unreadable set, but revoking everything does not', async () => {
+    const org = await mkUser('org')
+    readPermissionSet.mockResolvedValue('unknown')
+
+    expect((await post(org, 'revoke', { permission: 'offers' })).status).toBe(503)
+    expect((await post(org, 'revoke', { permission: 'all' })).status).toBe(201)
+  })
+
+  it('has nothing to revoke when the permission is not held', async () => {
+    const org = await mkUser('org')
+    readPermissionSet.mockResolvedValue(['NFTokenMint'])
+
+    const res = await post(org, 'revoke', { permission: 'offers' })
+
+    expect(res.body).toEqual({ state: 'revoked' })
+    expect(createPayload).not.toHaveBeenCalled()
+  })
+
+  it('preserves permissions that are not ours when changing one that is', async () => {
+    const org = await mkUser('org')
+    readPermissionSet.mockResolvedValue(['Payment'])
+
+    await post(org, 'grant', { permission: 'offers' })
+
+    // Hubworld does not remove what it did not add.
+    expect(sentPermissions()).toEqual(['NFTokenCreateOffer', 'Payment'])
+  })
+
+  it('rejects an unknown permission name', async () => {
+    const org = await mkUser('org')
+    expect((await post(org, 'grant', { permission: 'payments' })).status).toBe(400)
+    expect((await post(org, 'revoke', { permission: 'everything' })).status).toBe(400)
+  })
+
+  it('confirms a grant only when everything it carried is held', async () => {
+    const org = await mkUser('org')
+    n += 1
+    const row = await prisma.delegation.create({
+      data: {
+        network: NETWORK,
+        organizerId: org.id,
+        organizerAddress: org.address,
+        delegateAddress: DELEGATE,
+        kind: 'GRANT',
+        permissions: ['NFTokenCreateOffer', 'NFTokenMint'],
+        payloadUuid: `00000000-0000-4000-8000-${hex}${String(n).padStart(6, '0')}`,
+        expiresAt: new Date(Date.now() + 180_000),
+      },
+    })
+    tryGetPayload.mockResolvedValue({ signed: true, cancelled: false, expired: false, account: org.address, txid: 'AB'.repeat(32) })
+    const poll = () => request(app).get(`/api/delegation/${row.payloadUuid}`).set('Authorization', as(org))
+
+    readPermissionSet.mockResolvedValue(['NFTokenMint']) // offers missing
+    expect((await poll()).body.state).toBe('pending')
+
+    readPermissionSet.mockResolvedValue(['NFTokenCreateOffer', 'NFTokenMint'])
+    expect((await poll()).body.state).toBe('granted')
+  })
+
+  it('confirms a partial revoke when nothing beyond what it kept remains', async () => {
+    const org = await mkUser('org')
+    n += 1
+    const row = await prisma.delegation.create({
+      data: {
+        network: NETWORK,
+        organizerId: org.id,
+        organizerAddress: org.address,
+        delegateAddress: DELEGATE,
+        kind: 'REVOKE',
+        permissions: ['NFTokenMint'],
+        payloadUuid: `00000000-0000-4000-8000-${hex}${String(n).padStart(6, '0')}`,
+        expiresAt: new Date(Date.now() + 180_000),
+      },
+    })
+    tryGetPayload.mockResolvedValue({ signed: true, cancelled: false, expired: false, account: org.address, txid: 'CD'.repeat(32) })
+    const poll = () => request(app).get(`/api/delegation/${row.payloadUuid}`).set('Authorization', as(org))
+
+    readPermissionSet.mockResolvedValue(['NFTokenCreateOffer', 'NFTokenMint']) // offers still there
+    expect((await poll()).body.state).toBe('pending')
+
+    readPermissionSet.mockResolvedValue(['NFTokenMint'])
+    expect((await poll()).body.state).toBe('revoked')
+  })
+
+  it('treats a legacy empty-permissions GRANT row as the mint permission alone', async () => {
+    const org = await mkUser('org')
+    const row = await mkRow(org) // permissions defaults to []
+    tryGetPayload.mockResolvedValue({ signed: true, cancelled: false, expired: false, account: org.address, txid: 'EF'.repeat(32) })
+    readPermissionSet.mockResolvedValue(['NFTokenMint'])
+
+    const res = await request(app).get(`/api/delegation/${row.payloadUuid}`).set('Authorization', as(org))
+
+    expect(res.body.state).toBe('granted')
+  })
+
+  it('reports each permission separately on /me, and a single unreadable set as unknown for both', async () => {
+    const org = await mkUser('org')
+    const me = () => request(app).get('/api/delegation/me').set('Authorization', as(org))
+
+    readPermissionSet.mockResolvedValue(['NFTokenCreateOffer'])
+    expect((await me()).body).toMatchObject({ state: 'not_granted', permissions: { mint: 'not_granted', offers: 'granted' } })
+
+    readPermissionSet.mockResolvedValue(['NFTokenCreateOffer', 'NFTokenMint'])
+    expect((await me()).body.permissions).toEqual({ mint: 'granted', offers: 'granted' })
+
+    readPermissionSet.mockResolvedValue('unknown')
+    expect((await me()).body.permissions).toEqual({ mint: 'unknown', offers: 'unknown' })
   })
 })

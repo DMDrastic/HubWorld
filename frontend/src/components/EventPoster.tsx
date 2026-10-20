@@ -34,7 +34,7 @@
  * a wall of fallbacks reads as a set rather than a paint chart.
  */
 import { CalendarDays, MapPin } from 'lucide-react'
-import type { EventSummary } from '@/lib/api'
+import { dropsToXrp, type EventSummary } from '@/lib/api'
 import { posterSrcSet, posterUrl } from '@/lib/poster'
 
 const dateFmt = new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'short' })
@@ -137,12 +137,19 @@ export function EventPoster({
   event,
   live,
   onOpenAuction,
+  onBuy,
   interactive = true,
   titled = true,
 }: {
   event: EventSummary
   live: boolean
   onOpenAuction: (event: EventSummary) => void
+  /**
+   * Offered only for an event with a price, tickets left and a normal status.
+   * A SEPARATE control beneath the poster rather than the poster itself, so a
+   * live auction's button and a buy button never nest or share a tab stop.
+   */
+  onBuy?: (event: EventSummary) => void
   /**
    * Set false when something ELSE on the page already opens this auction.
    * The single-auction feature layout has its own button, and shipping both
@@ -289,7 +296,33 @@ export function EventPoster({
 
   // Same rule as before: only a live auction makes this activatable, because a
   // control that opens an empty window is worse than no control.
-  if (!live || !interactive) return <div className="group block">{body}</div>
+  const buyable =
+    onBuy !== undefined &&
+    !live &&
+    event.status === 'PUBLISHED' &&
+    event.primaryPriceDrops != null &&
+    (event.ticketsForSale ?? 0) > 0
+
+  const buy = buyable ? (
+    <button
+      type="button"
+      onClick={() => onBuy(event)}
+      aria-label={`Buy a ticket to ${event.title} for ${dropsToXrp(event.primaryPriceDrops!)} XRP`}
+      className="bg-primary text-primary-foreground focus-visible:ring-ring mt-2.5 inline-flex w-full items-center justify-between gap-2 rounded-lg px-3 py-2 text-xs font-medium transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:outline-none"
+    >
+      <span>Buy · {dropsToXrp(event.primaryPriceDrops!)} XRP</span>
+      <span className="opacity-75">{event.ticketsForSale} left</span>
+    </button>
+  ) : null
+
+  if (!live || !interactive) {
+    return (
+      <div className="group block">
+        {body}
+        {buy}
+      </div>
+    )
+  }
 
   return (
     <button

@@ -200,3 +200,98 @@ describe('DelegationPanel', () => {
     expect(await screen.findByText(/has since been replaced/i)).toBeTruthy()
   })
 })
+
+// -------------------------------------------------------- two permissions --
+
+const ME2 = (mint: 'granted' | 'not_granted' | 'unknown', offers: 'granted' | 'not_granted' | 'unknown') => ({
+  available: true as const,
+  state: mint,
+  permissions: { mint, offers },
+  delegateAddress: 'rDelegate',
+  grantedAt: null,
+  staleGrant: false,
+})
+
+function mockTwo(meSequence: unknown[], polls: unknown[] = [{ state: 'pending' }]) {
+  const bodies: Array<{ path: string; body: unknown }> = []
+  let me = 0
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input.toString()
+      const method = init?.method ?? 'GET'
+      const json = (body: unknown, status = 200) =>
+        new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
+      if (url.endsWith('/delegation/me')) {
+        const b = meSequence[Math.min(me, meSequence.length - 1)]
+        me += 1
+        return json(b)
+      }
+      if (method === 'POST' && /\/delegation\/(grant|revoke)$/.test(url)) {
+        bodies.push({ path: url.split('/').pop()!, body: JSON.parse(String(init?.body)) })
+        return json(CREATED, 201)
+      }
+      if (method === 'GET' && url.includes('/api/delegation/')) return json(polls[0])
+      throw new Error(`unexpected fetch: ${method} ${url}`)
+    }),
+  )
+  return bodies
+}
+
+describe('DelegationPanel: minting and selling are separate', () => {
+  it('shows a card for each, and states what selling can do before asking', async () => {
+    mockTwo([ME2('granted', 'not_granted')])
+    renderPanel()
+
+    expect(await screen.findByText(/can mint tickets for you/i)).toBeTruthy()
+    expect(screen.getByText(/cannot list tickets for you yet/i)).toBeTruthy()
+    // The larger trust says so in words: it can list ANY ticket in the account.
+    expect(screen.getByText(/can list any ticket in your account/i)).toBeTruthy()
+    expect(screen.getByRole('button', { name: /let hubworld sell for me/i })).toBeTruthy()
+    expect(screen.getByRole('button', { name: /revoke minting access/i })).toBeTruthy()
+  })
+
+  it('asks for selling WITHOUT touching minting', async () => {
+    const bodies = mockTwo([ME2('granted', 'not_granted'), ME2('granted', 'not_granted'), ME2('granted', 'granted')], [{ state: 'granted' }])
+    renderPanel()
+
+    ;(await screen.findByRole('button', { name: /let hubworld sell for me/i })).click()
+    await screen.findByAltText(/selling approval qr/i)
+
+    expect(bodies).toEqual([{ path: 'grant', body: { permission: 'offers' } }])
+    expect(await screen.findByText(/can list your tickets for sale/i)).toBeTruthy()
+    // Minting is untouched by it.
+    expect(screen.getByText(/can mint tickets for you/i)).toBeTruthy()
+  })
+
+  it('revokes minting only, naming the permission so selling stays', async () => {
+    const bodies = mockTwo([ME2('granted', 'granted'), ME2('granted', 'granted'), ME2('not_granted', 'granted')], [{ state: 'revoked' }])
+    renderPanel()
+
+    ;(await screen.findByRole('button', { name: /revoke minting access/i })).click()
+    await screen.findByAltText(/revoke qr/i)
+
+    expect(bodies).toEqual([{ path: 'revoke', body: { permission: 'mint' } }])
+    expect(await screen.findByText(/cannot mint for you yet/i)).toBeTruthy()
+    expect(screen.getByText(/can list your tickets for sale/i)).toBeTruthy()
+  })
+
+  it('shows only minting against a server that predates the second permission', async () => {
+    mockTwo([
+      { available: true, state: 'granted', delegateAddress: 'rD', grantedAt: null, staleGrant: false },
+    ])
+    renderPanel()
+
+    expect(await screen.findByText(/can mint tickets for you/i)).toBeTruthy()
+    expect(screen.queryByText(/selling for you/i)).toBeNull()
+  })
+
+  it('does not word an unreadable ledger as a revocation on either card', async () => {
+    mockTwo([ME2('unknown', 'unknown')])
+    renderPanel()
+
+    expect((await screen.findAllByText(/couldn't read your account/i)).length).toBe(2)
+    expect(screen.queryByText(/cannot mint for you/i)).toBeNull()
+    expect(screen.queryByText(/cannot list tickets/i)).toBeNull()
+  })
+})

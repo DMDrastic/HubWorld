@@ -326,6 +326,15 @@ export async function brokerSale(params: {
   brokerFeeDrops: bigint
 }): Promise<{ hash: string; succeeded: boolean; result: string }> {
   if (xamanMode === 'stub') return stubLedger.brokerSale(params)
+  return brokerSaleOnLedger(params)
+}
+
+/** `brokerSale` against the REAL ledger regardless of mode — see `delegationAvailableOnLedger`. */
+export async function brokerSaleOnLedger(params: {
+  sellOfferIndex: string
+  buyOfferIndex: string
+  brokerFeeDrops: bigint
+}): Promise<{ hash: string; succeeded: boolean; result: string }> {
   const wallet = platformWallet()
   const c = await ledger()
 
@@ -383,6 +392,13 @@ export async function accountFunding(
   address: string,
 ): Promise<{ spendableDrops: bigint; reserveIncDrops: bigint }> {
   if (xamanMode === 'stub') return stubLedger.accountFunding(address)
+  return accountFundingOnLedger(address)
+}
+
+/** `accountFunding` against the REAL ledger regardless of mode. */
+export async function accountFundingOnLedger(
+  address: string,
+): Promise<{ spendableDrops: bigint; reserveIncDrops: bigint }> {
   const c = await ledger()
 
   const [info, state] = await Promise.all([
@@ -524,6 +540,14 @@ export async function brokerCancelOffers(
 ): Promise<{ hash: string; succeeded: boolean; result: string } | null> {
   if (offerIndexes.length === 0) return null
   if (xamanMode === 'stub') return stubLedger.brokerCancelOffers(offerIndexes)
+  return brokerCancelOffersOnLedger(offerIndexes)
+}
+
+/** `brokerCancelOffers` against the REAL ledger regardless of mode. */
+export async function brokerCancelOffersOnLedger(
+  offerIndexes: string[],
+): Promise<{ hash: string; succeeded: boolean; result: string } | null> {
+  if (offerIndexes.length === 0) return null
   const wallet = platformWallet()
   const c = await ledger()
 
@@ -642,6 +666,11 @@ export async function txSucceeded(txHash: string): Promise<boolean | null> {
  */
 export async function holdsNft(address: string, nfTokenId: string): Promise<boolean> {
   if (xamanMode === 'stub') return stubLedger.holdsNft(address, nfTokenId)
+  return holdsNftOnLedger(address, nfTokenId)
+}
+
+/** `holdsNft` against the REAL ledger regardless of mode — see `delegationAvailableOnLedger`. */
+export async function holdsNftOnLedger(address: string, nfTokenId: string): Promise<boolean> {
   const c = await ledger()
   try {
     // account_nfts paginates; a large collection needs every page before

@@ -21,6 +21,7 @@
  * database or a log makes it obvious nothing here was ever minted for real.
  */
 import { randomBytes } from 'node:crypto'
+import { decodeAccountID } from 'xrpl'
 
 // Mirrors ledger.ts's TF_SELL_NFTOKEN. Not imported from there — ledger.ts
 // imports THIS module, and a cycle back would be a real problem, not a style
@@ -30,6 +31,40 @@ const TF_SELL_NFTOKEN = 1
 function fabricatedId(tag: string): string {
   const rand = randomBytes(28).toString('hex').toUpperCase()
   return (tag + rand).slice(0, 64).padEnd(64, '0')
+}
+
+let nftSerial = 0
+
+/**
+ * A structurally valid NFTokenID: flags, transfer fee, the ISSUER's AccountID, the
+ * scrambled taxon, and a serial.
+ *
+ * Fabricated ids used to be opaque `FEEDC0DE…` strings. That was fine until
+ * something needed to READ one: the primary sale checks that a ticket was issued
+ * by the organizer for this event before the delegate may list it, by parsing the
+ * id — so a stub ticket with a meaningless id was refused as "not issued by the
+ * organizer", and the box office could not be demonstrated without credentials.
+ * Real-shaped ids make the guard run in stub mode exactly as it does live.
+ *
+ * Falls back to the old opaque id when the issuer is not a valid address (unit
+ * tests use placeholders), so nothing that never needed structure changes.
+ */
+export function stubNftId(issuer: string, taxon: number): string {
+  try {
+    nftSerial += 1
+    const scramble = (384160001n * BigInt(nftSerial) + 2459n) & 0xffffffffn
+    const scrambled = (BigInt(taxon >>> 0) ^ scramble) & 0xffffffffn
+    const hex = (n: bigint, bytes: number) => n.toString(16).padStart(bytes * 2, '0')
+    return (
+      hex(0x0018n, 2) + // transferable | mutable
+      hex(0x1388n, 2) + // 5% transfer fee
+      Buffer.from(decodeAccountID(issuer)).toString('hex') +
+      hex(scrambled, 4) +
+      hex(BigInt(nftSerial), 4)
+    ).toUpperCase()
+  } catch {
+    return fabricatedId('FEEDC0DE')
+  }
 }
 
 type StubOffer = {
@@ -75,7 +110,7 @@ export function applyTransaction(
 
   switch (txjson.TransactionType) {
     case 'NFTokenMint': {
-      const nfTokenId = fabricatedId('FEEDC0DE')
+      const nfTokenId = stubNftId(String(txjson.Account ?? signerAddress), Number(txjson.NFTokenTaxon ?? 0))
       nftOwners.set(nfTokenId, signerAddress)
 
       // Mint-and-list in one signature (NFTokenMintOffer) — Amount+Destination
@@ -162,12 +197,17 @@ export function applyTransaction(
  * signed, so the token belongs to the ORGANIZER — the whole point of delegation.
  * `applyTransaction` cannot express that, since it assigns by signer.
  */
-export function applyDelegatedMint(organizer: string): { txHash: string; nfTokenId: string } {
+export function applyDelegatedMint(organizer: string, taxon = 0): { txHash: string; nfTokenId: string } {
   const txHash = fabricatedId('FEEDCAFE')
-  const nfTokenId = fabricatedId('FEEDC0DE')
+  const nfTokenId = stubNftId(organizer, taxon)
   nftOwners.set(nfTokenId, organizer)
   transactions.set(txHash, { succeeded: true, nftokenId: nfTokenId })
   return { txHash, nfTokenId }
+}
+
+/** The permissions currently granted, sorted — the stub's answer to `readPermissionSet`. */
+export function delegationSet(organizer: string, delegate: string): string[] {
+  return [...(delegations.get(`${organizer}|${delegate}`) ?? [])].sort()
 }
 
 export function hasDelegation(organizer: string, delegate: string, permission: string): boolean {

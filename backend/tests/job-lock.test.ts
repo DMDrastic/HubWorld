@@ -131,3 +131,20 @@ describe('withLock', () => {
     expect(row?.owner).toBe(PROCESS_ID)
   })
 })
+
+describe('releasing and immediately re-acquiring', () => {
+  it('always succeeds — a released lock is not still held for a moment', async () => {
+    // The column keeps millisecond precision and Postgres rounds, so releasing to
+    // "now" could leave the lock apparently held for up to half a millisecond.
+    // That failed about a third of the time; a queue of waiters taking the lock
+    // in turn paid for every one of them.
+    let failures = 0
+    for (let i = 0; i < 300; i++) {
+      await acquireLock(LOCK, 60_000)
+      await releaseLock(LOCK)
+      if (!(await acquireLock(LOCK, 60_000))) failures += 1
+      await releaseLock(LOCK)
+    }
+    expect(failures).toBe(0)
+  })
+})

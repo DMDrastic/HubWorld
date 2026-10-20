@@ -74,9 +74,16 @@ export async function renewLock(name: string, ttlMs: number): Promise<boolean> {
  * another process has since legitimately taken.
  */
 export async function releaseLock(name: string): Promise<void> {
+  // Released INTO THE PAST, not to "now". The column keeps millisecond precision
+  // and Postgres rounds, so `lockedUntil = now()` can land up to half a
+  // millisecond in the future — and acquiring requires `lockedUntil < now()`. The
+  // next runner, arriving straight after, then found a lock that had just been
+  // released still held: measured at 1,021 failures in 3,000 immediate
+  // re-acquires. Invisible to a sweep that retries on a timer; very visible to a
+  // queue of waiters taking the lock in turn, each of which lost 120-300ms a time.
   await prisma.$executeRaw`
     UPDATE "JobLock"
-       SET "lockedUntil" = now(), "updatedAt" = now()
+       SET "lockedUntil" = now() - interval '1 second', "updatedAt" = now()
      WHERE "name" = ${name} AND "owner" = ${PROCESS_ID}
   `
 }

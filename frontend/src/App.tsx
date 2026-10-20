@@ -21,6 +21,7 @@ import {
 import { MintPanel } from '@/components/MintPanel'
 import { DelegationPanel } from '@/components/DelegationPanel'
 import { BulkMintPanel } from '@/components/BulkMintPanel'
+import { CheckoutDialog } from '@/components/CheckoutDialog'
 import { GiftPanel } from '@/components/GiftPanel'
 import { SellPanel } from '@/components/SellPanel'
 import { DoorPanel } from '@/components/DoorPanel'
@@ -120,6 +121,7 @@ export default function App() {
   const [error, setError] = useState<string | null>(null)
   // Which event's auction window is open, or null for none.
   const [auctionEvent, setAuctionEvent] = useState<EventSummary | null>(null)
+  const [buyEvent, setBuyEvent] = useState<EventSummary | null>(null)
   const [auctions, setAuctions] = useState<AuctionSummary[]>([])
 
   const load = useCallback(async () => {
@@ -303,6 +305,7 @@ export default function App() {
               events={events}
               auctionSlugs={auctionSlugs}
               onOpenAuction={setAuctionEvent}
+              onBuy={setBuyEvent}
             />
           </section>
         )}
@@ -400,6 +403,18 @@ export default function App() {
       </main>
 
       <Footer health={health} />
+
+      {buyEvent && (
+        <CheckoutDialog
+          event={buyEvent}
+          open={true}
+          signedIn={me !== null}
+          onOpenChange={(open) => {
+            if (!open) setBuyEvent(null)
+          }}
+          onSold={handleMinted}
+        />
+      )}
 
       {auctionEvent && (
         <Suspense fallback={null}>

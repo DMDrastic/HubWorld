@@ -136,6 +136,7 @@ function CreateEventForm({ policy, onCreated }: { policy: Policy | null; onCreat
   const [startsAt, setStartsAt] = useState('')
   const [ticketCount, setTicketCount] = useState('100')
   const [royaltyPct, setRoyaltyPct] = useState('5')
+  const [priceXrp, setPriceXrp] = useState('')
   const [resalePolicy, setResalePolicy] = useState<ResalePolicyMode>('UNRESTRICTED')
   const [resaleCapPct, setResaleCapPct] = useState('120')
   const [resaleCapXrp, setResaleCapXrp] = useState('')
@@ -159,12 +160,20 @@ function CreateEventForm({ policy, onCreated }: { policy: Policy | null; onCreat
       if (resalePolicy === 'FIXED_CAP' && !(BigInt(resaleCapDrops) > 0n)) {
         throw new ApiError('Enter a resale cap price above zero')
       }
+      // Optional: an event without a price has no box office, and tickets are
+      // minted to hold or listed by hand. Validated as the CONVERTED drops, like
+      // the cap above, so a price that rounds to zero is refused here.
+      const primaryPriceDrops = priceXrp.trim() ? xrpToDrops(priceXrp) : undefined
+      if (primaryPriceDrops !== undefined && !(BigInt(primaryPriceDrops) > 0n)) {
+        throw new ApiError('Enter a ticket price above zero, or leave it blank')
+      }
       const event = await createEvent({
         title,
         venue: venue.trim() || undefined,
         startsAt: new Date(startsAt).toISOString(),
         ticketCount: Number(ticketCount),
         royaltyBps: Math.round(Number(royaltyPct) * 100),
+        ...(primaryPriceDrops ? { primaryPriceDrops } : {}),
         resalePolicy,
         ...(resalePolicy === 'PERCENTAGE_CAP' ? { resaleCapBps } : {}),
         ...(resalePolicy === 'FIXED_CAP' ? { resaleCapDrops } : {}),
@@ -172,6 +181,7 @@ function CreateEventForm({ policy, onCreated }: { policy: Policy | null; onCreat
       setCreated(event.title)
       setTitle('')
       setVenue('')
+      setPriceXrp('')
       setStartsAt('')
       setError(null)
       onCreated()
@@ -216,6 +226,20 @@ function CreateEventForm({ policy, onCreated }: { policy: Policy | null; onCreat
         />
         <span className="text-muted-foreground text-xs">
           your cut of every resale{policy ? `, max ${bps(policy.maxRoyaltyBps)}` : ''}
+        </span>
+      </div>
+
+      <div className="flex items-center gap-2">
+        <Input
+          value={priceXrp}
+          onChange={(e) => setPriceXrp(e.target.value)}
+          placeholder="Price, XRP"
+          inputMode="decimal"
+          aria-label="ticket price in XRP"
+          className="w-28"
+        />
+        <span className="text-muted-foreground text-xs">
+          per ticket at the box office. Leave blank to sell by hand instead.
         </span>
       </div>
 
