@@ -485,12 +485,13 @@ for at event creation.
 
 **Still to do:**
 
-- **Mainnet at SCALE.** DONE at small scale: two real-money runs on 2026-10-20 (the
-  second 14 of 14; the first found and fixed a mainnet-only sequence race). What is
-  still devnet-only is the SIZE: 1,000 tickets and 25 simultaneous buyers. The next
-  step is a larger run, with a funded `DELEGATE_SEED` and the broker.
-  The thousand-ticket and 25-buyer measurements are devnet; mainnet fees and node
-  limits can differ, and `WAVE_SIZE`/the fee ceiling should be tuned there.
+- **Mainnet at SCALE.** Minting is DONE: **1,000 tickets, one organizer signature,
+  on real mainnet (2026-10-20)** — 0 failed transactions, 37 pages (7.4 XRP), burned
+  and recovered afterwards; see `CLAUDE.md` "Proven on real mainnet" for hashes and the
+  three bugs it surfaced. Still devnet-only: the 25 simultaneous buyers. Open items it
+  produced: production needs its **own XRPL node or paid provider** (the public node
+  metered a 1,000-ticket run at 10,000 units/min and 500,000/hr), and the bulk-mint
+  worker's polling should be audited for the same quota.
 - ~~Detect orphan offers~~ and ~~settle sales without the buyer's tab~~: both DONE
   (#98).
 - **Throughput past ~2 checkouts/s per organizer** if a flash sale needs it: a

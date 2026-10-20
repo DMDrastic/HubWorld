@@ -314,7 +314,7 @@ type Check = { name: string; ok: boolean; detail?: string }
 async function* accountTransactions(client: Client, account: string) {
   let marker: unknown
   do {
-    const r = (await client.request({
+    const r = (await withBackoff(() => client.request({
       command: 'account_tx',
       account,
       limit: 400,
@@ -322,7 +322,7 @@ async function* accountTransactions(client: Client, account: string) {
       ledger_index_min: -1,
       ledger_index_max: -1,
       ...(marker ? { marker } : {}),
-    } as never)) as unknown as {
+    } as never))) as unknown as {
       result: { transactions: Array<Record<string, unknown>>; marker?: unknown }
     }
     for (const row of r.result.transactions) {
@@ -337,7 +337,7 @@ async function allNfts(client: Client, account: string) {
   const out: Array<{ NFTokenID: string; Issuer?: string; NFTokenTaxon: number; URI?: string; Flags: number }> = []
   let marker: unknown
   do {
-    const r = (await client.request({ command: 'account_nfts', account, ledger_index: 'validated', limit: 400, ...(marker ? { marker } : {}) } as never)) as unknown as {
+    const r = (await withBackoff(() => client.request({ command: 'account_nfts', account, ledger_index: 'validated', limit: 400, ...(marker ? { marker } : {}) } as never))) as unknown as {
       result: { account_nfts: typeof out; marker?: unknown }
     }
     out.push(...r.result.account_nfts)
