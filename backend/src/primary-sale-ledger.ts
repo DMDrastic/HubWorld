@@ -20,6 +20,7 @@ import {
 } from './ledger.js'
 import { OFFER_PERMISSION, readPermissionOnLedger } from './delegation.js'
 import * as stubLedger from './stub-ledger.js'
+import { isTxNotFound } from './xrpl-errors.js'
 
 export type DelegatedOffer = NFTokenCreateOffer & { Delegate: string }
 
@@ -157,7 +158,7 @@ export function realPrimarySaleLedger(): PrimarySaleLedger {
               return { ok: false, code: 'noOfferCreated' }
             }
           } catch (err) {
-            if (!(err instanceof Error && /txnNotFound/i.test(err.message))) throw err
+            if (!isTxNotFound(err)) throw err
           }
           // Past LastLedgerSequence in a VALIDATED ledger, it can never apply.
           if (started.lastLedgerSequence > 0) {

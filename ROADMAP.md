@@ -485,12 +485,26 @@ for at event creation.
 
 **Still to do:**
 
-- **Mainnet at SCALE.** DONE at small scale: two real-money runs on 2026-10-20 (the
-  second 14 of 14; the first found and fixed a mainnet-only sequence race). What is
-  still devnet-only is the SIZE: 1,000 tickets and 25 simultaneous buyers. The next
-  step is a larger run, with a funded `DELEGATE_SEED` and the broker.
-  The thousand-ticket and 25-buyer measurements are devnet; mainnet fees and node
-  limits can differ, and `WAVE_SIZE`/the fee ceiling should be tuned there.
+- **Mainnet at SCALE.** Minting is DONE: **1,000 tickets, one organizer signature,
+  on real mainnet (2026-10-20)** — 0 failed transactions, 37 pages (7.4 XRP), burned
+  and recovered afterwards; see `CLAUDE.md` "Proven on real mainnet" for hashes and the
+  three bugs it surfaced. Still devnet-only: the 25 simultaneous buyers. Open items it
+  produced: production needs its **own XRPL node or paid provider** (the public node
+  metered a 1,000-ticket run at 10,000 units/min and 500,000/hr), and the bulk-mint
+  worker's polling should be audited for the same quota.
+- **Resale royalty on a delegate-minted token, on mainnet.** The 1,000-ticket proof
+  shows every delegated token carries `TransferFee` 5000 and the organizer as issuer,
+  and the August 2026 rehearsal measured the payout on a hand-minted token (seller
+  0.926250, issuer 0.048750, broker 0.024988 on a 1 XRP bid: 4.875% effective). What
+  has NOT been seen is a SECOND-hand sale of a token the delegate minted. A primary
+  sale cannot show it, since XRPL skips `TransferFee` when the issuer is a party. The
+  check: delegate-mint a few tickets, sell one to buyer A (primary), have A resell it
+  to buyer B through the brokered flow, and read the three payouts off the ledger.
+  Neither buyer may be the organizer. Pass = the issuer receives 5% of (bid minus
+  broker fee). Cost is small (a handful of tickets, three throwaway accounts); it can
+  extend `scripts/mainnet-sale-check.ts`, which already does mint + primary sale, with
+  a resale leg. Until it is done, "royalties survive delegation" rests on the token's
+  own fields rather than an observed payout.
 - ~~Detect orphan offers~~ and ~~settle sales without the buyer's tab~~: both DONE
   (#98).
 - **Throughput past ~2 checkouts/s per organizer** if a flash sale needs it: a
@@ -745,6 +759,25 @@ So the three barriers, ranked by how much they hurt:
 2. **Reserves** — ~1 XRP base plus 0.2 per object before anything can be held.
    The pending `Sponsor` amendment targets exactly this, so like delegation the
    fix may arrive from the protocol rather than from us. **Watch it.**
+
+   **The intended use is attendee activation, not organizer reserve** (decided
+   2026-10-20). HubWorld would sponsor a new buyer's base reserve and the 0.2 XRP
+   object reserves for their bid and held ticket, so a first-time attendee needs
+   only the ticket price. Read from the draft spec, so verify before building.
+   Open questions to answer first:
+   - **Abuse:** free wallets invite farming. Tie sponsorship to a completed
+     purchase or a verified sign-in, never to a bare request.
+   - **Recovery:** can the sponsored reserve be reclaimed, and can the attendee
+     walk away with it? This decides whether the cost is a loan or a gift.
+   - **Cost:** ~1.4 XRP locked per new attendee, so ~1,400 XRP for a
+     1,000-person event unless recoverable or priced into the ticket.
+   - **Not for organizers:** the organizer's ~9.4 XRP page reserve for 1,000
+     tickets stays their own cost (shown up front by `reserveNeededDrops`);
+     sponsoring it would make HubWorld carry a large locked balance per organizer.
+
+   Not enabled on mainnet (last checked 2026-10-19), so nothing to build yet. The
+   interim alternative is a small direct XRP payment to new buyers out of the
+   ticket price: works today, but is not reclaimable.
 3. **Volatility and unfamiliarity of paying in XRP** — the one stablecoins
    genuinely solve, and the smallest of the three.
 

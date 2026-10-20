@@ -30,6 +30,7 @@
     "scripts/primary-sale-devnet-check.ts",
     "scripts/mainnet-sale-check.ts",
     "scripts/mainnet-1000-check.ts",
+    "scripts/mainnet-1000-recover.ts",
     "scripts/payload-report.ts",
     "scripts/purge-test-data.ts",
     "scripts/settle-auctions.ts",

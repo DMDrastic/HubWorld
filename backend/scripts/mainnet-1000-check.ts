@@ -45,6 +45,7 @@ import { execFileSync, spawn } from 'node:child_process'
 import path from 'node:path'
 import { Wallet, isValidClassicAddress, parseNFTokenID, type Client } from 'xrpl'
 import { env } from '../src/env.js'
+import { withBackoff } from '../src/xrpl-errors.js'
 import { reserveNeededDrops, WAVE_SIZE, decideFee, DEFAULT_MAX_FEE_DROPS, nextWaveSize, waveOutcome } from '../src/bulk-mint-policy.js'
 
 const argv = process.argv.slice(2)
@@ -192,7 +193,7 @@ async function parent() {
 
     // ---- escrow the organizer seed, so a crash does not strand the XRP --------
     let escrowed = false
-    if (!REHEARSE) {
+    {
       if (keychainHas()) {
         console.error(`A Keychain item "${ESCROW_ITEM}" already exists: a previous run did not finish. Recover or remove it first:`)
         console.error(`  security find-generic-password -a hubworld -s ${ESCROW_ITEM} -w`)
@@ -283,11 +284,18 @@ async function parent() {
       }
     }
     if (escrowed) {
-      if (swept) {
+      // The seed is the only way to finish a run that did not finish: burn what is
+      // left, revoke the grant, recover the reserve. A sweep succeeding says only
+      // that the spare XRP moved, so the seed is dropped ONLY when the child also
+      // completed. (A run once discarded it after a failed burn, stranding 100
+      // tickets and their reserve in an account nobody could sign for.)
+      if (swept && code === 0) {
         execFileSync('security', ['delete-generic-password', '-a', 'hubworld', '-s', ESCROW_ITEM], { stdio: 'ignore' })
         console.log('\n  Keychain escrow removed.')
       } else {
-        console.log(`\n  The sweep did not fully succeed, so the organizer seed is STILL in the Keychain ("${ESCROW_ITEM}").`)
+        console.log(`\n  The run did not finish cleanly (child exit ${code}, sweep ${swept ? 'ok' : 'incomplete'}), so the organizer seed is KEPT in the Keychain ("${ESCROW_ITEM}").`)
+        console.log(`  Organizer ${organizer.classicAddress} may still hold tickets and reserve. Recover with:`)
+        console.log(`    security find-generic-password -a hubworld -s ${ESCROW_ITEM} -w`)
       }
     }
     process.exitCode = code
@@ -306,7 +314,7 @@ type Check = { name: string; ok: boolean; detail?: string }
 async function* accountTransactions(client: Client, account: string) {
   let marker: unknown
   do {
-    const r = (await client.request({
+    const r = (await withBackoff(() => client.request({
       command: 'account_tx',
       account,
       limit: 400,
@@ -314,7 +322,7 @@ async function* accountTransactions(client: Client, account: string) {
       ledger_index_min: -1,
       ledger_index_max: -1,
       ...(marker ? { marker } : {}),
-    } as never)) as unknown as {
+    } as never))) as unknown as {
       result: { transactions: Array<Record<string, unknown>>; marker?: unknown }
     }
     for (const row of r.result.transactions) {
@@ -329,7 +337,7 @@ async function allNfts(client: Client, account: string) {
   const out: Array<{ NFTokenID: string; Issuer?: string; NFTokenTaxon: number; URI?: string; Flags: number }> = []
   let marker: unknown
   do {
-    const r = (await client.request({ command: 'account_nfts', account, ledger_index: 'validated', limit: 400, ...(marker ? { marker } : {}) } as never)) as unknown as {
+    const r = (await withBackoff(() => client.request({ command: 'account_nfts', account, ledger_index: 'validated', limit: 400, ...(marker ? { marker } : {}) } as never))) as unknown as {
       result: { account_nfts: typeof out; marker?: unknown }
     }
     out.push(...r.result.account_nfts)
@@ -504,6 +512,9 @@ async function child() {
     }
     console.log(`  tokens           : ${nfts.length} (taxon ${taxon}), sample ${nfts[0]?.NFTokenID}`)
 
+    // Rehearsal-only: proves the recovery path (seed kept after a failed run) without risking real XRP.
+    if (REHEARSE && process.env.CHECK_FORCE_FAIL_BEFORE_BURN) throw new Error('forced failure before the burn (rehearsing recovery)')
+
     // ---- burn pass -----------------------------------------------------------
     if (BURN_AFTER) {
       head('6. The delegate burns every ticket, unattended, to recover the reserve')
@@ -549,14 +560,14 @@ async function child() {
           await sleep(1_500)
         }
         // Truth comes from the ledger's own list, not from counting submissions.
-        const left = new Set((await allNfts(client, organizer.classicAddress)).filter((n) => n.NFTokenTaxon === taxon).map((n) => n.NFTokenID))
+        const left = new Set((await withBackoff(() => allNfts(client, organizer.classicAddress))).filter((n) => n.NFTokenTaxon === taxon).map((n) => n.NFTokenID))
         const next = remaining.filter((id) => left.has(id))
         stalled = next.length === remaining.length ? stalled + 1 : 0
         remaining = next
         if (remaining.length % 100 < size) console.log(`  ${remaining.length} left  ${((Date.now() - burnStart) / 1000).toFixed(0)}s`)
       }
-      const leftNow = (await allNfts(client, organizer.classicAddress)).filter((n) => n.NFTokenTaxon === taxon).length
-      const afterBurn = (await accountOf(client, organizer.classicAddress))!
+      const leftNow = (await withBackoff(() => allNfts(client, organizer.classicAddress))).filter((n) => n.NFTokenTaxon === taxon).length
+      const afterBurn = (await withBackoff(() => accountOf(client, organizer.classicAddress)))!
       console.log(`  burned in ${((Date.now() - burnStart) / 1000).toFixed(1)}s; organizer now owns ${afterBurn.owners} object(s)`)
       check('every ticket was burned by the delegate', leftNow === 0, `${leftNow} left`)
       check('the page reserve was freed', afterBurn.owners <= 1, `${afterBurn.owners} owned objects`)
@@ -567,7 +578,7 @@ async function child() {
       hashes.revoke = revoked.result.hash
       const gone = await readPermissionSetOnLedger(pair)
       check('the grant is revoked', Array.isArray(gone) && gone.length === 0)
-      const final = (await accountOf(client, organizer.classicAddress))!
+      const final = (await withBackoff(() => accountOf(client, organizer.classicAddress)))!
       check('the organizer owns nothing again', final.owners === 0, `${final.owners}`)
     }
 

@@ -1250,8 +1250,8 @@ as you, nothing else, and only while you allow it". Narrower, ledger-enforced
 and revocable, and that trade is now **accepted** in exchange for events in the
 thousands. What is built is the transaction builders and the capability gate;
 there are no routes or UI yet, so until the slice in `ROADMAP.md` §5b ships the
-low-hundreds ceiling still stands in practice. The thousand-ticket run has only
-been measured on devnet.
+low-hundreds ceiling still stands in practice. The thousand-ticket run is now
+proven on mainnet (see "Proven on real mainnet" below).
 
 **Grant, revoke and unattended bulk minting are built; selling at scale is not.**
 `src/routes/delegation.ts`, `DelegationPanel` and the `Delegation` table cover the
@@ -1408,8 +1408,8 @@ selling kept minting; the next checkout was refused as closed. Transactions: gra
 `20B09625…0ADB`, matches `BDB458FE…E887` and `A723870B…B955`, revoke `FB10ADC2…A3D9`.
 Cost: 9.75 XRP funded, 3.95 XRP swept back, ~5.8 XRP locked as base reserves and NFT
 pages on the throwaway accounts. **The sale and the worker have now been seen working
-on the real ledger; what remains unmeasured on mainnet is scale** (the 1,000-ticket
-and 25-buyer figures are devnet).
+on the real ledger. Scale has since been measured for MINTING (below); the 25-buyer
+sale figure is still devnet.**
 
 **1,000 tickets, one signature: the proof script and the reserve it corrected.**
 `scripts/mainnet-1000-check.ts` proves the headline claim from the ledger alone: the
@@ -1426,8 +1426,48 @@ split as they fill and the measured run took **41 pages (24.4 per page, 8.2 XRP)
 The product would have let an organizer start a run it could not finish. It now
 divides by 22 (47 pages, 9.4 XRP) and `MEASURED_PAGES` pins every measured run so the
 estimate can never again sit below one. The organizer's seed is escrowed in the macOS
-Keychain (`hubworld-mainnet-check-organizer`) until the sweep succeeds: with ~11 XRP
+Keychain (`hubworld-mainnet-check-organizer`) until the run FINISHES: with ~11 XRP
 at stake, "the keys die with the process" is too risky.
+
+**Proven on real mainnet, 2026-10-20: 1,000 tickets, one organizer signature.**
+Organizer `rBczn7kN2ujaTjhufmy5nbQGHeEr7Tpkxn`, delegate `rKSXgtaF…`. Read from the
+ledger alone: the organizer's key signed exactly 1 transaction (the grant,
+`772E17F1…6F06`); 1,000 `NFTokenMint`s carry `Delegate` (first `B25366F4…5D7F`, last
+`836F538F…615E`); every token issued by the organizer, `TransferFee` 5000, flags 24,
+URI present; database = ledger = job counter = 1,000; `failedTxs` 0; 12 drops per
+mint, all paid by the delegate. Minted in 736s (1.4/s) with 5 automatic waits for fee
+spikes (~6,000 drops, ~500x normal). **1,000 tickets took 37 pages (27 per page, 7.4
+XRP)** — under the 9.4 XRP estimate, which therefore stays. The delegate then burned
+all 1,000 in 673s, the grant was revoked (`1EA5DDC9…7CC5`) and 10.1 of the 11.1 XRP
+sent was swept back; ~1 XRP stays as the organizer's base reserve. The 100-ticket
+runs the same day (18 of 18, burn included) are `rsLzJUf3…`'s.
+
+**What it cost to get there is the finding.** Each mainnet run exposed a bug devnet
+cannot, and two of them were in shipped code:
+
+- **`txnNotFound` is not in the error MESSAGE.** xrpl.js raises a `RippledError`
+  whose message is "Transaction not found." and whose code lives on `err.data.error`;
+  `lookup` matched the message, so a just-submitted transaction the node had not yet
+  seen crashed the worker (after 40 mints). A single devnet node always has it. The
+  sale ledger had the same match. `src/xrpl-errors.ts` (`isTxNotFound`) fixes both.
+- **The public node meters each client.** Measured quotas: 10,000 units per 60s and
+  500,000 per 3,600s, answered as `tooBusy`/`slowDown` with a retry hint. A 1,000-ticket
+  run polls enough to hit both, and polling each transaction's hash in the burn spent
+  a whole hour's quota. The mint ledger's reads now go through `withBackoff`, and the
+  burn polls the organizer's validated Sequence once per wave instead of one lookup
+  per hash. **Production must not depend on the free public node**: it needs its own
+  node or a paid provider.
+- **The escrow was dropped after a FAILED run.** The parent deleted the seed once the
+  sweep succeeded, even though the burn had crashed, stranding 100 tickets and ~2 XRP
+  in an account nobody could sign for. The seed is now removed only when the sweep
+  succeeded AND the child exited cleanly; otherwise it is kept and the recovery command
+  printed. `--rehearse` escrows too, with `CHECK_FORCE_FAIL_BEFORE_BURN` to exercise
+  that path. `scripts/mainnet-1000-recover.ts` resumes a stopped run from the escrowed
+  seed: proves the headline from the ledger, burns, revokes, sweeps, then drops the seed.
+
+Real cost of the whole exercise, for honesty: ~2 XRP is permanently locked in the
+earlier `rL5Y…` account (100 tickets, seed lost to the escrow bug above), on top of the
+earlier throwaway accounts.
 
 **Batch transactions do not rescue this, on two counts.** The `Batch` amendment
 (XLS-56) would let one signature carry several inner mints, but a signature-

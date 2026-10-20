@@ -32,6 +32,19 @@
  * The broker is a THROWAWAY, not the real one: the real broker's seed should not
  * be loaded into a script, and the topology under test is identical.
  *
+ * --resale adds a SECOND-hand sale of a delegate-minted ticket: the first buyer
+ * resells to the second through the brokered flow, and the organizer's royalty is
+ * read from that transaction's own metadata. A primary sale cannot show it (XRPL
+ * skips the transfer fee when the issuer is a party), so this is the only way to
+ * see the royalty survive delegation. Needs --buyers 2 or more; adds about one
+ * price of funding to the second buyer.
+ *
+ * --delegate-from-env uses the REAL delegate (the funded production account whose
+ * seed is already in DELEGATE_SEED) instead of a generated throwaway: nothing is
+ * funded for it, it is never swept, and one base reserve is not locked away. Its
+ * seed reaches the child through the environment only, as in mainnet-1000-check.
+ * The broker stays a throwaway: the real broker's seed does not belong in a script.
+ *
  * --rehearse runs the identical flow on devnet/testnet, funding from the
  * faucet, so the process handling and every check can be seen to work for free
  * before any real XRP is involved.
@@ -52,9 +65,12 @@ const CHILD = process.env.MAINNET_SALE_CHECK_CHILD === '1'
 const REHEARSE = flag('rehearse')
 const YES = flag('yes')
 const RETURN_TO = value('return-to')
+const RESALE = flag('resale')
+const DELEGATE_FROM_ENV = flag('delegate-from-env')
 
 const BUYERS = Math.min(4, Math.max(1, Number(value('buyers') ?? 2)))
 const PRICE_DROPS = BigInt(Math.round(Number(value('price-xrp') ?? 1) * 1_000_000))
+if (RESALE && BUYERS < 2) throw new Error('--resale needs --buyers 2 or more: one to sell, one to buy')
 const TICKETS = BUYERS + 1 // one spare, so the post-revoke refusal is "closed", not "sold out"
 
 const head = (s: string) => console.log(`\n${'='.repeat(72)}\n${s}\n${'='.repeat(72)}`)
@@ -120,19 +136,27 @@ async function parent() {
     const feeDrops = (PRICE_DROPS * BigInt(env.PLATFORM_FEE_BPS)) / 10_000n
     const owed = PRICE_DROPS + feeDrops
     const n = needs(res, owed)
-    const total = n.organizer + n.delegate + n.broker + n.buyer * BigInt(BUYERS)
+    if (DELEGATE_FROM_ENV && !process.env.DELEGATE_SEED) {
+      console.error('--delegate-from-env needs DELEGATE_SEED in the environment.')
+      process.exit(1)
+    }
+    // On a rehearsal this is a devnet account you funded yourself; on mainnet, the real one.
+    const realDelegate = DELEGATE_FROM_ENV ? Wallet.fromSeed(process.env.DELEGATE_SEED!) : null
+    const delegateFunding = realDelegate ? 0n : n.delegate
+    const total = n.organizer + delegateFunding + n.broker + n.buyer * BigInt(BUYERS) + (RESALE ? owed + 100_000n : 0n)
 
     head('Plan')
     console.log(`  network            : ${env.XRPL_NETWORK}${REHEARSE ? '  (REHEARSAL: faucet-funded)' : '  (REAL XRP)'}`)
     console.log(`  reserves           : base ${xrp(res.baseDrops)} XRP, per object ${xrp(res.incDrops)} XRP`)
     console.log(`  tickets / buyers   : ${TICKETS} minted, ${BUYERS} buy; price ${xrp(PRICE_DROPS)} XRP + ${xrp(feeDrops)} platform fee`)
     console.log(`  organizer needs    : ${xrp(n.organizer)} XRP`)
-    console.log(`  delegate needs     : ${xrp(n.delegate)} XRP`)
+    console.log(realDelegate ? `  delegate           : the real one, ${realDelegate.classicAddress} (nothing sent, never swept)` : `  delegate needs     : ${xrp(n.delegate)} XRP`)
     console.log(`  broker needs       : ${xrp(n.broker)} XRP`)
     console.log(`  each buyer needs   : ${xrp(n.buyer)} XRP   (x ${BUYERS})`)
+    if (RESALE) console.log(`  + resale           : buyer 2 also needs ${xrp(owed + 100_000n)} XRP to buy the ticket back from buyer 1`)
     console.log(`  TOTAL to send      : ${xrp(total)} XRP`)
     if (!REHEARSE) {
-      const stranded = BigInt(3 + BUYERS) * res.baseDrops + (1n + BigInt(BUYERS)) * res.incDrops
+      const stranded = BigInt((realDelegate ? 2 : 3) + BUYERS) * res.baseDrops + (1n + BigInt(BUYERS)) * res.incDrops
       console.log(`  swept back to      : ${RETURN_TO}`)
       console.log(`  stays locked       : about ${xrp(stranded)} XRP (base reserves + NFT pages; the NFTs block account deletion)`)
       console.log('  the NFTs          : permanent; their URIs point at hubworld.app for a throwaway event slug')
@@ -146,6 +170,16 @@ async function parent() {
       return
     }
 
+    if (realDelegate) {
+      const bal = await balanceOf(client, realDelegate.classicAddress)
+      const spendable = bal === null ? 0n : bal - res.baseDrops
+      console.log(`  real delegate holds ${bal === null ? 'NOTHING' : `${xrp(bal)} XRP (spendable ${xrp(spendable)})`}`)
+      if (spendable < 100_000n) {
+        console.error('  The real delegate cannot pay the fees. Refusing to continue.')
+        return
+      }
+    }
+
     if (!YES && !REHEARSE) {
       console.log('\nDry run: nothing generated or sent. Re-run with --yes to fund and execute.')
       return
@@ -153,15 +187,17 @@ async function parent() {
 
     const wallets = {
       organizer: Wallet.generate(),
-      delegate: Wallet.generate(),
+      delegate: realDelegate ?? Wallet.generate(),
       broker: Wallet.generate(),
       buyers: Array.from({ length: BUYERS }, () => Wallet.generate()),
     }
+    // With --resale the SECOND buyer buys again, so it also holds one more price.
+    const resaleExtra = RESALE ? owed + 100_000n : 0n
     const targets: Array<{ label: string; wallet: Wallet; drops: bigint }> = [
       { label: 'organizer', wallet: wallets.organizer, drops: n.organizer },
-      { label: 'delegate ', wallet: wallets.delegate, drops: n.delegate },
+      ...(realDelegate ? [] : [{ label: 'delegate ', wallet: wallets.delegate, drops: n.delegate }]),
       { label: 'broker   ', wallet: wallets.broker, drops: n.broker },
-      ...wallets.buyers.map((w, i) => ({ label: `buyer ${i + 1} `, wallet: w, drops: n.buyer })),
+      ...wallets.buyers.map((w, i) => ({ label: `buyer ${i + 1} `, wallet: w, drops: n.buyer + (i === 1 ? resaleExtra : 0n) })),
     ]
 
     if (REHEARSE) {
@@ -216,7 +252,7 @@ async function parent() {
       return
     }
     head('Sweeping leftovers back')
-    for (const t of [...wallets.buyers.map((w, i) => ({ label: `buyer ${i + 1}`, w })), { label: 'organizer', w: wallets.organizer }, { label: 'broker', w: wallets.broker }, { label: 'delegate', w: wallets.delegate }]) {
+    for (const t of [...wallets.buyers.map((w, i) => ({ label: `buyer ${i + 1}`, w })), { label: 'organizer', w: wallets.organizer }, { label: 'broker', w: wallets.broker }, ...(realDelegate ? [] : [{ label: 'delegate', w: wallets.delegate }])]) {
       try {
         const bal = await balanceOf(client, t.w.classicAddress)
         if (bal === null) continue
@@ -262,6 +298,8 @@ async function child() {
   ])
   const { ledger, delegateWallet, platformWallet, brokerSaleOnLedger, buildBuyOfferTx, platformFeeDrops, disconnectLedger } = ledgerMod
   const { buildDelegateSetTx, readPermissionSetOnLedger, MINT_PERMISSION, OFFER_PERMISSION } = deleg
+  const { buildSellOfferTx } = ledgerMod
+  const { isTxNotFound } = await import('../src/xrpl-errors.js')
 
   assertSafeDatabase('mainnet-sale-check')
   const checks: Check[] = []
@@ -421,6 +459,100 @@ async function child() {
       }),
     )
     check('each buyer now holds exactly one of the organizer\'s tickets', held.every((c) => c === 1), `holdings: ${held.join(', ')}`)
+
+
+    if (RESALE) {
+      head('4b. RESALE: buyer 1 resells a delegate-minted ticket to buyer 2; the organizer must be paid its royalty')
+      const seller = buyers[0]!
+      const buyer2 = buyers[1]!
+      const ticketOf = async (w: Wallet) => {
+        const r = (await client.request({ command: 'account_nfts', account: w.classicAddress, ledger_index: 'validated', limit: 400 } as never)) as unknown as {
+          result: { account_nfts: Array<{ NFTokenID: string; Issuer?: string; NFTokenTaxon: number }> }
+        }
+        return r.result.account_nfts.filter((n) => n.NFTokenTaxon === taxon && n.Issuer === organizer.classicAddress)
+      }
+      const offerIndexOf = (res: unknown): string | undefined => {
+        const meta = (res as { result: { meta?: unknown } }).result.meta
+        if (!meta || typeof meta !== 'object') return undefined
+        for (const node of (meta as { AffectedNodes: Array<Record<string, { LedgerEntryType: string; LedgerIndex: string }>> }).AffectedNodes) {
+          if (node.CreatedNode?.LedgerEntryType === 'NFTokenOffer') return node.CreatedNode.LedgerIndex
+        }
+        return undefined
+      }
+      const sellerTickets = await ticketOf(seller)
+      check('buyer 1 holds a delegate-minted ticket to resell', sellerTickets.length === 1, `${sellerTickets.length}`)
+      const nfTokenId = sellerTickets[0]!.NFTokenID
+      const resalePrice = PRICE_DROPS
+      const resaleFee = platformFeeDrops(resalePrice, env.PLATFORM_FEE_BPS)
+
+      const sellTx = await client.submitAndWait(
+        seller.sign(await client.autofill(buildSellOfferTx({ ownerAddress: seller.classicAddress, nfTokenId, amountDrops: resalePrice, brokerAddress: broker.classicAddress }) as never)).tx_blob,
+      )
+      const sellIndex = offerIndexOf(sellTx)
+      const bidTx = await client.submitAndWait(
+        buyer2.sign(
+          await client.autofill(
+            buildBuyOfferTx({ buyerAddress: buyer2.classicAddress, ownerAddress: seller.classicAddress, nfTokenId, amountDrops: resalePrice + resaleFee, brokerAddress: broker.classicAddress }) as never,
+          ),
+        ).tx_blob,
+      )
+      const buyIndex = offerIndexOf(bidTx)
+      if (!sellIndex || !buyIndex) throw new Error('missing a resale offer index')
+      hashes['resale-sell'] = sellTx.result.hash
+      hashes['resale-bid'] = bidTx.result.hash
+      const match = await brokerSaleOnLedger({ sellOfferIndex: sellIndex, buyOfferIndex: buyIndex, brokerFeeDrops: resaleFee })
+      hashes['resale-match'] = match.hash
+      console.log(`  resale match ${match.result}   tx ${match.hash}`)
+      check('the resale settled', match.succeeded, match.result)
+
+      // The payouts, read from the match transaction's OWN metadata: exact, and
+      // immune to a node that has not yet caught up on balances.
+      let metaNodes: Array<Record<string, { LedgerEntryType: string; FinalFields?: { Account?: string; Balance?: string }; PreviousFields?: { Balance?: string } }>> = []
+      let txFee = 0n
+      for (let i = 0; i < 20; i++) {
+        try {
+          const t = (await client.request({ command: 'tx', transaction: match.hash } as never)) as unknown as {
+            result: { validated?: boolean; Fee?: string; tx_json?: { Fee?: string }; meta?: { AffectedNodes: typeof metaNodes } }
+          }
+          if (t.result.validated && t.result.meta) {
+            metaNodes = t.result.meta.AffectedNodes
+            txFee = BigInt(t.result.Fee ?? t.result.tx_json?.Fee ?? '0')
+            break
+          }
+        } catch (e) {
+          if (!isTxNotFound(e)) throw e
+        }
+        await sleep(2_000)
+      }
+      const deltaOf = (address: string): bigint => {
+        for (const node of metaNodes) {
+          const m = node.ModifiedNode
+          if (m?.LedgerEntryType === 'AccountRoot' && m.FinalFields?.Account === address && m.PreviousFields?.Balance !== undefined) {
+            return BigInt(m.FinalFields.Balance!) - BigInt(m.PreviousFields.Balance)
+          }
+        }
+        return 0n
+      }
+      const royaltyBps = 500n
+      const expectedRoyalty = (resalePrice * royaltyBps) / 10_000n
+      const orgDelta = deltaOf(organizer.classicAddress)
+      const sellerDelta = deltaOf(seller.classicAddress)
+      const buyerDelta = deltaOf(buyer2.classicAddress)
+      const brokerDelta = deltaOf(broker.classicAddress)
+      console.log(`  bid ${xrp(resalePrice + resaleFee)} XRP = price ${xrp(resalePrice)} + platform fee ${xrp(resaleFee)}`)
+      console.log(`  organizer (issuer) ${xrp(orgDelta).padStart(10)}   seller ${xrp(sellerDelta).padStart(10)}   broker ${xrp(brokerDelta).padStart(10)}   buyer 2 ${xrp(buyerDelta).padStart(11)}`)
+      console.log(`  royalty = ${((Number(orgDelta) / Number(resalePrice)) * 100).toFixed(3)}% of the price (the token's TransferFee is 5%)`)
+      check('the organizer was paid its 5% royalty on a resale of a DELEGATE-MINTED ticket', metaNodes.length > 0 && orgDelta === expectedRoyalty, `${xrp(orgDelta)} XRP vs ${xrp(expectedRoyalty)}`)
+      check('the seller received the price less the royalty', sellerDelta === resalePrice - expectedRoyalty, `${xrp(sellerDelta)} XRP vs ${xrp(resalePrice - expectedRoyalty)}`)
+      check('the broker took the platform fee, less its network fee', brokerDelta === resaleFee - txFee, `${xrp(brokerDelta)} XRP vs ${xrp(resaleFee - txFee)}`)
+      check('the buyer paid exactly price + fee', buyerDelta === -(resalePrice + resaleFee), `${xrp(buyerDelta)} XRP`)
+      const movedTo = await ticketOf(buyer2)
+      check('the ticket moved to buyer 2 and is still issued by the organizer', movedTo.some((n) => n.NFTokenID === nfTokenId))
+      const leftover = await Promise.all(
+        [seller, buyer2].map(async (w) => ((await client.request({ command: 'account_objects', account: w.classicAddress, type: 'nft_offer', ledger_index: 'validated' } as never)) as unknown as { result: { account_objects: unknown[] } }).result.account_objects.length),
+      )
+      check('no resale offers left standing', leftover.every((c) => c === 0), `${leftover.join(', ')} open`)
+    }
 
     head('5. Revoking SELLING closes sales and leaves minting alone')
     const current = (await readPermissionSetOnLedger(pair)) as string[]
