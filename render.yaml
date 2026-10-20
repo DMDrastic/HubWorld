@@ -101,6 +101,12 @@ services:
       - key: DELEGATE_SEED
         sync: false
 
+      # Signs the 45-second codes an attendee shows at the door (QR door mode).
+      # Unset, every event keeps the Xaman signature flow. At least 32 characters;
+      # rotating it just invalidates codes already on screen.
+      - key: DOOR_TOKEN_SECRET
+        sync: false
+
       # Switches payload resolution from polling to Xaman callbacks. Only useful
       # once there is a public URL for Xaman to call, which is the case here.
       - key: XAMAN_WEBHOOK_SECRET

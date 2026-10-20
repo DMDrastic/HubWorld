@@ -345,20 +345,20 @@ redemptionRouter.get('/door/events', requireAuth, async (req, res) => {
   const [organized, staffing] = await Promise.all([
     prisma.event.findMany({
       where: { organizerId: req.userId!, status: { notIn: ['CANCELLED', 'COMPLETED'] } },
-      select: { slug: true, title: true },
+      select: { slug: true, title: true, doorMode: true },
       orderBy: { startsAt: 'asc' },
     }),
     prisma.eventStaff.findMany({
       where: { userId: req.userId!, revokedAt: null },
-      include: { event: { select: { slug: true, title: true, status: true } } },
+      include: { event: { select: { slug: true, title: true, status: true, doorMode: true } } },
     }),
   ])
 
   const events = [
-    ...organized.map((e) => ({ slug: e.slug, title: e.title, via: 'organizer' as const })),
+    ...organized.map((e) => ({ slug: e.slug, title: e.title, doorMode: e.doorMode, via: 'organizer' as const })),
     ...staffing
       .filter((s) => s.event.status !== 'CANCELLED' && s.event.status !== 'COMPLETED')
-      .map((s) => ({ slug: s.event.slug, title: s.event.title, via: 'staff' as const })),
+      .map((s) => ({ slug: s.event.slug, title: s.event.title, doorMode: s.event.doorMode, via: 'staff' as const })),
   ]
 
   res.json({ events })
