@@ -492,6 +492,19 @@ for at event creation.
   produced: production needs its **own XRPL node or paid provider** (the public node
   metered a 1,000-ticket run at 10,000 units/min and 500,000/hr), and the bulk-mint
   worker's polling should be audited for the same quota.
+- **Resale royalty on a delegate-minted token, on mainnet.** The 1,000-ticket proof
+  shows every delegated token carries `TransferFee` 5000 and the organizer as issuer,
+  and the August 2026 rehearsal measured the payout on a hand-minted token (seller
+  0.926250, issuer 0.048750, broker 0.024988 on a 1 XRP bid: 4.875% effective). What
+  has NOT been seen is a SECOND-hand sale of a token the delegate minted. A primary
+  sale cannot show it, since XRPL skips `TransferFee` when the issuer is a party. The
+  check: delegate-mint a few tickets, sell one to buyer A (primary), have A resell it
+  to buyer B through the brokered flow, and read the three payouts off the ledger.
+  Neither buyer may be the organizer. Pass = the issuer receives 5% of (bid minus
+  broker fee). Cost is small (a handful of tickets, three throwaway accounts); it can
+  extend `scripts/mainnet-sale-check.ts`, which already does mint + primary sale, with
+  a resale leg. Until it is done, "royalties survive delegation" rests on the token's
+  own fields rather than an observed payout.
 - ~~Detect orphan offers~~ and ~~settle sales without the buyer's tab~~: both DONE
   (#98).
 - **Throughput past ~2 checkouts/s per organizer** if a flash sale needs it: a
