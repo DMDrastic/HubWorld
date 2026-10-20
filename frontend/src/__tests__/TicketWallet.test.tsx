@@ -104,6 +104,19 @@ describe('TicketWallet', () => {
     expect(card.textContent).not.toMatch(/general admission/i)
   })
 
+  it('carries the event artwork as a thumbnail when there is some, and nothing when there is not', async () => {
+    mockInventory([
+      ticket({ nfTokenId: 'A'.repeat(64) }, { slug: 'has-art', title: 'Has Art', imageUrl: 'https://img.example/poster.png' }),
+      ticket({ nfTokenId: 'B'.repeat(64) }, { slug: 'no-art', title: 'No Art', imageUrl: null }),
+    ])
+    renderWallet()
+
+    const withArt = await screen.findByRole('article', { name: /ticket for has art/i })
+    const withoutArt = screen.getByRole('article', { name: /ticket for no art/i })
+    expect(withArt.querySelector('img')?.getAttribute('src')).toBe('https://img.example/poster.png')
+    expect(withoutArt.querySelector('img')).toBeNull()
+  })
+
   it('offers the Gift button on a valid ticket and hands back WHICH ticket', async () => {
     const onGift = vi.fn()
     mockInventory([ticket({ nfTokenId: 'C'.repeat(64) })])

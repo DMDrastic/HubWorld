@@ -128,31 +128,35 @@ function TicketStub({ ticket, onGift }: { ticket: OwnedTicket; onGift: (id: stri
           oklch(0.17 0.05 ${(hue + 45) % 360}) 100%)`,
       }}
     >
-      {event.imageUrl && (
-        <img
-          src={posterUrl(event.imageUrl, 560)}
-          alt=""
-          className="absolute inset-0 size-full object-cover opacity-30 mix-blend-luminosity"
-          loading="lazy"
-        />
-      )}
-
-      <div className="relative flex flex-col gap-4 p-5 sm:p-6">
-        <p className="font-mono text-[0.65rem] tracking-[0.22em] text-white/60 uppercase">Admit one</p>
-        <h3 className="text-2xl leading-[1.1] font-semibold tracking-[-0.02em] sm:text-3xl">{event.title}</h3>
-        <div className="space-y-1.5 text-sm text-white/80">
-          <p className="flex items-center gap-2">
-            <CalendarDays className="size-4 shrink-0 text-white/50" aria-hidden />
-            <span>
-              {dateFmt.format(when)} · {timeFmt.format(when)}
-            </span>
-          </p>
-          {event.venue && (
+      <div className="relative flex gap-4 p-5 sm:gap-5 sm:p-6">
+        {/* The artwork the holder bought, as a thumbnail, the way a printed ticket
+            carries it. Laid behind the whole ticket it only showed the middle of a
+            portrait image and muddied the type. */}
+        {event.imageUrl && (
+          <img
+            src={posterUrl(event.imageUrl, 240)}
+            alt=""
+            loading="lazy"
+            className="aspect-2/3 w-20 shrink-0 self-start rounded-md object-cover ring-1 ring-white/25 sm:w-28"
+          />
+        )}
+        <div className="flex min-w-0 flex-col gap-4">
+          <p className="font-mono text-[0.65rem] tracking-[0.22em] text-white/60 uppercase">Admit one</p>
+          <h3 className="text-2xl leading-[1.1] font-semibold tracking-[-0.02em] sm:text-3xl">{event.title}</h3>
+          <div className="space-y-1.5 text-sm text-white/80">
             <p className="flex items-center gap-2">
-              <MapPin className="size-4 shrink-0 text-white/50" aria-hidden />
-              <span>{event.venue}</span>
+              <CalendarDays className="size-4 shrink-0 text-white/50" aria-hidden />
+              <span>
+                {dateFmt.format(when)} · {timeFmt.format(when)}
+              </span>
             </p>
-          )}
+            {event.venue && (
+              <p className="flex items-center gap-2">
+                <MapPin className="size-4 shrink-0 text-white/50" aria-hidden />
+                <span>{event.venue}</span>
+              </p>
+            )}
+          </div>
         </div>
       </div>
 
