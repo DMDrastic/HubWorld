@@ -484,14 +484,16 @@ for at event creation.
 
 **Still to do:**
 
-- **A mainnet run of both workers**, with a funded `DELEGATE_SEED` and the broker.
+- **Mainnet at SCALE.** DONE at small scale: two real-money runs on 2026-10-20 (the
+  second 14 of 14; the first found and fixed a mainnet-only sequence race). What is
+  still devnet-only is the SIZE: 1,000 tickets and 25 simultaneous buyers. The next
+  step is a larger run, with a funded `DELEGATE_SEED` and the broker.
   The thousand-ticket and 25-buyer measurements are devnet; mainnet fees and node
   limits can differ, and `WAVE_SIZE`/the fee ceiling should be tuned there.
-- **Detect orphan offers**: a `ledger:sync` check for offers on an organizer's
-  account with no `Listing`, which is also how delegate misuse would show.
+- ~~Detect orphan offers~~ and ~~settle sales without the buyer's tab~~: both DONE
+  (#98).
 - **Throughput past ~2 checkouts/s per organizer** if a flash sale needs it: a
   pre-listed pool of offers, sized by the reserve the organizer will lock.
-- **Sale settlement that does not depend on the buyer's tab** being open.
 - **Do not start the MPT tier.**
 
 ### If the MPT tier ever proceeds anyway, do these first
