@@ -35,6 +35,8 @@ import { realPrimarySaleLedger } from '../src/primary-sale-ledger.js'
 import { platformFeeDrops } from '../src/ledger.js'
 import { ticketMetadataUri } from '../src/nft-metadata.js'
 import { getNFTokenID } from 'xrpl'
+import { cancellableByBroker, findOrphanOffers } from '../src/orphan-offers.js'
+import { offersOwnedBy } from '../src/organizer-offers.js'
 
 function arg(name: string, fallback: number): number {
   const i = process.argv.indexOf(`--${name}`)
@@ -188,6 +190,37 @@ async function main() {
   console.log(`  offers left open      : ${open.result.account_objects.length}  (expect 0 once all settled)`)
   console.log(`  organizer received    : ${xrp(after.organizer - before.organizer)} XRP  (price ${xrp(priceDrops)} x ${sold} = ${xrp(priceDrops * BigInt(sold))}; a primary sale skips the royalty)`)
   console.log(`  broker net            : ${xrp(after.broker - before.broker)} XRP  (fee ${xrp(expectedFee)} x ${sold}, less network fees)`)
+
+  head('6b. Does the orphan-offer check notice what it should?')
+  // Two things that must not go unnoticed: an offer the delegate made that we lost
+  // track of (inert, the broker can tidy it), and an OPEN offer — what a delegate
+  // being misused to give a ticket away would leave behind.
+  const probeTx = async (open: boolean) => {
+    const mintTx = await client.autofill(
+      buildMintTx({ issuerAddress: organizer.classicAddress, taxon, royaltyBps: 500, uri: ticketMetadataUri(event.slug) }) as never,
+    )
+    const m = await client.submitAndWait(organizer.sign(mintTx).tx_blob)
+    const id = typeof m.result.meta === 'object' ? getNFTokenID(m.result.meta) : undefined
+    if (!id) throw new Error('probe mint produced no id')
+    const offer = await client.autofill({
+      TransactionType: 'NFTokenCreateOffer',
+      Account: organizer.classicAddress,
+      NFTokenID: id,
+      Amount: '1000000',
+      Flags: 1,
+      ...(open ? {} : { Destination: broker.classicAddress }),
+    } as never)
+    await client.submitAndWait(organizer.sign(offer).tx_blob)
+  }
+  await probeTx(false) // broker-only, no Listing: inert
+  await probeTx(true) // open to anyone, no Listing: exposed
+  const found = findOrphanOffers({
+    offers: await offersOwnedBy(organizer.classicAddress),
+    known: new Map(),
+    brokerAddress: broker.classicAddress,
+  })
+  for (const o of found) console.log(`  ${o.kind.padEnd(8)} ${o.why}  (broker can cancel: ${cancellableByBroker(o, broker.classicAddress)})`)
+  console.log(`  ${found.length === 2 && found.some((o) => o.kind === 'exposed') && found.some((o) => o.kind === 'inert') ? 'detected both, classified correctly' : 'UNEXPECTED RESULT'}`)
 
   head('7. Clean up the database rows (the tickets stay on devnet)')
   // Payload rows are written by the signer seam even in stub mode, and a DEVNET
