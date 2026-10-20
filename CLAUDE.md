@@ -1261,7 +1261,8 @@ grant. `src/bulk-mint.ts` (the worker), `src/bulk-mint-policy.ts` (the rules),
 checkout, so an organizer never funds 1,000 offers — is the remaining piece
 (`ROADMAP.md` §5b has the decision). **Measured on real devnet through the shipped
 worker: 1,000 of 1,000 tickets in 347s (2.9/s), database and ledger in agreement,
-issuer the organizer, 0 failed transactions.** Not yet run on mainnet.
+issuer the organizer, 0 failed transactions.** Then confirmed on real mainnet
+(2026-10-20): 3 of 3 at 12 drops each, all agreeing.
 
 Decisions worth keeping in view:
 
@@ -1331,7 +1332,8 @@ matches the pair. The offer stands only for a checkout, so reserve exposure is
 (checkouts in flight) x 0.2 XRP — capped at 100 concurrent holds, 20 XRP.
 **Measured on real devnet through the shipped code: 25 simultaneous buyers checked
 out in 14s, all 25 sold, the organizer received the full price (a primary sale
-skips the royalty), no offers were left open.** Not yet run on mainnet.
+skips the royalty), no offers were left open.** Then confirmed on real mainnet
+(2026-10-20, second run, 14 of 14 — see below).
 
 It needs a SECOND, separate grant — `NFTokenCreateOffer` — because it is not the
 same size of trust as minting: it lets the delegate list ANY ticket in the
@@ -1397,6 +1399,17 @@ and a stale-sequence code (`tefPAST_SEQ`, `terPRE_SEQ`) is retried a few times
 because nothing was submitted. **Lesson: a concurrency fix verified on a one-node
 ledger is only verified for one node. Read-after-write is not a given on mainnet.**
 Transactions: grant `16750ADF…AF2C`, sale match `B256F917…91EA`, revoke `F4B997C7…CCCB`.
+
+**Second run, same day, after the fix: 14 of 14 on real mainnet.** Both simultaneous
+buyers checked out together in 7.6s; both sales settled; the organizer received
+exactly 2.000000 XRP for two 1 XRP tickets and the broker its fee less network fees;
+0 offers left open; each buyer held exactly one of the organizer's tickets; revoking
+selling kept minting; the next checkout was refused as closed. Transactions: grant
+`20B09625…0ADB`, matches `BDB458FE…E887` and `A723870B…B955`, revoke `FB10ADC2…A3D9`.
+Cost: 9.75 XRP funded, 3.95 XRP swept back, ~5.8 XRP locked as base reserves and NFT
+pages on the throwaway accounts. **The sale and the worker have now been seen working
+on the real ledger; what remains unmeasured on mainnet is scale** (the 1,000-ticket
+and 25-buyer figures are devnet).
 
 **Batch transactions do not rescue this, on two counts.** The `Batch` amendment
 (XLS-56) would let one signature carry several inner mints, but a signature-
