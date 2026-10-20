@@ -26,7 +26,7 @@ import { requireAuth } from '../session.js'
 import { checkDoorAccess } from '../door-access.js'
 import { holdsNft } from '../ledger.js'
 import { admit, type AdmitBody } from '../door-admit.js'
-import { signDoorToken, verifyDoorToken } from '../door-token.js'
+import { DOOR_TOKEN_TTL_MS, signDoorToken, verifyDoorToken } from '../door-token.js'
 
 export const doorQrRouter = Router()
 
@@ -113,7 +113,14 @@ doorQrRouter.post('/tickets/:nfTokenId/door-token', requireAuth, async (req, res
     { t: nfTokenId, e: ticket.eventId, u: me.id },
     { secret: env.DOOR_TOKEN_SECRET! },
   )
-  res.json({ token, expiresAt: expiresAt.toISOString(), refreshInSeconds: REFRESH_SECONDS })
+  // `expiresInSeconds` as well as the absolute time: a phone's clock can be minutes
+  // out, and the page must stop showing a dead code by ITS OWN clock, not ours.
+  res.json({
+    token,
+    expiresAt: expiresAt.toISOString(),
+    expiresInSeconds: DOOR_TOKEN_TTL_MS / 1000,
+    refreshInSeconds: REFRESH_SECONDS,
+  })
 })
 
 /**

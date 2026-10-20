@@ -145,6 +145,7 @@ describe('POST /tickets/:nfTokenId/door-token', () => {
 
     expect(res.status).toBe(200)
     expect(res.body.refreshInSeconds).toBe(30)
+    expect(res.body.expiresInSeconds).toBe(45)
     const check = verifyDoorToken(res.body.token, { secret: SECRET })
     expect(check.ok && check.claims).toMatchObject({ t: ticket.nfTokenId, e: event.id, u: holder.id })
     expect(new Date(res.body.expiresAt).getTime()).toBeGreaterThan(Date.now())

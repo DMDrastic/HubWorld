@@ -444,6 +444,10 @@ export function resumeMintJob(id: string): Promise<MintJob> {
 
 // -------------------------------------------------------------- inventory --
 
+/** How an event lets people in. Absent from a server that predates it: treat as SIGNATURE. */
+export const DoorModeSchema = z.enum(['QR', 'SIGNATURE'])
+export type DoorMode = z.infer<typeof DoorModeSchema>
+
 export const OwnedTicketSchema = z.object({
   nfTokenId: z.string(),
   seat: z.string().nullable(),
@@ -459,6 +463,7 @@ export const OwnedTicketSchema = z.object({
     // Absent from a server that predates them; a ticket still renders without.
     venue: z.string().nullish(),
     imageUrl: z.string().nullish(),
+    doorMode: DoorModeSchema.nullish(),
   }),
   /** Auctions are secondary-market only: sold-out events, non-organizer holders. */
   canAuction: z.boolean(),
@@ -485,6 +490,23 @@ export type Inventory = z.infer<typeof InventorySchema>
 
 export function fetchInventory(verify = false): Promise<Inventory> {
   return request(`/tickets/mine?verify=${verify}`, InventorySchema)
+}
+
+// ------------------------------------------------------- door code (QR) --
+
+export const DoorTokenSchema = z.object({
+  token: z.string(),
+  expiresAt: z.string(),
+  /** How long the code lives, by the SERVER's reckoning, so a phone with a wrong clock still stops showing it on time. */
+  expiresInSeconds: z.number(),
+  /** Ask for a fresh code this long after getting one. */
+  refreshInSeconds: z.number(),
+})
+export type DoorToken = z.infer<typeof DoorTokenSchema>
+
+/** The short-lived code an attendee shows at the door, for one ticket they hold. */
+export function fetchDoorToken(nfTokenId: string): Promise<DoorToken> {
+  return request(`/tickets/${encodeURIComponent(nfTokenId)}/door-token`, DoorTokenSchema, { method: 'POST' })
 }
 
 // ------------------------------------------------------------------ gifts --

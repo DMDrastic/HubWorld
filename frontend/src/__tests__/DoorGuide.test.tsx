@@ -42,6 +42,12 @@ function mockLedger(answer: { onLedger: boolean | null } | 'absent' | 'fail') {
     vi.fn(async (input: RequestInfo | URL) => {
       const url = typeof input === 'string' ? input : input.toString()
       calls.push(url)
+      if (url.includes('/door-token')) {
+        return new Response(
+          JSON.stringify({ token: 'HWD1.a.b', expiresAt: new Date(Date.now() + 45_000).toISOString(), expiresInSeconds: 45, refreshInSeconds: 30 }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        )
+      }
       if (!url.includes('/tickets/mine')) throw new Error(`unexpected fetch: ${url}`)
       if (answer === 'fail') return new Response('{}', { status: 500 })
       const tickets = answer === 'absent' ? [] : [ticket({ onLedger: answer.onLedger })]
@@ -170,5 +176,55 @@ describe('DoorGuide', () => {
     expect(after).toBeLessThanOrEqual(2)
     await new Promise((r) => setTimeout(r, 300))
     expect(calls.length).toBe(after)
+  })
+})
+
+describe('DoorGuide at an event that lets people in by code', () => {
+  const byCode = (over: Partial<OwnedTicket> = {}) =>
+    ticket({ ...over, event: { ...ticket().event, doorMode: 'QR' } })
+
+  it('shows the code instead of the three Xaman steps', async () => {
+    mockLedger({ onLedger: true })
+    renderGuide(byCode())
+
+    expect(await screen.findByRole('img', { name: /your entry code/i })).toBeTruthy()
+    expect(screen.getByText(/hold this up to the door staff/i)).toBeTruthy()
+    expect(screen.queryByRole('listitem')).toBeNull()
+    expect(screen.queryByText(/open xaman now/i)).toBeNull()
+  })
+
+  it('shows no code for a ticket that has been used', async () => {
+    mockLedger({ onLedger: true })
+    renderGuide(byCode({ status: 'REDEEMED' }))
+
+    expect(await screen.findByText(/already been used/i)).toBeTruthy()
+    expect(screen.queryByRole('img', { name: /your entry code/i })).toBeNull()
+  })
+
+  it('still never says the holder is in: that verdict belongs on the staff device', async () => {
+    mockLedger({ onLedger: true })
+    renderGuide(byCode())
+
+    const dialog = await screen.findByRole('dialog')
+    await screen.findByRole('img', { name: /your entry code/i })
+    // The words a verdict would use. (The footer says nothing here says you are in, which is the point.)
+    expect(dialog.textContent).not.toMatch(/admitted|welcome|entry granted|you're in\b|checked in/i)
+    expect(dialog.textContent).toMatch(/nothing on this page says you are in/i)
+  })
+
+  it('asks the server for a code only when the guide is opened', async () => {
+    const calls = mockLedger({ onLedger: true })
+    renderGuide(byCode(), false)
+    await new Promise((r) => setTimeout(r, 50))
+
+    expect(calls.some((u) => u.includes('/door-token'))).toBe(false)
+  })
+
+  it('leaves a signature-mode event alone: no code, the steps as before (positive control)', async () => {
+    mockLedger({ onLedger: true })
+    renderGuide(ticket())
+
+    expect(await screen.findAllByRole('listitem')).toHaveLength(3)
+    expect(screen.queryByRole('img', { name: /your entry code/i })).toBeNull()
   })
 })
