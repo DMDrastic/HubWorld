@@ -58,7 +58,7 @@ export function MintPanel({
     } catch (err) {
       setPhase({
         kind: 'failed',
-        reason: err instanceof ApiError ? err.message : 'Could not start the mint',
+        reason: err instanceof ApiError ? err.message : 'Could not start creating the ticket',
       })
     } finally {
       setBusy(false)
@@ -95,10 +95,10 @@ export function MintPanel({
             onMinted()
             return
           case 'rejected':
-            setPhase({ kind: 'failed', reason: 'The mint was rejected in Xaman.' })
+            setPhase({ kind: 'failed', reason: 'It was declined in Xaman.' })
             return
           case 'expired':
-            setPhase({ kind: 'failed', reason: 'The mint request expired. Try again.' })
+            setPhase({ kind: 'failed', reason: 'The request expired. Try again.' })
             return
           case 'failed':
             setPhase({ kind: 'failed', reason: result.reason })
@@ -124,9 +124,9 @@ export function MintPanel({
     return (
       <Card>
         <CardHeader>
-          <CardTitle>Mint tickets</CardTitle>
+          <CardTitle>Create one ticket</CardTitle>
           <CardDescription>
-            You don't organize any events yet, so there's nothing to issue tickets for.
+            Create an event first, then you can create tickets for it.
           </CardDescription>
         </CardHeader>
       </Card>
@@ -137,13 +137,13 @@ export function MintPanel({
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          Mint tickets
+          Create one ticket
           {phase.kind === 'awaiting' && phase.payload.mode === 'stub' && (
             <Badge variant="secondary">stub mode</Badge>
           )}
         </CardTitle>
         <CardDescription>
-          You're the issuer — the ticket is minted from your wallet and carries your royalty.
+          The ticket is created from your wallet and carries your resale royalty.
         </CardDescription>
       </CardHeader>
 
@@ -184,7 +184,7 @@ export function MintPanel({
             </div>
 
             <Button onClick={() => void start()} disabled={busy || !slug} className="w-full">
-              {busy ? 'Preparing…' : 'Mint a ticket'}
+              {busy ? 'Preparing…' : 'Create a ticket'}
             </Button>
           </div>
         )}
@@ -199,8 +199,8 @@ export function MintPanel({
             />
             <p className="text-muted-foreground text-center text-sm">
               {phase.signed
-                ? 'Signed — waiting for the ledger to validate…'
-                : 'Scan in Xaman to sign the mint.'}
+                ? 'Approved. Waiting for the network to confirm…'
+                : 'Scan in Xaman to approve.'}
             </p>
             <Button variant="ghost" size="sm" onClick={() => setPhase({ kind: 'idle' })}>
               Cancel

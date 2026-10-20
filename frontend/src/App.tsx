@@ -381,7 +381,7 @@ export default function App() {
             <div>
               <h1 className="text-3xl font-semibold tracking-[-0.02em]">Organize</h1>
               <p className="text-muted-foreground mt-1.5 text-sm leading-relaxed">
-                Create events and issue tickets. Your royalty follows every resale.
+                Create events and tickets. You earn a cut of every resale.
               </p>
             </div>
             <OrganizerPanel role={me.role} onChanged={handleMinted} />

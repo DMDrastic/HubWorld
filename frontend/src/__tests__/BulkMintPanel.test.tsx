@@ -122,7 +122,7 @@ async function startRun(count = '100') {
   ;(input as HTMLInputElement).focus()
   const { fireEvent } = await import('@testing-library/react')
   fireEvent.change(input, { target: { value: count } })
-  ;(await screen.findByRole('button', { name: /start minting/i })).click()
+  ;(await screen.findByRole('button', { name: /create tickets/i })).click()
 }
 
 describe('BulkMintPanel', () => {
@@ -136,8 +136,8 @@ describe('BulkMintPanel', () => {
     mockApi({ delegation: DELEGATION('not_granted') })
     renderPanel()
 
-    expect(await screen.findByText(/approve minting above first/i)).toBeTruthy()
-    const button = (await screen.findByRole('button', { name: /start minting/i })) as HTMLButtonElement
+    expect(await screen.findByText(/allow hubworld to create tickets above first/i)).toBeTruthy()
+    const button = (await screen.findByRole('button', { name: /create tickets/i })) as HTMLButtonElement
     expect(button.disabled).toBe(true)
   })
 
@@ -151,14 +151,14 @@ describe('BulkMintPanel', () => {
 
     await startRun()
     expect(calls.posts).toEqual(['start'])
-    expect(await screen.findByText(/0 of 100 minted/i)).toBeTruthy()
+    expect(await screen.findByText(/0 of 100 created/i)).toBeTruthy()
 
     await vi.advanceTimersByTimeAsync(3100)
     const bar = await screen.findByRole('progressbar')
     expect(bar.getAttribute('aria-valuenow')).toBe('40')
 
     await vi.advanceTimersByTimeAsync(3100)
-    expect(await screen.findByText(/100 of 100 minted/i)).toBeTruthy()
+    expect(await screen.findByText(/100 of 100 created/i)).toBeTruthy()
     expect(await screen.findByText(/finished/i)).toBeTruthy()
     await waitFor(() => expect(onChanged).toHaveBeenCalled())
   })
@@ -170,7 +170,7 @@ describe('BulkMintPanel', () => {
     })
     renderPanel()
 
-    await screen.findByText(/20 of 100 minted/i)
+    await screen.findByText(/20 of 100 created/i)
     await vi.advanceTimersByTimeAsync(15_000)
     // 15s at a 3s cadence: about five polls. A loop keyed on results would fire
     // an order of magnitude more.
@@ -185,7 +185,7 @@ describe('BulkMintPanel', () => {
     })
     renderPanel()
 
-    await screen.findByText(/20 of 100 minted/i) // the open run is loaded before it is watched
+    await screen.findByText(/20 of 100 created/i) // the open run is loaded before it is watched
     await vi.advanceTimersByTimeAsync(3100)
     await screen.findByText(/finished/i)
     const after = calls.polls
@@ -197,8 +197,8 @@ describe('BulkMintPanel', () => {
     mockApi({ existing: [job({ minted: 55 })] })
     renderPanel()
 
-    expect(await screen.findByText(/55 of 100 minted/i)).toBeTruthy()
-    expect(screen.queryByRole('button', { name: /start minting/i })).toBeNull()
+    expect(await screen.findByText(/55 of 100 created/i)).toBeTruthy()
+    expect(screen.queryByRole('button', { name: /create tickets/i })).toBeNull()
   })
 
   it('says why a run paused and offers Resume', async () => {
@@ -225,10 +225,10 @@ describe('BulkMintPanel', () => {
     })
     renderPanel()
 
-    ;(await screen.findByRole('button', { name: /cancel the run/i })).click()
+    ;(await screen.findByRole('button', { name: /^stop$/i })).click()
     await waitFor(() => expect(calls.posts).toEqual(['cancel']))
-    expect(await screen.findByText(/stopping after the current batch/i)).toBeTruthy()
-    expect(screen.queryByRole('button', { name: /cancel the run/i })).toBeNull()
+    expect(await screen.findByText(/^stopping/i)).toBeTruthy()
+    expect(screen.queryByRole('button', { name: /^stop$/i })).toBeNull()
   })
 
   it('shows the server\'s refusal in words', async () => {
@@ -243,7 +243,7 @@ describe('BulkMintPanel', () => {
   it('says how many transactions the network refused', async () => {
     mockApi({ existing: [job({ failedTxs: 3 })] })
     renderPanel()
-    expect(await screen.findByText(/3 transactions were refused/i)).toBeTruthy()
+    expect(await screen.findByText(/3 attempts didn't go through/i)).toBeTruthy()
   })
 
   describe('the cost preview', () => {
@@ -260,10 +260,10 @@ describe('BulkMintPanel', () => {
       await typeCount('1000')
 
       expect(await screen.findByText(/about 9\.4 xrp/i)).toBeTruthy()
-      expect(screen.getByText(/held, not spent/i)).toBeTruthy()
-      expect(screen.getByText(/you have 15 xrp free, which covers it/i)).toBeTruthy()
+      expect(screen.getByText(/isn't spent/i)).toBeTruthy()
+      expect(screen.getByText(/you have 15 xrp available, which covers it/i)).toBeTruthy()
       expect(screen.getByText(/takes about 13 minutes/i)).toBeTruthy()
-      expect((screen.getByRole('button', { name: /start minting/i }) as HTMLButtonElement).disabled).toBe(false)
+      expect((screen.getByRole('button', { name: /create tickets/i }) as HTMLButtonElement).disabled).toBe(false)
     })
 
     it('says how much to add, and stops the button, when the balance is short', async () => {
@@ -273,7 +273,7 @@ describe('BulkMintPanel', () => {
       await typeCount('1000')
 
       expect(await screen.findByText(/add about 4\.4 xrp/i)).toBeTruthy()
-      expect((screen.getByRole('button', { name: /start minting/i }) as HTMLButtonElement).disabled).toBe(true)
+      expect((screen.getByRole('button', { name: /create tickets/i }) as HTMLButtonElement).disabled).toBe(true)
     })
 
     it('does not block a run when the balance could not be read (unknown is not "nothing")', async () => {
@@ -284,7 +284,7 @@ describe('BulkMintPanel', () => {
 
       expect(await screen.findByText(/couldn't read your balance/i)).toBeTruthy()
       expect(screen.queryByText(/add about/i)).toBeNull()
-      expect((screen.getByRole('button', { name: /start minting/i }) as HTMLButtonElement).disabled).toBe(false)
+      expect((screen.getByRole('button', { name: /create tickets/i }) as HTMLButtonElement).disabled).toBe(false)
     })
 
     it('asks once for a settled number, not once per keystroke, and not again by itself', async () => {
@@ -360,7 +360,7 @@ describe('BulkMintPanel', () => {
       mockApi({ existing: [job({ total: 1000, minted: 10, createdAt: new Date(Date.now() - 5000).toISOString() })] })
       renderPanel()
 
-      await screen.findByText(/10 of 1000 minted/i)
+      await screen.findByText(/10 of 1000 created/i)
       expect(screen.queryByText(/left at this pace/i)).toBeNull()
     })
   })

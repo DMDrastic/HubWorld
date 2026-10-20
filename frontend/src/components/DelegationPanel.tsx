@@ -49,28 +49,28 @@ const COPY: Record<
   }
 > = {
   mint: {
-    title: 'Minting for you',
+    title: 'Creating tickets',
     description:
-      "Sign once and HubWorld can mint your event's tickets without asking for a signature on every one. It can mint and nothing else: it cannot touch your funds or move your tickets, and you can take the permission back here at any time.",
-    on: 'HubWorld can mint tickets for you.',
-    off: 'HubWorld cannot mint for you yet.',
-    grant: 'Let HubWorld mint for me',
-    revoke: 'Revoke minting access',
-    scanGrant: 'Scan in Xaman to approve minting.',
-    scanRevoke: 'Scan in Xaman to take the permission back.',
+      "Say yes once, and HubWorld can create your event's tickets without asking you to approve each one. It can only create tickets: it can't spend your money or move your tickets. You can turn it off here at any time.",
+    on: 'HubWorld can create tickets for you.',
+    off: "HubWorld can't create tickets for you yet.",
+    grant: 'Allow HubWorld to create tickets',
+    revoke: 'Turn off ticket creation',
+    scanGrant: 'Scan in Xaman to approve.',
+    scanRevoke: 'Scan in Xaman to turn this off.',
     qrGrant: 'Xaman approval QR code',
     qrRevoke: 'Xaman revoke QR code',
   },
   offers: {
-    title: 'Selling for you',
+    title: 'Selling tickets',
     description:
-      "Let HubWorld put one of your tickets up for sale at the moment someone buys it, at the price you set, so you never have to list them all up front. It can list your tickets and nothing else: it cannot touch your funds. Because it can list any ticket in your account, approve this when you're ready to open sales, and take it back here at any time.",
-    on: 'HubWorld can list your tickets for sale.',
-    off: 'HubWorld cannot list tickets for you yet.',
-    grant: 'Let HubWorld sell for me',
-    revoke: 'Revoke selling access',
-    scanGrant: 'Scan in Xaman to approve selling.',
-    scanRevoke: 'Scan in Xaman to take selling back.',
+      "When someone buys a ticket at your price, HubWorld lists that one ticket for sale at that moment, so you never list them all up front. It can't spend your money, but it can list any ticket in your account, so turn this on when you're ready to open sales. You can turn it off any time.",
+    on: 'HubWorld can sell tickets for you.',
+    off: "HubWorld can't sell tickets for you yet.",
+    grant: 'Allow HubWorld to sell tickets',
+    revoke: 'Turn off ticket selling',
+    scanGrant: 'Scan in Xaman to approve.',
+    scanRevoke: 'Scan in Xaman to turn this off.',
     qrGrant: 'Xaman selling approval QR code',
     qrRevoke: 'Xaman selling revoke QR code',
   },
@@ -136,8 +136,8 @@ export function DelegationPanel() {
       {perms && <PermissionCard scope="offers" reading={perms.offers} onChanged={load} />}
       {me.staleGrant && (
         <p className="text-muted-foreground text-xs">
-          Your earlier approval names a minting account that has since been replaced, so it no
-          longer applies. Approve again to continue.
+          Your earlier approval was for an account HubWorld has since replaced, so it no longer
+          applies. Please approve again.
         </p>
       )}
     </>

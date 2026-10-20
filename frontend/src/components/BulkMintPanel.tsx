@@ -192,10 +192,10 @@ export function BulkMintPanel({
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Mint a run of tickets</CardTitle>
+        <CardTitle>Create your tickets</CardTitle>
         <CardDescription>
-          Once you've approved minting above, HubWorld mints the whole run for you. There's nothing
-          to sign per ticket, and you can stop it at any time.
+          Choose how many, and HubWorld creates them for you. There's nothing to approve one by
+          one, and you can stop at any time.
         </CardDescription>
       </CardHeader>
 
@@ -222,7 +222,7 @@ export function BulkMintPanel({
 
             {notApproved && (
               <p className="text-muted-foreground text-sm" role="status">
-                Approve minting above first. It's one signature, and it covers every ticket.
+                Allow HubWorld to create tickets above first. It's one approval and covers every ticket.
               </p>
             )}
 
@@ -235,7 +235,7 @@ export function BulkMintPanel({
                 aria-label="how many tickets"
               />
               <Button onClick={() => void start()} disabled={busy || !slug || !countValid || notApproved || shortOfReserve}>
-                {busy ? 'Starting…' : 'Start minting'}
+                {busy ? 'Starting…' : 'Create tickets'}
               </Button>
             </div>
 
@@ -247,14 +247,14 @@ export function BulkMintPanel({
           <div className="space-y-3">
             <div className="flex items-baseline justify-between text-sm">
               <span className="font-medium">
-                {job.minted} of {job.total} minted
+                {job.minted} of {job.total} created
               </span>
               <span className="text-muted-foreground text-xs">{statusLabel(job)}</span>
             </div>
 
             <div
               role="progressbar"
-              aria-label="tickets minted"
+              aria-label="tickets created"
               aria-valuemin={0}
               aria-valuemax={job.total}
               aria-valuenow={job.minted}
@@ -287,8 +287,8 @@ export function BulkMintPanel({
 
             {job.failedTxs > 0 && (
               <p className="text-muted-foreground text-xs">
-                {job.failedTxs} transaction{job.failedTxs === 1 ? '' : 's'} were refused by the
-                network and produced no ticket.
+                {job.failedTxs} attempt{job.failedTxs === 1 ? '' : 's'} didn't go through and made no
+                ticket.
               </p>
             )}
 
@@ -300,12 +300,12 @@ export function BulkMintPanel({
               )}
               {open && !job.cancelRequested && (
                 <Button variant="secondary" onClick={() => void act(cancelMintJob)} disabled={busy}>
-                  Cancel the run
+                  Stop
                 </Button>
               )}
               {!open && (
                 <Button variant="secondary" onClick={() => setJob(null)}>
-                  {job.status === 'DONE' ? 'Mint more' : 'Start over'}
+                  {job.status === 'DONE' ? 'Create more' : 'Start over'}
                 </Button>
               )}
             </div>
@@ -323,9 +323,9 @@ export function BulkMintPanel({
 }
 
 const WAIT_COPY = {
-  fees: 'Network fees are unusually high right now, so minting is waiting for them to fall. It carries on by itself, usually within a few minutes. Nothing is lost.',
-  network: 'The network is busy. Minting will retry by itself in a moment.',
-  account: 'Waiting for a ticket sale on your account to finish, then minting carries on.',
+  fees: 'Network fees are unusually high right now, so HubWorld is waiting for them to drop. It carries on by itself, usually within a few minutes. Nothing is lost.',
+  network: 'The network is busy. HubWorld will try again in a moment.',
+  account: 'Waiting for a ticket sale on your account to finish, then it carries on.',
 } as const
 
 const WAIT_LABEL = { fees: 'Waiting for fees to fall', network: 'Network busy', account: 'Waiting for a sale' } as const
@@ -359,38 +359,39 @@ function CostPreview({ estimate }: { estimate: MintEstimate }) {
   return (
     <div className="space-y-1 text-sm" role="status">
       <p>
-        <span className="font-medium">About {reserve} XRP</span> of your balance is set aside while
-        these tickets are in your account. It is held, not spent, and is released as tickets sell.
+        Creating these tickets sets aside <span className="font-medium">about {reserve} XRP</span> of
+        your balance. It isn't spent, and it comes back as the tickets sell.
       </p>
       {have !== null && estimate.enough !== false && (
-        <p className="text-muted-foreground">You have {have} XRP free, which covers it.</p>
+        <p className="text-muted-foreground">You have {have} XRP available, which covers it.</p>
       )}
       {shortBy !== null && (
         <p className="text-destructive">
-          You have {have} XRP free. Add about {shortBy} XRP to your wallet before starting.
+          You have {have} XRP available. Add about {shortBy} XRP to your wallet before starting.
         </p>
       )}
       {have === null && (
         <p className="text-muted-foreground">
-          We couldn't read your balance just now. You can still start; it is checked again before
-          anything is minted.
+          We couldn't read your balance just now. You can still start; we check again before
+          anything is created.
         </p>
       )}
       <p className="text-muted-foreground">
-        Takes about {formatDuration(estimate.seconds)}. It runs by itself, with nothing to sign.
+        Takes about {formatDuration(estimate.seconds)}. It runs by itself, so you don't need to stay on
+        this page.
       </p>
     </div>
   )
 }
 
 function statusLabel(job: MintJob): string {
-  if (job.cancelRequested && isOpenJob(job)) return 'Stopping after the current batch…'
+  if (job.cancelRequested && isOpenJob(job)) return 'Stopping…'
   if (job.waiting) return WAIT_LABEL[job.waiting]
   switch (job.status) {
     case 'QUEUED':
       return 'Waiting to start'
     case 'RUNNING':
-      return 'Minting'
+      return 'Creating'
     case 'PAUSED':
       return 'Paused'
     case 'DONE':

@@ -78,7 +78,7 @@ afterEach(() => {
 })
 
 async function startMint() {
-  screen.getByRole('button', { name: /mint a ticket/i }).click()
+  screen.getByRole('button', { name: /create a ticket/i }).click()
   await screen.findByAltText(/mint qr/i)
 }
 
@@ -89,7 +89,7 @@ describe('MintPanel', () => {
         <MintPanel events={[]} onMinted={vi.fn()} />
       </StrictMode>,
     )
-    expect(screen.getByText(/don't organize any events/i)).toBeTruthy()
+    expect(screen.getByText(/create an event first/i)).toBeTruthy()
   })
 
   it('distinguishes signed-but-unvalidated from not-yet-scanned', async () => {
@@ -111,7 +111,7 @@ describe('MintPanel', () => {
 
     // After signing, while the ledger catches up.
     await vi.advanceTimersByTimeAsync(3000)
-    expect(await screen.findByText(/waiting for the ledger/i)).toBeTruthy()
+    expect(await screen.findByText(/waiting for the network to confirm/i)).toBeTruthy()
   })
 
   it('shows the NFTokenID once the ledger validates', async () => {

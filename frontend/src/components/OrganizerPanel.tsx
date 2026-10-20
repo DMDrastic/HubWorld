@@ -287,15 +287,14 @@ function CreateEventForm({ policy, onCreated }: { policy: Policy | null; onCreat
           )}
         </div>
         <p className="text-muted-foreground text-xs">
-          Governs what holders may resell for — gifting is unaffected regardless of this
-          setting. Set at creation; there is no edit later.
+          Sets how high buyers can resell a ticket. Gifts aren't affected. You choose this now and
+          can't change it later.
         </p>
       </div>
 
       {policy && (
         <p className="text-muted-foreground text-xs">
-          Hubworld's {bps(policy.platformBps)} platform fee is set by policy and applies to all
-          events.
+          HubWorld takes {bps(policy.platformBps)} of each sale. It's the same for every event.
         </p>
       )}
       {error && <p className="text-destructive text-sm">{error}</p>}
@@ -390,7 +389,7 @@ export function OrganizerPanel({ role, onChanged }: { role: Role; onChanged: () 
         </CardTitle>
         <CardDescription>
           {organizer
-            ? 'Create events and issue tickets. Your royalty travels with every ticket you mint.'
+            ? 'Create events and tickets. You earn a cut of every resale.'
             : 'Hosting on Hubworld is a separate account type — apply and someone will review it.'}
         </CardDescription>
       </CardHeader>
