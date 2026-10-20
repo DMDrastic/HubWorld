@@ -200,4 +200,38 @@ describe('TicketWallet', () => {
     )
     await waitFor(() => expect(calls.inventory).toBeGreaterThan(first))
   })
+
+  describe('showing it at the door', () => {
+    const inHours = (h: number) => new Date(Date.now() + h * 3_600_000).toISOString()
+
+    it('offers "Show at the door" on a valid ticket and opens the guide', async () => {
+      mockInventory([ticket({}, { startsAt: inHours(48) })])
+      renderWallet()
+
+      ;(await screen.findByRole('button', { name: /show the neon rooftop session ticket at the door/i })).click()
+
+      expect(await screen.findByRole('dialog', { name: /at the door/i })).toBeTruthy()
+    })
+
+    it('does not offer it on a ticket that has been used (positive control above)', async () => {
+      mockInventory([ticket({ status: 'REDEEMED' }, { startsAt: inHours(48) })])
+      renderWallet()
+
+      await screen.findByRole('article')
+      expect(screen.queryByRole('button', { name: /at the door/i })).toBeNull()
+    })
+
+    it('treats the day around the event as "soon", and a far-off one as not', async () => {
+      mockInventory([
+        ticket({ nfTokenId: 'A'.repeat(64) }, { slug: 'tonight', title: 'Tonight', startsAt: inHours(5) }),
+        ticket({ nfTokenId: 'B'.repeat(64) }, { slug: 'later', title: 'Later', startsAt: inHours(24 * 30) }),
+        ticket({ nfTokenId: 'C'.repeat(64) }, { slug: 'long-ago', title: 'Long Ago', startsAt: inHours(-24 * 3) }),
+      ])
+      renderWallet()
+
+      expect((await screen.findByRole('article', { name: /ticket for tonight/i })).getAttribute('data-soon')).toBe('true')
+      expect(screen.getByRole('article', { name: /ticket for later/i }).getAttribute('data-soon')).toBe('false')
+      expect(screen.getByRole('article', { name: /ticket for long ago/i }).getAttribute('data-soon')).toBe('false')
+    })
+  })
 })

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { DoorGuide } from '@/components/DoorGuide'
 import { CalendarDays, MapPin } from 'lucide-react'
 import { fetchInventory, type OwnedTicket } from '@/lib/api'
 import { hueFrom, posterUrl } from '@/lib/poster'
@@ -109,17 +110,31 @@ export function TicketWallet({
   )
 }
 
+/** From the day before until the small hours after it starts: when someone is likely holding this at a door. */
+const SOON_BEFORE_MS = 24 * 3_600_000
+const SOON_AFTER_MS = 12 * 3_600_000
+
+const PRIMARY = 'w-full bg-white text-neutral-950 hover:bg-white/90 disabled:bg-white/15 disabled:text-white/50'
+const QUIET = 'w-full border-white/25 bg-transparent text-white hover:bg-white/10 hover:text-white disabled:text-white/40'
+
 function TicketStub({ ticket, onGift }: { ticket: OwnedTicket; onGift: (id: string) => void }) {
+  const [guideOpen, setGuideOpen] = useState(false)
   const { event } = ticket
   const hue = hueFrom(event.slug)
   const when = new Date(event.startsAt)
   const state = STATE[ticket.status] ?? { label: ticket.status, tone: 'quiet' as const }
   const admission = [ticket.tier, ticket.seat].filter(Boolean).join(' · ')
   const canGift = ticket.status === 'MINTED'
+  // The ticket is for a door, and near the event that is what the holder wants,
+  // so it takes the bright button and gifting steps back.
+  const untilStart = when.getTime() - Date.now()
+  const soon = untilStart < SOON_BEFORE_MS && untilStart > -SOON_AFTER_MS
+  const canShow = ticket.status !== 'REDEEMED' && ticket.status !== 'BURNED'
 
   return (
     <article
       aria-label={`Ticket for ${event.title}`}
+      data-soon={soon ? 'true' : 'false'}
       className="relative grid overflow-hidden rounded-2xl text-white ring-1 ring-white/10 sm:grid-cols-[1fr_13rem]"
       style={{
         background: `linear-gradient(160deg,
@@ -187,16 +202,31 @@ function TicketStub({ ticket, onGift }: { ticket: OwnedTicket; onGift: (id: stri
           )}
         </div>
 
-        <Button
-          size="sm"
-          disabled={!canGift}
-          onClick={() => onGift(ticket.nfTokenId)}
-          aria-label={`Gift the ${event.title} ticket`}
-          className="w-full bg-white text-neutral-950 hover:bg-white/90 disabled:bg-white/15 disabled:text-white/50"
-        >
-          Gift this ticket
-        </Button>
+        <div className="space-y-2">
+          {canShow && (
+            <Button
+              size="sm"
+              variant={soon ? 'default' : 'outline'}
+              onClick={() => setGuideOpen(true)}
+              aria-label={`Show the ${event.title} ticket at the door`}
+              className={soon ? PRIMARY : QUIET}
+            >
+              Show at the door
+            </Button>
+          )}
+          <Button
+            size="sm"
+            variant={soon && canShow ? 'outline' : 'default'}
+            disabled={!canGift}
+            onClick={() => onGift(ticket.nfTokenId)}
+            aria-label={`Gift the ${event.title} ticket`}
+            className={soon && canShow ? QUIET : PRIMARY}
+          >
+            Gift this ticket
+          </Button>
+        </div>
       </div>
+      <DoorGuide ticket={ticket} open={guideOpen} onClose={() => setGuideOpen(false)} />
     </article>
   )
 }
