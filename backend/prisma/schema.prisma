@@ -302,6 +302,13 @@ model Event {
   /// FIXED_CAP only, in drops.
   resaleCapDrops BigInt?
 
+  /// How people are let in at the door. SIGNATURE is the original flow (staff show
+  /// a code, the attendee approves it in Xaman) and what every event created
+  /// before this column does, so it is the default; QR is a short-lived code the
+  /// attendee displays and staff scan. Chosen by the organizer; an event can be
+  /// switched, since nothing about its tickets depends on it.
+  doorMode DoorMode @default(SIGNATURE)
+
   ticketCount Int         @default(0)
   status      EventStatus @default(DRAFT)
 
@@ -696,12 +703,27 @@ model Redemption {
 
   failureReason String?
 
+  /// How this entry was proven, for the audit trail: a Xaman signature, or a
+  /// scanned code. A QR entry has no Xaman payload, so its `payloadUuid` is a
+  /// generated value that exists only to keep the column unique.
+  method RedemptionMethod @default(SIGNATURE)
+
   createdAt  DateTime  @default(now())
   expiresAt  DateTime
   redeemedAt DateTime?
 
   @@index([eventId, status])
   @@index([ticketId])
+}
+
+enum DoorMode {
+  SIGNATURE // staff show a code; the attendee signs it in Xaman
+  QR // the attendee shows a short-lived code; staff scan it
+}
+
+enum RedemptionMethod {
+  SIGNATURE
+  QR
 }
 
 enum RedemptionStatus {

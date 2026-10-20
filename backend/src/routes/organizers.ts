@@ -16,7 +16,7 @@ import { Router } from 'express'
 import { z } from 'zod'
 import { prisma } from '../prisma.js'
 import { NETWORK } from '../network.js'
-import { env } from '../env.js'
+import { env, doorTokenMode } from '../env.js'
 import { issuesOf, slugSchema } from '../schemas.js'
 import { requireAdmin, requireAuth, requireOrganizer } from '../session.js'
 
@@ -213,6 +213,10 @@ const CreateEventBody = z
       .string()
       .regex(/^[1-9][0-9]{0,17}$/, 'primaryPriceDrops must be a positive integer string of drops')
       .optional(),
+    // How people are let in. Absent: the Xaman signature door, always. The code
+    // door is faster but proves less (a session, not a wallet key), so an
+    // organizer opts into it knowingly; it is never what an event drifts into.
+    doorMode: z.enum(['QR', 'SIGNATURE']).optional(),
     // 10000 = 100% of face value, so 12000 = 120%.
     resaleCapBps: z.coerce.number().int().positive().optional(),
     resaleCapDrops: z
@@ -266,6 +270,10 @@ organizersRouter.post('/events', requireAuth, requireOrganizer, async (req, res)
     res.status(400).json({ error: 'An event cannot start in the past' })
     return
   }
+  if (data.doorMode === 'QR' && doorTokenMode !== 'live') {
+    res.status(409).json({ error: 'Door codes are not set up on this server yet', code: 'DOOR_CODES_OFF' })
+    return
+  }
 
   const slug = data.slug ?? slugify(data.title)
   if (await prisma.event.findUnique({ where: { slug } })) {
@@ -280,6 +288,7 @@ organizersRouter.post('/events', requireAuth, requireOrganizer, async (req, res)
     select: { nftTaxon: true },
   })
 
+  const doorMode = data.doorMode ?? 'SIGNATURE'
   const event = await prisma.event.create({
     data: {
       slug,
@@ -299,6 +308,7 @@ organizersRouter.post('/events', requireAuth, requireOrganizer, async (req, res)
       resaleCapBps: data.resaleCapBps ?? null,
       resaleCapDrops: data.resaleCapDrops ? BigInt(data.resaleCapDrops) : null,
       primaryPriceDrops: data.primaryPriceDrops ? BigInt(data.primaryPriceDrops) : null,
+      doorMode,
     },
   })
 
@@ -310,6 +320,7 @@ organizersRouter.post('/events', requireAuth, requireOrganizer, async (req, res)
     royaltyBps: event.royaltyBps,
     platformBps: event.platformBps,
     nftTaxon: event.nftTaxon,
+    doorMode: event.doorMode,
     resalePolicy: event.resalePolicy,
     resaleCapBps: event.resaleCapBps,
     resaleCapDrops: event.resaleCapDrops?.toString() ?? null,
@@ -322,5 +333,8 @@ organizersRouter.get('/policy', (_req, res) => {
   res.json({
     platformBps: env.PLATFORM_FEE_BPS,
     maxRoyaltyBps: env.MAX_ROYALTY_BPS,
+    // Whether this server can sign door codes, so the form offers the choice only
+    // where it will work.
+    doorCodes: doorTokenMode === 'live',
   })
 })

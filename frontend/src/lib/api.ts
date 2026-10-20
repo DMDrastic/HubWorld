@@ -444,6 +444,10 @@ export function resumeMintJob(id: string): Promise<MintJob> {
 
 // -------------------------------------------------------------- inventory --
 
+/** How an event lets people in. Absent from a server that predates it: treat as SIGNATURE. */
+export const DoorModeSchema = z.enum(['QR', 'SIGNATURE'])
+export type DoorMode = z.infer<typeof DoorModeSchema>
+
 export const OwnedTicketSchema = z.object({
   nfTokenId: z.string(),
   seat: z.string().nullable(),
@@ -459,6 +463,7 @@ export const OwnedTicketSchema = z.object({
     // Absent from a server that predates them; a ticket still renders without.
     venue: z.string().nullish(),
     imageUrl: z.string().nullish(),
+    doorMode: DoorModeSchema.nullish(),
   }),
   /** Auctions are secondary-market only: sold-out events, non-organizer holders. */
   canAuction: z.boolean(),
@@ -485,6 +490,23 @@ export type Inventory = z.infer<typeof InventorySchema>
 
 export function fetchInventory(verify = false): Promise<Inventory> {
   return request(`/tickets/mine?verify=${verify}`, InventorySchema)
+}
+
+// ------------------------------------------------------- door code (QR) --
+
+export const DoorTokenSchema = z.object({
+  token: z.string(),
+  expiresAt: z.string(),
+  /** How long the code lives, by the SERVER's reckoning, so a phone with a wrong clock still stops showing it on time. */
+  expiresInSeconds: z.number(),
+  /** Ask for a fresh code this long after getting one. */
+  refreshInSeconds: z.number(),
+})
+export type DoorToken = z.infer<typeof DoorTokenSchema>
+
+/** The short-lived code an attendee shows at the door, for one ticket they hold. */
+export function fetchDoorToken(nfTokenId: string): Promise<DoorToken> {
+  return request(`/tickets/${encodeURIComponent(nfTokenId)}/door-token`, DoorTokenSchema, { method: 'POST' })
 }
 
 // ------------------------------------------------------------------ gifts --
@@ -900,6 +922,27 @@ export function startCheckIn(slug: string): Promise<CheckInCreated> {
   })
 }
 
+/**
+ * Submit a code the door staff scanned. Always answers with a verdict in the same
+ * shape as a signature check-in, including for a bad or expired code, so the
+ * screen shows a refusal the way it shows any other.
+ */
+export function scanCode(slug: string, token: string): Promise<CheckInState> {
+  return request(`/events/${encodeURIComponent(slug)}/checkin/scan`, CheckInStateSchema, {
+    method: 'POST',
+    body: { token },
+  })
+}
+
+/** Switch how an event lets people in. The organizer's. */
+export function setDoorMode(slug: string, mode: DoorMode): Promise<{ slug: string; doorMode: DoorMode }> {
+  return request(
+    `/events/${encodeURIComponent(slug)}/door-mode`,
+    z.object({ slug: z.string(), doorMode: DoorModeSchema }),
+    { method: 'POST', body: { mode } },
+  )
+}
+
 export function pollCheckIn(uuid: string): Promise<CheckInState> {
   return request(`/checkin/${encodeURIComponent(uuid)}`, CheckInStateSchema)
 }
@@ -910,7 +953,13 @@ export const StaffListSchema = z.object({
 
 export const DoorEventsSchema = z.object({
   events: z.array(
-    z.object({ slug: z.string(), title: z.string(), via: z.enum(['organizer', 'staff']) }),
+    z.object({
+      slug: z.string(),
+      title: z.string(),
+      via: z.enum(['organizer', 'staff']),
+      /** Absent from a server that predates code entry: treat as SIGNATURE. */
+      doorMode: DoorModeSchema.nullish(),
+    }),
   ),
 })
 
@@ -950,6 +999,8 @@ export function fetchDoor(slug: string): Promise<Door> {
 export const PolicySchema = z.object({
   platformBps: z.number(),
   maxRoyaltyBps: z.number(),
+  /** Whether this server can run the code door. Absent from a server that predates it. */
+  doorCodes: z.boolean().optional(),
 })
 
 export const OrganizerStatusSchema = z.object({
@@ -1054,6 +1105,8 @@ export function createEvent(body: {
   resaleCapDrops?: string
   /** Box-office price in drops. Omit for an event with no checkout. */
   primaryPriceDrops?: string
+  /** How guests are let in. Omit to take the server's default. */
+  doorMode?: DoorMode
 }): Promise<z.infer<typeof CreatedEventSchema>> {
   return request('/events', CreatedEventSchema, { method: 'POST', body })
 }

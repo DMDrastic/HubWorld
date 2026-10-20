@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { Suspense, lazy, useEffect, useState } from 'react'
 import { CalendarDays, MapPin } from 'lucide-react'
 import { fetchInventory, type OwnedTicket } from '@/lib/api'
 import { Button } from '@/components/ui/button'
@@ -10,6 +10,10 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 
+// Loaded when the guide opens on a code-mode event, not with the page: it is the
+// only importer of the QR encoder.
+const DoorQr = lazy(() => import('@/components/DoorQr'))
+
 const dateFmt = new Intl.DateTimeFormat(undefined, { weekday: 'short', day: 'numeric', month: 'short' })
 const timeFmt = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' })
 
@@ -18,11 +22,18 @@ type Readiness = 'checking' | 'confirmed' | 'missing' | 'unknown'
 /**
  * What to do at the door, and whether the ticket is ready for it.
  *
- * This is a GUIDE, not a credential, and that is deliberate. Door check-in is a
- * signature: staff show a code, the attendee signs it in Xaman, and the verdict
- * appears on the STAFF device. A QR or a green tick on the attendee's own phone
- * would be a screenshot that can be forwarded, so nothing on this screen looks
- * like admission and the copy says so.
+ * An event lets people in one of two ways, and this screen follows it.
+ *
+ * SIGNATURE: staff show a code, the attendee signs it in Xaman, and the verdict
+ * appears on the STAFF device. This screen is only a GUIDE: nothing on it looks
+ * like admission, because a QR or a green tick here would be a screenshot that
+ * could be forwarded.
+ *
+ * QR: the attendee shows a code and staff scan it. It is safe to display because
+ * it is signed, lives under a minute and is renewed while this screen is open
+ * (`DoorQr`); a screenshot dies and a live code admits only the first person who
+ * presents it. Even so, this screen never says "admitted": that verdict belongs
+ * on the staff device.
  *
  * What it does do is the part a queue is bad at: tell a first-timer the three
  * things to do before they reach the front, and re-read the ledger now so a
@@ -87,6 +98,7 @@ export function DoorGuide({
   }, [open])
 
   const when = new Date(ticket.event.startsAt)
+  const byCode = ticket.event.doorMode === 'QR'
   const used = ticket.status === 'REDEEMED'
   const admission = [ticket.tier, ticket.seat].filter(Boolean).join(' · ') || 'General admission'
 
@@ -95,7 +107,9 @@ export function DoorGuide({
       <DialogContent>
         <DialogHeader>
           <DialogTitle>At the door</DialogTitle>
-          <DialogDescription>Do these three things before you reach the front.</DialogDescription>
+          <DialogDescription>
+            {byCode ? 'Hold this up to the door staff.' : 'When you reach the front, do these three things.'}
+          </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-5">
@@ -141,8 +155,20 @@ export function DoorGuide({
             </p>
           )}
 
+          {byCode ? (
+            // Only while the ticket can still be used: a used ticket has no code to show.
+            !used && (
+              <Suspense fallback={<p className="text-muted-foreground text-center text-sm">Getting your code…</p>}>
+                <DoorQr nfTokenId={ticket.nfTokenId} />
+              </Suspense>
+            )
+          ) : (
           <ol className="space-y-2.5 text-sm">
-            {['Open Xaman now, before you reach the front.', 'Tap Scan.', "Point it at the door staff's screen and approve."].map(
+            {[
+              "Point your phone's camera at the door staff's screen. (Or open Xaman and tap Scan.)",
+              'Xaman opens a request. Approve it.',
+              "The door staff's screen confirms you.",
+            ].map(
               (step, i) => (
                 <li key={step} className="flex gap-3">
                   <span
@@ -156,9 +182,12 @@ export function DoorGuide({
               ),
             )}
           </ol>
+          )}
 
           <p className="text-muted-foreground border-border border-t pt-4 text-xs leading-relaxed">
-            The door confirms your ticket on their own screen. Nothing on this page gets you in by itself.
+            {byCode
+              ? "The door scans this code and confirms your ticket on their own screen. Nothing on this page says you are in."
+              : 'The door confirms your ticket on their own screen. Nothing on this page gets you in by itself.'}
           </p>
 
           <Button variant="secondary" onClick={onClose} className="w-full">

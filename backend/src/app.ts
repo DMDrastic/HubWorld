@@ -20,6 +20,7 @@ import { auctionsRouter } from './routes/auctions.js'
 import { bidsRouter } from './routes/bids.js'
 import { openAuctionRouter } from './routes/open-auction.js'
 import { redemptionRouter } from './routes/redemption.js'
+import { doorQrRouter } from './routes/door-qr.js'
 import { organizersRouter } from './routes/organizers.js'
 import { payloadUsageRouter } from './routes/payload-usage.js'
 import { webhooksRouter } from './routes/webhooks.js'
@@ -140,6 +141,7 @@ export function createApp() {
   app.use('/api', bidsRouter)
   app.use('/api', openAuctionRouter)
   app.use('/api', redemptionRouter)
+  app.use('/api', doorQrRouter)
   app.use('/api', organizersRouter)
   app.use('/api', payloadUsageRouter)
   app.use('/api', webhooksRouter)

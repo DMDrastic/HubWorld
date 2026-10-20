@@ -369,7 +369,7 @@ export default function App() {
               <div>
                 <h1 className="text-3xl font-semibold tracking-[-0.02em]">Door</h1>
                 <p className="text-muted-foreground mt-1.5 text-sm leading-relaxed">
-                  Attendees sign to prove the ticket is theirs. The verdict shows here.
+                  Check guests in. The verdict shows here, on your device, never on theirs.
                 </p>
               </div>
               <DoorPanel />

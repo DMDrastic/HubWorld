@@ -75,6 +75,12 @@ const EnvSchema = z.object({
   // waiting user. Unset in dev, where there is no public URL to call back to.
   XAMAN_WEBHOOK_SECRET: z.string().min(16).optional(),
 
+  // Signs the short-lived codes an attendee shows at the door. Unset, the QR
+  // door mode is OFF: those routes answer 503 and new events keep the Xaman
+  // signature flow. Replacing it is the whole rotation story: codes live 45
+  // seconds, so outstanding ones simply stop scanning.
+  DOOR_TOKEN_SECRET: z.string().min(32).optional(),
+
   // How Socket.IO shares events between processes.
   //
   // 'memory' (the default) keeps rooms in this process only, which is correct
@@ -201,6 +207,12 @@ export const delegateMode: 'live' | 'disabled' = env.DELEGATE_SEED ? 'live' : 'd
  * concrete reason to.
  */
 export const webhookMode: 'live' | 'disabled' = env.XAMAN_WEBHOOK_SECRET ? 'live' : 'disabled'
+
+/**
+ * Whether attendees can show a code at the door. Off means every event uses the
+ * Xaman signature flow, which is what existed before the code did.
+ */
+export const doorTokenMode: 'live' | 'disabled' = env.DOOR_TOKEN_SECRET ? 'live' : 'disabled'
 
 /**
  * Whether an organizer can upload an event poster. Events work fine without it —

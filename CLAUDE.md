@@ -811,7 +811,7 @@ Hubworld out of the funds-custody path. Changing this changes who mints.
 | `GET /api/admin/organizer-applications` | admin: the review queue |
 | `POST /api/admin/organizer-applications/:id/review` | admin: approve / reject |
 | `GET /api/admin/payload-usage` | admin: Xaman quota consumption, by flow |
-| `GET /api/policy` | platform fee + royalty cap (public) |
+| `GET /api/policy` | platform fee + royalty cap + whether door codes exist (public) |
 | `POST /api/events` | organizer-only; create an event |
 | `GET /api/events?status=&limit=` | event list |
 | `GET /api/events/:slug` | event detail |
@@ -848,6 +848,9 @@ Hubworld out of the funds-custody path. Changing this changes who mints.
 | `GET /api/auctions` | events with a live auction |
 | `POST /api/events/:slug/checkin` | organizer-only; start a door check-in |
 | `GET /api/checkin/:uuid` | the verdict, on the staff device |
+| `POST /api/tickets/:nfTokenId/door-token` | holder-only; a 45-second signed code to show at the door (QR-mode events) |
+| `POST /api/events/:slug/checkin/scan` | door staff; submit a scanned code, answers with a verdict (QR-mode events) |
+| `POST /api/events/:slug/door-mode` | organizer-only; switch an event between `QR` and `SIGNATURE` |
 | `GET /api/events/:slug/door` | admitted/issued counts + recent entries |
 | `GET /api/door/events` | events I may work the door for |
 | `GET /api/events/:slug/staff` | organizer-only; who is on the door |
@@ -1662,13 +1665,97 @@ record which broker they name.
 
 ## Check-in at the door
 
-`src/routes/redemption.ts`. This is what makes an NFT a ticket rather than a
-collectible.
+`src/routes/redemption.ts` and `src/routes/door-qr.ts`. This is what makes an NFT a
+ticket rather than a collectible.
 
-**Proof is a signature, not a display.** A QR on an attendee's phone can be
-screenshotted and forwarded; a Xaman signature cannot, because it needs their key
-at that moment. Check-in reuses the `SignIn` pseudo-transaction — no fee, no
+**An event lets people in one of two ways, chosen by its organizer** (`Event.doorMode`,
+switchable after creation because nothing about a ticket depends on it):
+
+- **`SIGNATURE`** — staff show a code, the attendee signs it in Xaman. The strongest
+  proof, the only one that existed before 2026-10-20, **and the default for every event**.
+  The attendee does not need to open Xaman's scanner first: the QR is a link, so pointing
+  the phone's own camera at it opens Xaman at the request (confirmed on a real phone
+  2026-10-20; Xaman's docs describe the same).
+- **`QR`** — the attendee shows a short-lived code and staff scan it with their phone
+  camera. Faster, and it uses no Xaman payload, but it proves less, so an organizer
+  **opts in** to it; no event drifts into it because the server happens to support it.
+
+**Why a second way exists.** Each signature check-in creates a Xaman payload per
+attendee (`DOOR_CHECKIN`, the vendor quota the roadmap names as the top risk) and
+takes a few seconds a person at the front: **5-8 seconds in one informal test by its
+owner, who knew the flow** (a single run, not a crowd; plan on 8-12 for strangers in a
+queue, who fumble, fail Face ID, or lose signal). One lane is therefore roughly 300-700
+guests an hour, which is fine for 100, workable for 1,000 with two or three lanes (each
+lane is one more staff phone), and slow for one lane at 1,000. The code door removes the
+Xaman payload and brings it to about a couple of seconds, which is the case for it on
+large general-admission events.
+
+**Proof is a signature, not a display — in `SIGNATURE` mode.** A QR on an attendee's
+phone can be screenshotted and forwarded; a Xaman signature cannot, because it needs
+their key at that moment. Check-in reuses the `SignIn` pseudo-transaction — no fee, no
 reserve, so an unfunded wallet can still be admitted.
+
+**What `QR` mode changes, stated plainly.** The code (`src/door-token.ts`,
+`HWD1.<payload>.<mac>`, about 120 characters, a QR of roughly 45 modules a side) names
+one ticket, one event and one person, is signed with an HMAC (`DOOR_TOKEN_SECRET`), and
+stops working 45 seconds after it was made; the page renews it every 30. A screenshot
+is dead within a minute, and a live forwarded code admits only the first person to
+present it. **It proves possession of a logged-in HubWorld session, not a wallet key at
+the door**: someone who hands over an unlocked phone, or screen-shares live, gets in.
+Every rotating-QR ticketing system has this property; `SIGNATURE` mode is the answer for
+events where it matters. The earlier rule that the attendee's screen must never show a
+code was about a STATIC code, and is now "shows only a code that expires in a minute, and
+never an admitted state".
+
+- **The server stores nothing about codes.** It checks an HMAC, so there is no table of
+  live codes to grow, leak or race. Single use is the TICKET's job: admission flips it to
+  `REDEEMED` in one conditional update, so a code shown to two scanners admits the first
+  and tells the second "already checked in".
+- **A code is bound to one ticket and one event.** A holder with two tickets is not
+  charged the second by a code for the first, and a code for another event is
+  `no_ticket` here.
+- **The ledger is read twice.** Once when the holder asks for a code (a ticket gifted in
+  Xaman gets no working code) and again at the door (a ticket given away in the 45
+  seconds since). An unreadable ledger is never a refusal at either step.
+- **Off until configured.** `DOOR_TOKEN_SECRET` unset: the routes answer 503, the create
+  form does not offer the choice (`GET /policy` carries
+  `doorCodes`). Replacing the secret is the whole rotation story: codes live 45 seconds.
+- **Every scan leaves an audit row** (`Redemption.method = QR`), junk included — a
+  disputed entry is exactly when "what did staff scan at 9:42" matters. A QR that is not a
+  HubWorld code is refused on the phone without asking the server.
+- **The phone's clock is not trusted.** The page counts a code's life from when it
+  RECEIVED it (`expiresInSeconds`), not by comparing the server's absolute expiry to its
+  own clock, which can be minutes out; and a dead code is blanked, never shown.
+
+**A signature lane moves by itself** (`DoorPanel`). At 5-8 seconds a guest the slow
+part is staff tapping "Next person" between guests, so the next QR appears as soon as a
+verdict lands. Three things keep that safe at a door:
+
+- **A verdict belongs to one person.** The last guest's verdict stays beside the next QR,
+  labelled "Previous guest", and is replaced the moment the next guest has one of their own
+  (two are never on screen at once) or after 8 seconds. A green "Admitted" left up while the
+  next guest walks over would be read as theirs.
+- **An idle lane does not spend payloads.** An unused QR (Xaman payloads live 3 minutes, not
+  the 10 the row's own cap allows) is replaced quietly, never flashed as "Expired", but only
+  three times in a row: each replacement is a Xaman payload, and a screen left open overnight
+  must not spend a day's quota. A real guest resets the count; tapping Continue starts again.
+- **A failure keeps what staff are looking at.** If the next QR cannot be made, the verdict
+  stays and a Continue button retries, rather than blanking the lane.
+
+The guest's @handle is shown large on the verdict, deliberately: the signature is the
+guest's, so the handle is the only thing staff can check against the person in front of them.
+A QR can be photographed and signed by a friend elsewhere, and then the screen says "Admitted"
+over somebody who is not at the gate. More lanes (staff phones) multiply throughput; nothing
+else in the design limits it.
+
+**One admit path for both** (`src/door-admit.ts`): the ledger re-check, `already_used`,
+`no_ticket` and the admission itself are shared, so the two modes cannot drift. Extracting
+it found a real bug: admission was a read ("is this ticket unused?") followed by a write
+("mark it used") with a gap between, so two check-ins racing for one ticket both said
+"redeemed" — one ticket, two people through the door. It is now one conditional update
+(`... WHERE status != 'REDEEMED'`) and the loser is told "already checked in". The test
+that found it widens the gap with a slow ledger read and fails if the update is made
+unconditional.
 
 **Door access is per event, not the organizer role** (`src/door-access.ts`).
 Checking people in and issuing tickets are very different powers, and they used

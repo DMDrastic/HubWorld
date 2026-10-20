@@ -19,6 +19,7 @@ import {
   fetchPolicy,
   reviewApplication,
   xrpToDrops,
+  type DoorMode,
   type OrganizerStatus,
   type PendingApplication,
   type Policy,
@@ -140,6 +141,9 @@ function CreateEventForm({ policy, onCreated }: { policy: Policy | null; onCreat
   const [resalePolicy, setResalePolicy] = useState<ResalePolicyMode>('UNRESTRICTED')
   const [resaleCapPct, setResaleCapPct] = useState('120')
   const [resaleCapXrp, setResaleCapXrp] = useState('')
+  // Offered only where this server can run the code door; otherwise the server's own default (Xaman) applies.
+  const [doorMode, setDoorMode] = useState<DoorMode>('SIGNATURE')
+  const offerDoorMode = policy?.doorCodes === true
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [created, setCreated] = useState<string | null>(null)
@@ -175,6 +179,7 @@ function CreateEventForm({ policy, onCreated }: { policy: Policy | null; onCreat
         royaltyBps: Math.round(Number(royaltyPct) * 100),
         ...(primaryPriceDrops ? { primaryPriceDrops } : {}),
         resalePolicy,
+        ...(offerDoorMode ? { doorMode } : {}),
         ...(resalePolicy === 'PERCENTAGE_CAP' ? { resaleCapBps } : {}),
         ...(resalePolicy === 'FIXED_CAP' ? { resaleCapDrops } : {}),
       })
@@ -291,6 +296,24 @@ function CreateEventForm({ policy, onCreated }: { policy: Policy | null; onCreat
           can't change it later.
         </p>
       </div>
+
+      {offerDoorMode && (
+        <div className="space-y-1.5">
+          <select
+            value={doorMode}
+            onChange={(e) => setDoorMode(e.target.value as DoorMode)}
+            aria-label="how guests get in"
+            className="border-input bg-background focus-visible:border-ring focus-visible:ring-ring/50 rounded-lg border px-3 py-2 text-sm transition-colors focus-visible:ring-[3px] focus-visible:outline-none"
+          >
+            <option value="SIGNATURE">Door: guests approve in Xaman (recommended)</option>
+            <option value="QR">Door: guests show a code (faster, proves less)</option>
+          </select>
+          <p className="text-muted-foreground text-xs">
+            Approving in Xaman proves the guest's own wallet is at the door. A code is faster, but
+            only proves a logged-in HubWorld session. You can change this later.
+          </p>
+        </div>
+      )}
 
       {policy && (
         <p className="text-muted-foreground text-xs">
