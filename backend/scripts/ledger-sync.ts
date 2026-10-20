@@ -14,7 +14,10 @@
  */
 import { prisma } from '../src/prisma.js'
 import { NETWORK, onThisNetwork } from '../src/network.js'
-import { accountNfts, disconnectLedger, ledger } from '../src/ledger.js'
+import { accountNfts, brokerCancelOffers, disconnectLedger, ledger, platformAddress } from '../src/ledger.js'
+import { brokerMode } from '../src/env.js'
+import { cancellableByBroker, findOrphanOffers, type LedgerOffer } from '../src/orphan-offers.js'
+import { offersOwnedBy } from '../src/organizer-offers.js'
 import {
   WATCHED,
   classifyAmendment,
@@ -194,6 +197,57 @@ async function main() {
           `${l.priceDrops}drops: marked FAILED but its offer is still live`,
       )
     }
+  }
+
+  // ---- offers nobody accounts for ----------------------------------------
+  //
+  // With the lazy primary sale the delegate creates sell offers AS the organizer,
+  // so an organizer's account holds offers it never signed. Each should match a
+  // Listing. One that does not is a lost offer (a bug) or — what matters — the
+  // delegate being used for something it was not asked to do. `checkSellOffer`
+  // only runs inside our code; this is what notices if something else holds the
+  // key.
+  //
+  // INERT and STALE offers name the broker, which may cancel them, so --apply
+  // does. EXPOSED ones (open, or destined for another account) can only be
+  // cancelled by the organizer: that is reported and left for a person.
+  if (brokerMode === 'live') {
+    const broker = platformAddress()
+    const known = new Map<string, { status: string }>()
+    for (const l of await prisma.listing.findMany({
+      where: onThisNetwork,
+      select: { offerIndex: true, buyOfferIndex: true, status: true },
+    })) {
+      if (l.offerIndex) known.set(l.offerIndex, { status: l.status })
+      if (l.buyOfferIndex) known.set(l.buyOfferIndex, { status: l.status })
+    }
+
+    const organizers = await prisma.user.findMany({
+      where: { role: { in: ['ORGANIZER', 'ADMIN'] } },
+      select: { username: true, xrplAddress: true },
+    })
+    const tidy: string[] = []
+    for (const org of organizers) {
+      let offers: LedgerOffer[]
+      try {
+        offers = await offersOwnedBy(org.xrplAddress)
+      } catch {
+        // An account that does not exist yet owns nothing; anything else is a
+        // read failure, which says nothing about its offers.
+        continue
+      }
+      for (const orphan of findOrphanOffers({ offers, known, brokerAddress: broker })) {
+        const tag = `${orphan.offer.index.slice(0, 8)} @${org.username} ${orphan.why}`
+        if (orphan.kind === 'exposed') {
+          note('EXPOSED-OFFER', `${tag} — only the organizer can cancel this`)
+          continue
+        }
+        const mine = cancellableByBroker(orphan, broker)
+        note(`orphan-offer-${orphan.kind}`, tag, APPLY && mine)
+        if (mine) tidy.push(orphan.offer.index)
+      }
+    }
+    if (APPLY && tidy.length > 0) await brokerCancelOffers(tidy)
   }
 
   // ---- amendments we are waiting on -------------------------------------

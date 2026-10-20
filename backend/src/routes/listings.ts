@@ -21,30 +21,22 @@ import { z } from 'zod'
 import { prisma } from '../prisma.js'
 import { NETWORK } from '../network.js'
 import { brokerMode, xamanMode } from '../env.js'
-import { tryGetPayload, xaman, SIGNIN_TTL_MINUTES } from '../xaman.js'
+import { xaman, SIGNIN_TTL_MINUTES } from '../xaman.js'
 import { issuesOf } from '../schemas.js'
 import { requireAuth } from '../session.js'
-import { releaseHold } from '../primary-sale.js'
-import { defaultPrimarySaleLedger } from '../primary-sale-ledger.js'
+import { advanceListing, listingInclude, listingView } from '../listing-advance.js'
 import { checkResalePrice, maxAskForCap, isPrimarySale } from '../resale-policy.js'
 import {
-  brokerSale,
   buildBuyOfferTx,
   buildCancelOfferTx,
   buildSellOfferTx,
   holdsNft,
-  offerIndexFromTx,
   platformAddress,
   platformFeeDrops,
-  spendableDrops,
-  txSucceeded,
   XAMAN_NETWORK,
 } from '../ledger.js'
 
 export const listingsRouter = Router()
-
-// Used only to release a checkout's hold when its buyer backs out.
-const primaryLedger = defaultPrimarySaleLedger()
 
 /** Unsigned-payload TTL. Not the listing's lifetime — see gift-policy.ts. */
 const LIST_TTL_MINUTES = 60
@@ -68,43 +60,6 @@ const ListBody = z.object({
     .string()
     .regex(/^[1-9][0-9]{0,17}$/, 'priceDrops must be a positive integer string of drops'),
 })
-
-function listingView(l: {
-  id: string
-  priceDrops: bigint
-  platformFeeDrops: bigint
-  status: string
-  seller: { username: string }
-  buyer: { username: string } | null
-  ticket: { nfTokenId: string; seat: string | null; tier: string | null; event: { slug: string; title: string } }
-  failureReason: string | null
-}) {
-  return {
-    listingId: l.id,
-    state: l.status.toLowerCase(),
-    // What the seller asks, what Hubworld takes, and what the buyer pays.
-    priceDrops: l.priceDrops.toString(),
-    platformFeeDrops: l.platformFeeDrops.toString(),
-    buyerPaysDrops: (l.priceDrops + l.platformFeeDrops).toString(),
-    seller: `@${l.seller.username}`,
-    buyer: l.buyer ? `@${l.buyer.username}` : null,
-    ticket: {
-      nfTokenId: l.ticket.nfTokenId,
-      seat: l.ticket.seat,
-      tier: l.ticket.tier,
-      event: l.ticket.event,
-    },
-    ...(l.failureReason ? { reason: l.failureReason } : {}),
-  }
-}
-
-const listingInclude = {
-  seller: { select: { username: true } },
-  buyer: { select: { username: true } },
-  ticket: {
-    include: { event: { select: { slug: true, title: true, platformBps: true } } },
-  },
-} as const
 
 /**
  * POST /api/tickets/:nfTokenId/list
@@ -525,6 +480,10 @@ listingsRouter.post('/listings/:id/cancel', requireAuth, async (req, res) => {
 
 /**
  * GET /api/listings/:id — poll target driving all three phases.
+ *
+ * The phases themselves live in `advanceListing`, because they must also be driven
+ * when nobody is polling: a buyer who signs and closes the tab would otherwise
+ * strand a paid-for sale until they came back.
  */
 listingsRouter.get('/listings/:id', requireAuth, async (req, res) => {
   const parsed = IdParams.safeParse(req.params)
@@ -533,325 +492,10 @@ listingsRouter.get('/listings/:id', requireAuth, async (req, res) => {
     return
   }
 
-  const listing = await prisma.listing.findUnique({
-    where: { id: parsed.data.id },
-    include: listingInclude,
-  })
-  if (!listing) {
+  const result = await advanceListing(parsed.data.id)
+  if (!result) {
     res.status(404).json({ error: 'Listing not found' })
     return
   }
-
-  const view = (extra: Record<string, unknown> = {}) => ({ ...listingView(listing), ...extra })
-
-  // Terminal states need no further work.
-  if (['SOLD', 'CANCELLED', 'EXPIRED', 'FAILED'].includes(listing.status)) {
-    res.json(view())
-    return
-  }
-
-  const payloadExpired = listing.expiresAt < new Date()
-
-  // ---- phase 1: the seller's sell offer ----------------------------------
-  if (listing.status === 'PENDING_OFFER') {
-    const status = await tryGetPayload(listing.listPayloadUuid)
-    if (status === 'unavailable') {
-      res.json(view())
-      return
-    }
-    if (status?.cancelled) {
-      await prisma.listing.update({
-        where: { id: listing.id },
-        data: { status: 'CANCELLED', closedAt: new Date() },
-      })
-      res.json({ ...view(), state: 'cancelled' })
-      return
-    }
-    if (!status?.signed) {
-      // Nothing on-ledger yet, so expiring is honest.
-      if (payloadExpired || status?.expired) {
-        await prisma.listing.update({ where: { id: listing.id }, data: { status: 'EXPIRED' } })
-        res.json({ ...view(), state: 'expired' })
-        return
-      }
-      res.json(view())
-      return
-    }
-    if (!status.txid) {
-      res.json(view({ signed: true }))
-      return
-    }
-
-    const ok = await txSucceeded(status.txid)
-    if (ok === null) {
-      res.json(view({ signed: true }))
-      return
-    }
-    if (!ok) {
-      await prisma.listing.update({
-        where: { id: listing.id },
-        data: { status: 'FAILED', listTxHash: status.txid, failureReason: 'The ledger rejected the listing' },
-      })
-      res.json({ ...view(), state: 'failed', reason: 'The ledger rejected the listing' })
-      return
-    }
-
-    const offerIndex = await offerIndexFromTx(status.txid)
-    if (!offerIndex) {
-      res.json(view({ signed: true }))
-      return
-    }
-
-    await prisma.$transaction([
-      prisma.listing.update({
-        where: { id: listing.id },
-        data: { status: 'ACTIVE', listTxHash: status.txid, offerIndex, listedAt: new Date() },
-      }),
-      prisma.ticket.update({
-        where: { id: listing.ticketId },
-        data: { status: listing.auctionId ? 'IN_AUCTION' : 'LISTED' },
-      }),
-      // Bidding opens only now: until the sell offer exists there is nothing for
-      // a winning bid to be matched against, so accepting bids earlier would be
-      // taking commitments we could not settle.
-      ...(listing.auctionId
-        ? [
-            prisma.auction.update({
-              where: { id: listing.auctionId },
-              data: { status: 'LIVE' },
-            }),
-          ]
-        : []),
-    ])
-    res.json({ ...view(), state: 'active' })
-    return
-  }
-
-  // ---- withdrawal --------------------------------------------------------
-  //
-  // CANCELLING is included deliberately, and leaving it out was a trap: the
-  // status is written precisely when `txSucceeded` cannot yet see a validated
-  // transaction, so the listing needs a LATER poll to finish the job — but a
-  // later poll no longer matched an ACTIVE-only guard, and nothing else in the
-  // codebase moves a listing out of CANCELLING. The withdrawal therefore never
-  // completed: the seller's offer stayed live on-ledger, and because
-  // `ON_LEDGER_STATES` counts CANCELLING, that ticket could never be listed or
-  // auctioned again. A state you can enter and not leave is a leak, not a state.
-  if (listing.cancelPayloadUuid && (listing.status === 'ACTIVE' || listing.status === 'CANCELLING')) {
-    const cancel = await tryGetPayload(listing.cancelPayloadUuid)
-    if (cancel !== 'unavailable' && cancel?.signed && cancel.txid) {
-      const ok = await txSucceeded(cancel.txid)
-      if (ok === null) {
-        await prisma.listing.update({
-          where: { id: listing.id },
-          data: { status: 'CANCELLING', cancelTxHash: cancel.txid },
-        })
-        res.json({ ...view(), state: 'cancelling' })
-        return
-      }
-      if (ok) {
-        await prisma.$transaction([
-          prisma.listing.update({
-            where: { id: listing.id },
-            data: { status: 'CANCELLED', cancelTxHash: cancel.txid, closedAt: new Date() },
-          }),
-          prisma.ticket.update({ where: { id: listing.ticketId }, data: { status: 'MINTED' } }),
-        ])
-        res.json({ ...view(), state: 'cancelled' })
-        return
-      }
-      // The ledger rejected the cancellation, so the sell offer is still live
-      // and the listing is still genuinely for sale. Returning it to ACTIVE is
-      // what the state means; leaving it in CANCELLING would strand the ticket
-      // for a withdrawal that demonstrably did not happen.
-      if (listing.status === 'CANCELLING') {
-        await prisma.listing.update({
-          where: { id: listing.id },
-          data: { status: 'ACTIVE', cancelPayloadUuid: null, cancelTxHash: null },
-        })
-        res.json({ ...view(), state: 'active' })
-        return
-      }
-    }
-  }
-
-  // ---- phase 2: the buyer's bid ------------------------------------------
-  if (listing.status === 'BUYER_PENDING' && listing.buyPayloadUuid) {
-    const status = await tryGetPayload(listing.buyPayloadUuid)
-    if (status === 'unavailable') {
-      res.json(view())
-      return
-    }
-
-    // A checkout's listing is ONE buyer's reserved purchase, not an open offer.
-    // When that buyer backs out there is nobody to return it to sale for, so the
-    // ticket is released and its offer taken off the ledger instead.
-    const backOut = async (reason: string): Promise<boolean> => {
-      if (!listing.reservedForId) return false
-      await releaseHold(listing.id, primaryLedger, reason)
-      res.json({ ...view(), status: 'CANCELLED', state: 'cancelled', reason })
-      return true
-    }
-
-    if (status?.cancelled) {
-      if (await backOut('The purchase was declined')) return
-      // The buyer backed out. The sell offer is untouched, so the listing
-      // returns to sale rather than dying.
-      await prisma.listing.update({
-        where: { id: listing.id },
-        data: { status: 'ACTIVE', buyerId: null, buyerAddress: null, buyPayloadUuid: null },
-      })
-      res.json({ ...view(), state: 'active' })
-      return
-    }
-    if (!status?.signed) {
-      if (payloadExpired || status?.expired) {
-        if (await backOut('The purchase expired')) return
-        await prisma.listing.update({
-          where: { id: listing.id },
-          data: { status: 'ACTIVE', buyerId: null, buyerAddress: null, buyPayloadUuid: null },
-        })
-        res.json({ ...view(), state: 'active' })
-        return
-      }
-      res.json(view())
-      return
-    }
-    if (!status.txid) {
-      res.json(view({ signed: true }))
-      return
-    }
-
-    const ok = await txSucceeded(status.txid)
-    if (ok === null) {
-      res.json(view({ signed: true }))
-      return
-    }
-    if (!ok) {
-      if (await backOut('The ledger rejected the bid')) return
-      await prisma.listing.update({
-        where: { id: listing.id },
-        data: { status: 'ACTIVE', buyerId: null, buyerAddress: null, buyPayloadUuid: null, buyTxHash: status.txid },
-      })
-      res.json({ ...view(), state: 'active', reason: 'The ledger rejected the bid' })
-      return
-    }
-
-    const buyOfferIndex = await offerIndexFromTx(status.txid)
-    if (!buyOfferIndex) {
-      res.json(view({ signed: true }))
-      return
-    }
-
-    await prisma.listing.update({
-      where: { id: listing.id },
-      data: { status: 'SETTLING', buyTxHash: status.txid, buyOfferIndex },
-    })
-    res.json({ ...view(), state: 'settling' })
-    return
-  }
-
-  // ---- phase 3: Hubworld brokers the match -------------------------------
-  if (listing.status === 'SETTLING' && listing.offerIndex && listing.buyOfferIndex) {
-    const owed = listing.priceDrops + listing.platformFeeDrops
-
-    // Pre-flight the buyer's balance. A buy offer does not lock funds, so the
-    // buyer can spend the money between committing and settling. Submitting
-    // anyway would burn a transaction fee to learn what we can read for free.
-    if (listing.buyerAddress) {
-      try {
-        const spendable = await spendableDrops(listing.buyerAddress)
-        if (spendable < owed) {
-          await prisma.listing.update({
-            where: { id: listing.id },
-            data: {
-              failureReason: `Waiting for the buyer's balance: ${spendable.toString()} of ${owed.toString()} drops`,
-            },
-          })
-          res.json({
-            ...view(),
-            state: 'settling',
-            reason: "Waiting for the buyer's balance to cover the sale",
-          })
-          return
-        }
-      } catch {
-        // Ledger unreachable — fall through and let the submission decide.
-      }
-    }
-
-    const result = await brokerSale({
-      sellOfferIndex: listing.offerIndex,
-      buyOfferIndex: listing.buyOfferIndex,
-      brokerFeeDrops: listing.platformFeeDrops,
-    })
-
-    if (!result.succeeded) {
-      // A funding failure is NOT terminal, and treating it as such loses a real
-      // sale: both offers stay live on-ledger, so the moment the buyer is paid
-      // this settles. Observed for real — a listing closed as FAILED became
-      // settleable when its buyer was paid by an unrelated sale. Stay in
-      // SETTLING and let the next poll try again.
-      const retryable = result.result === 'tecINSUFFICIENT_FUNDS'
-      await prisma.listing.update({
-        where: { id: listing.id },
-        data: {
-          status: retryable ? 'SETTLING' : 'FAILED',
-          brokerTxHash: result.hash,
-          failureReason: retryable
-            ? `Buyer could not pay (${result.result}); will retry while the offers stand`
-            : `Brokered settlement failed: ${result.result}`,
-        },
-      })
-      res.json({
-        ...view(),
-        state: retryable ? 'settling' : 'failed',
-        reason: retryable
-          ? 'The buyer could not pay. This will settle if they fund the bid.'
-          : `Brokered settlement failed: ${result.result}`,
-      })
-      return
-    }
-
-    // Sold. Ownership, provenance and the ticket cache move together, keyed on
-    // the unique txHash so a duplicate poll cannot double-record the sale.
-    await prisma.$transaction(async (tx) => {
-      await tx.ticket.update({
-        where: { id: listing.ticketId },
-        data: {
-          ownerId: listing.buyerId,
-          ownerAddress: listing.buyerAddress,
-          syncedAt: new Date(),
-          status: 'MINTED',
-        },
-      })
-
-      const already = await tx.transfer.findUnique({
-        where: { network_txHash: { network: NETWORK, txHash: result.hash } },
-      })
-      if (!already) {
-        await tx.transfer.create({
-          data: {
-            ticketId: listing.ticketId,
-            network: NETWORK,
-            fromAddress: listing.sellerAddress,
-            toAddress: listing.buyerAddress!,
-            txHash: result.hash,
-            kind: 'SALE',
-            occurredAt: new Date(),
-          },
-        })
-      }
-
-      await tx.listing.update({
-        where: { id: listing.id },
-        data: { status: 'SOLD', brokerTxHash: result.hash, closedAt: new Date() },
-      })
-    })
-
-    res.json({ ...view(), state: 'sold', brokerTxHash: result.hash })
-    return
-  }
-
-  res.json(view())
+  res.json(result)
 })

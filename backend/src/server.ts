@@ -11,6 +11,7 @@ import { runDueMintJobs } from './bulk-mint.js'
 import { defaultMintLedger } from './mint-ledger.js'
 import { delegateConfigured } from './delegate-account.js'
 import { releaseExpiredHolds } from './primary-sale.js'
+import { advanceStuckSales } from './listing-advance.js'
 import { defaultPrimarySaleLedger } from './primary-sale-ledger.js'
 
 // Before anything is served. A process serving another ledger's rows is worse
@@ -77,6 +78,12 @@ const sweep = async () => {
       const freed = await cancelAbandonedPayloads()
       if (freed > 0) console.log(`cancelled ${freed} abandoned Xaman payload(s)`)
     })
+
+    // Sales whose buyer has signed but is no longer watching. A sale only moved
+    // when somebody's browser polled it; for a box-office purchase that left a
+    // paid-for ticket in limbo whenever the tab closed.
+    const advanced = await advanceStuckSales()
+    if (advanced > 0) console.log(`advanced ${advanced} sale(s) nobody was watching`)
 
     // Checkouts nobody finished: give the ticket back and take its offer off the
     // ledger. Idempotent, so two instances doing it together is harmless.
