@@ -1411,6 +1411,24 @@ pages on the throwaway accounts. **The sale and the worker have now been seen wo
 on the real ledger; what remains unmeasured on mainnet is scale** (the 1,000-ticket
 and 25-buyer figures are devnet).
 
+**1,000 tickets, one signature: the proof script and the reserve it corrected.**
+`scripts/mainnet-1000-check.ts` proves the headline claim from the ledger alone: the
+organizer's own key signs exactly ONE transaction (the `DelegateSet`), 1,000
+`NFTokenMint`s carry `Delegate`, and every token is issued by the organizer with the
+5% royalty. With `--burn-after` the delegate then burns them all — the holder may
+always burn its own NFTs, and the burn is delegated like the mint — so the reserve is
+recovered and the net cost is the organizer's 1 XRP base reserve plus ~0.024 XRP of
+fees. The proof is captured BEFORE the burn. Rehearsed on devnet at full size: 18 of 18
+checks; mint 1,000 in 341s (2.93/s), burn 1,000 in 365s, 2 drops per transaction.
+**The reserve estimate was wrong, and that is the finding:** `reserveNeededDrops`
+divided by the specification's 32 tokens per page (33 pages, 6.6 XRP), but pages
+split as they fill and the measured run took **41 pages (24.4 per page, 8.2 XRP)**.
+The product would have let an organizer start a run it could not finish. It now
+divides by 22 (47 pages, 9.4 XRP) and `MEASURED_PAGES` pins every measured run so the
+estimate can never again sit below one. The organizer's seed is escrowed in the macOS
+Keychain (`hubworld-mainnet-check-organizer`) until the sweep succeeds: with ~11 XRP
+at stake, "the keys die with the process" is too risky.
+
 **Batch transactions do not rescue this, on two counts.** The `Batch` amendment
 (XLS-56) would let one signature carry several inner mints, but a signature-
 validation flaw found on 19 Feb 2026 led to rippled 3.1.1 marking both `Batch`

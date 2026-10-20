@@ -8,6 +8,8 @@ import {
   DEFAULT_MAX_FEE_DROPS,
   MAX_JOB_TICKETS,
   MAX_STALLED_WAVES,
+  MEASURED_PAGES,
+  NFTS_PER_PAGE,
   WAVE_SIZE,
   decideFee,
   judgeWave,
@@ -62,15 +64,35 @@ describe('planBulkMint', () => {
 describe('reserveNeededDrops', () => {
   const INC = 200_000n
 
-  it('charges per 32-token page, plus one for misalignment', () => {
+  it('charges per effective page, plus one for misalignment', () => {
     expect(reserveNeededDrops(1, INC)).toBe(2n * INC)
-    expect(reserveNeededDrops(32, INC)).toBe(2n * INC)
-    expect(reserveNeededDrops(33, INC)).toBe(3n * INC)
-    expect(reserveNeededDrops(1000, INC)).toBe(33n * INC) // ceil(1000/32)=32, +1
+    expect(reserveNeededDrops(NFTS_PER_PAGE, INC)).toBe(2n * INC)
+    expect(reserveNeededDrops(NFTS_PER_PAGE + 1, INC)).toBe(3n * INC)
+    expect(reserveNeededDrops(1000, INC)).toBe(47n * INC) // ceil(1000/22)=46, +1
+  })
+
+  it('NEVER understates a run that was actually measured', () => {
+    // This is the test that would have caught the original figure: dividing by the
+    // specification's 32 gave 33 pages for 1,000 tickets, and the real run needed 41.
+    for (const { tickets, pages } of MEASURED_PAGES) {
+      const estimated = reserveNeededDrops(tickets, INC) / INC
+      expect(estimated, `${tickets} tickets measured ${pages} pages`).toBeGreaterThanOrEqual(BigInt(pages))
+    }
+  })
+
+  it('would have failed the old figure (32 per page) on the 1,000-ticket measurement', () => {
+    const old = BigInt(Math.ceil(1000 / 32) + 1)
+    const measured = MEASURED_PAGES.find((m) => m.tickets === 1000)!
+    expect(old).toBeLessThan(BigInt(measured.pages))
+  })
+
+  it('is not wildly over: within 30% of the largest measured run', () => {
+    const m = MEASURED_PAGES.find((x) => x.tickets === 1000)!
+    expect(Number(reserveNeededDrops(1000, INC) / INC)).toBeLessThanOrEqual(m.pages * 1.3)
   })
 
   it('scales with the network reserve rather than a constant', () => {
-    expect(reserveNeededDrops(64, 2_000_000n)).toBe(3n * 2_000_000n)
+    expect(reserveNeededDrops(44, 2_000_000n)).toBe(3n * 2_000_000n)
   })
 })
 
