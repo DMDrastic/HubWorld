@@ -10,7 +10,7 @@
  * the dark, with a queue waiting, and "already checked in" must be impossible to
  * mistake for "admitted".
  */
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { QrCode } from '@/components/QrCode'
 import { VerdictCard } from '@/components/DoorVerdict'
 import { DoorCodeScan } from '@/components/DoorCodeScan'
@@ -44,6 +44,17 @@ import {
 
 const POLL_MS = 2000
 
+/** After a verdict, the next guest's QR is up this soon, with no tap. */
+const ADVANCE_MS = 300
+/**
+ * An unused QR rolls over by itself, but each roll is a Xaman payload, so after
+ * this many in a row with nobody signing it stops and waits to be tapped. An idle
+ * screen left open overnight must not spend a day's quota.
+ */
+const MAX_IDLE_ROLLS = 3
+/** The last guest's verdict stays beside the next QR this long, labelled as theirs. */
+const PREVIOUS_MS = 8_000
+
 type Phase =
   | { kind: 'idle' }
   | { kind: 'scanning'; payload: CheckInCreated }
@@ -64,6 +75,13 @@ export function DoorPanel() {
   // the section stays hidden.
   const [staff, setStaff] = useState<Array<{ username: string }> | null>(null)
   const [newStaff, setNewStaff] = useState('')
+  // The guest before this one: kept on screen, labelled, while the next QR is up.
+  const [previous, setPrevious] = useState<CheckInState | null>(null)
+  // The next QR could not be made; the verdict stays and a tap retries.
+  const [advanceError, setAdvanceError] = useState<string | null>(null)
+  // Set once unused QRs have rolled over MAX_IDLE_ROLLS times in a row.
+  const [paused, setPaused] = useState(false)
+  const idleRolls = useRef(0)
   // Whether this server can run the code door, so the organizer is only offered it where it will work.
   const [doorCodes, setDoorCodes] = useState(false)
 
@@ -155,20 +173,72 @@ export function DoorPanel() {
     }
   }
 
-  async function scan() {
-    setBusy(true)
-    try {
-      setResult(null)
-      setPhase({ kind: 'scanning', payload: await startCheckIn(slug) })
-    } catch (err) {
-      setPhase({
-        kind: 'failed',
-        reason: err instanceof ApiError ? err.message : 'Could not start check-in',
-      })
-    } finally {
-      setBusy(false)
-    }
+  const startNext = useCallback(
+    async (auto: boolean) => {
+      setBusy(true)
+      try {
+        const payload = await startCheckIn(slug)
+        setAdvanceError(null)
+        setResult(null)
+        setPhase({ kind: 'scanning', payload })
+      } catch (err) {
+        const message = err instanceof ApiError ? err.message : 'Could not start check-in'
+        // Automatic: keep the verdict on screen and offer a retry. Manual: the old behaviour.
+        if (auto) setAdvanceError(message)
+        else setPhase({ kind: 'failed', reason: message })
+      } finally {
+        setBusy(false)
+      }
+    },
+    [slug],
+  )
+
+  /** Staff pressed "Check someone in" or "Next person". */
+  function scan() {
+    idleRolls.current = 0
+    setPaused(false)
+    setPrevious(null)
+    void startNext(false)
   }
+
+  // The next guest, with no tap. Keyed on the payload and the verdict state, both
+  // primitives: this must run once per verdict, not once per render.
+  const resultState = result?.state ?? null
+  useEffect(() => {
+    if (!activeUuid || !resultState || resultState === 'pending') return
+
+    // An unused QR timing out is not a guest, so it is not shown as a verdict: it
+    // is replaced. Bounded, because each replacement costs a Xaman payload.
+    if (resultState === 'expired') {
+      if (idleRolls.current >= MAX_IDLE_ROLLS) {
+        setPaused(true)
+        return
+      }
+      idleRolls.current += 1
+      void startNext(true)
+      return
+    }
+
+    idleRolls.current = 0
+    const timer = window.setTimeout(() => {
+      setPrevious(result)
+      void startNext(true)
+    }, ADVANCE_MS)
+    return () => window.clearTimeout(timer)
+    // `result` is read when the timer fires; it does not change once a verdict is final.
+  }, [activeUuid, resultState, result, startNext])
+
+  // The previous guest's verdict fades from the screen, so it cannot be mistaken for the next one's.
+  const previousId = previous?.checkInId ?? null
+  useEffect(() => {
+    if (!previousId) return
+    const timer = window.setTimeout(() => setPrevious(null), PREVIOUS_MS)
+    return () => window.clearTimeout(timer)
+  }, [previousId])
+
+  // An unused QR timing out is replaced, not shown as an alarming verdict, until it stops rolling.
+  const showVerdict = !!result && result.state !== 'pending' && (result.state !== 'expired' || paused)
+  const refreshing = result?.state === 'expired' && !paused
 
   // How this event lets people in decides what the button does.
   const byCode = events.find((e) => e.slug === slug)?.doorMode === 'QR'
@@ -224,7 +294,7 @@ export function DoorPanel() {
                 Scan tickets
               </Button>
             ) : (
-              <Button onClick={() => void scan()} disabled={busy || !slug} className="w-full">
+              <Button onClick={() => scan()} disabled={busy || !slug} className="w-full">
                 {busy ? 'Preparing…' : 'Check someone in'}
               </Button>
             )}
@@ -319,7 +389,22 @@ export function DoorPanel() {
 
         {phase.kind === 'scanning' && (
           <div className="flex flex-col items-center gap-3">
-            {(!result || result.state === 'pending') && (
+            {/* The last guest's verdict, labelled as theirs, while the next QR is up. Hidden
+                as soon as THIS guest has a verdict of their own, so two never show at once. */}
+            {previous && !showVerdict && (
+              <div className="w-full space-y-1">
+                <p className="text-muted-foreground text-center text-xs">Previous guest</p>
+                <VerdictCard result={previous} compact />
+              </div>
+            )}
+
+            {!showVerdict && refreshing && (
+              <p className="text-muted-foreground flex size-48 items-center justify-center text-center text-sm" role="status">
+                Getting a new code…
+              </p>
+            )}
+
+            {!showVerdict && !refreshing && (
               <>
                 {/* DELIBERATELY NO `next`, and this must stay that way.
                     
@@ -338,13 +423,34 @@ export function DoorPanel() {
               </>
             )}
 
-            {result && result.state !== 'pending' && <VerdictCard result={result} />}
+            {showVerdict && result && <VerdictCard result={result} />}
+
+            {paused && result?.state === 'expired' && (
+              <p className="text-muted-foreground text-center text-xs">
+                Nobody has scanned for a while, so this stopped making new codes. Tap to continue.
+              </p>
+            )}
+            {advanceError && (
+              <p className="text-destructive text-center text-sm" role="alert">
+                {advanceError}
+              </p>
+            )}
 
             <div className="flex gap-2">
-              <Button size="sm" onClick={() => void scan()} disabled={busy}>
-                Next person
+              <Button size="sm" onClick={() => scan()} disabled={busy}>
+                {paused || advanceError ? 'Continue' : 'Next person'}
               </Button>
-              <Button variant="ghost" size="sm" onClick={() => setPhase({ kind: 'idle' })}>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  idleRolls.current = 0
+                  setPaused(false)
+                  setPrevious(null)
+                  setAdvanceError(null)
+                  setPhase({ kind: 'idle' })
+                }}
+              >
                 Done
               </Button>
             </div>

@@ -1687,6 +1687,27 @@ never an admitted state".
   RECEIVED it (`expiresInSeconds`), not by comparing the server's absolute expiry to its
   own clock, which can be minutes out; and a dead code is blanked, never shown.
 
+**A signature lane moves by itself** (`DoorPanel`). At 5-8 seconds a guest the slow
+part is staff tapping "Next person" between guests, so the next QR appears as soon as a
+verdict lands. Three things keep that safe at a door:
+
+- **A verdict belongs to one person.** The last guest's verdict stays beside the next QR,
+  labelled "Previous guest", and is replaced the moment the next guest has one of their own
+  (two are never on screen at once) or after 8 seconds. A green "Admitted" left up while the
+  next guest walks over would be read as theirs.
+- **An idle lane does not spend payloads.** An unused QR (Xaman payloads live 3 minutes, not
+  the 10 the row's own cap allows) is replaced quietly, never flashed as "Expired", but only
+  three times in a row: each replacement is a Xaman payload, and a screen left open overnight
+  must not spend a day's quota. A real guest resets the count; tapping Continue starts again.
+- **A failure keeps what staff are looking at.** If the next QR cannot be made, the verdict
+  stays and a Continue button retries, rather than blanking the lane.
+
+The guest's @handle is shown large on the verdict, deliberately: the signature is the
+guest's, so the handle is the only thing staff can check against the person in front of them.
+A QR can be photographed and signed by a friend elsewhere, and then the screen says "Admitted"
+over somebody who is not at the gate. More lanes (staff phones) multiply throughput; nothing
+else in the design limits it.
+
 **One admit path for both** (`src/door-admit.ts`): the ledger re-check, `already_used`,
 `no_ticket` and the admission itself are shared, so the two modes cannot drift. Extracting
 it found a real bug: admission was a read ("is this ticket unused?") followed by a write

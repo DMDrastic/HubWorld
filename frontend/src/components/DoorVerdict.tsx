@@ -31,7 +31,7 @@ export const VERDICT: Record<
  * carries the meaning and the icon is a second non-colour channel, so the verdict
  * never rests on hue alone.
  */
-export function VerdictCard({ result }: { result: CheckInState }) {
+export function VerdictCard({ result, compact = false }: { result: CheckInState; compact?: boolean }) {
   const verdict = VERDICT[result.state]
   const toneClass =
     verdict.tone === 'good'
@@ -42,11 +42,15 @@ export function VerdictCard({ result }: { result: CheckInState }) {
   const Icon = verdict.tone === 'good' ? CheckCircle2 : verdict.tone === 'bad' ? XCircle : Clock
 
   return (
-    <div className={`w-full rounded-xl border-2 p-5 text-center ${toneClass}`} role="status">
-      <Icon className="mx-auto size-7" aria-hidden />
-      <div className="mt-2 text-xl font-semibold tracking-tight">{verdict.label}</div>
+    <div className={`w-full rounded-xl border-2 text-center ${compact ? 'p-3' : 'p-5'} ${toneClass}`} role="status">
+      <Icon className={compact ? 'mx-auto size-5' : 'mx-auto size-7'} aria-hidden />
+      <div className={`mt-2 font-semibold tracking-tight ${compact ? 'text-base' : 'text-xl'}`}>{verdict.label}</div>
       <div className="mt-1 text-sm">{result.reason ?? verdict.detail}</div>
-      {result.holder && <div className="mt-2 text-sm font-medium">{result.holder}</div>}
+      {/* Large on purpose. The signature is the GUEST's, so the handle is the only
+          thing staff can check against the person in front of them: a QR can be
+          photographed and signed by a friend somewhere else, and then the screen
+          says "Admitted" over somebody who is not the person at the gate. */}
+      {result.holder && <div className="mt-2 text-lg font-semibold">{result.holder}</div>}
       {result.ticket && (result.ticket.tier || result.ticket.seat) && (
         <div className="text-xs opacity-80">
           {[result.ticket.tier, result.ticket.seat].filter(Boolean).join(' · ')}
