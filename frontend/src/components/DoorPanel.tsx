@@ -1,17 +1,19 @@
 /**
  * The door.
  *
- * Organizer-facing check-in. The attendee signs in Xaman and **the verdict shows
- * here, on the staff device** — if it appeared on the attendee's phone, a
- * screenshot of a green tick would be a ticket.
+ * Organizer-facing check-in, in the way the event chose. Either the attendee signs
+ * a code in Xaman, or staff scan a short-lived code the attendee displays. Either
+ * way **the verdict shows here, on the staff device** — if it appeared on the
+ * attendee's phone, a screenshot of a green tick would be a ticket.
  *
  * The verdict is deliberately loud and colour-coded: this is used standing up, in
  * the dark, with a queue waiting, and "already checked in" must be impossible to
  * mistake for "admitted".
  */
 import { useCallback, useEffect, useState } from 'react'
-import { CheckCircle2, Clock, XCircle } from 'lucide-react'
 import { QrCode } from '@/components/QrCode'
+import { VerdictCard } from '@/components/DoorVerdict'
+import { DoorCodeScan } from '@/components/DoorCodeScan'
 import {
   addStaff,
   ApiError,
@@ -42,28 +44,9 @@ const POLL_MS = 2000
 type Phase =
   | { kind: 'idle' }
   | { kind: 'scanning'; payload: CheckInCreated }
+  /** Code mode: the staff camera is open, reading guests' codes. */
+  | { kind: 'camera' }
   | { kind: 'failed'; reason: string }
-
-/** Verdict presentation. Admission is the only green outcome. */
-const VERDICT: Record<
-  CheckInState['state'],
-  { label: string; detail: string; tone: 'good' | 'bad' | 'wait' }
-> = {
-  pending: { label: 'Waiting', detail: 'Ask them to scan and sign.', tone: 'wait' },
-  redeemed: { label: 'Admitted', detail: 'Valid ticket, checked in.', tone: 'good' },
-  already_used: {
-    label: 'Already checked in',
-    detail: 'This ticket has been used. Do not admit.',
-    tone: 'bad',
-  },
-  no_ticket: {
-    label: 'No valid ticket',
-    detail: 'They hold no ticket for this event.',
-    tone: 'bad',
-  },
-  rejected: { label: 'Declined', detail: 'They cancelled in Xaman.', tone: 'bad' },
-  expired: { label: 'Expired', detail: 'Took too long — start another.', tone: 'bad' },
-}
 
 export function DoorPanel() {
   // Fetched here rather than passed in: door access is per event and a
@@ -163,6 +146,9 @@ export function DoorPanel() {
     }
   }
 
+  // How this event lets people in decides what the button does.
+  const byCode = events.find((e) => e.slug === slug)?.doorMode === 'QR'
+
   if (events.length === 0) {
     return (
       <Card>
@@ -176,20 +162,6 @@ export function DoorPanel() {
     )
   }
 
-  const verdict = result ? VERDICT[result.state] : null
-  const toneClass =
-    verdict?.tone === 'good'
-      ? 'border-live/50 bg-live/10 text-live'
-      : verdict?.tone === 'bad'
-        ? 'border-destructive/60 bg-destructive/10 text-destructive'
-        : 'border-border'
-  // Admit / do-not-admit is a red-green decision, which is the single most
-  // common form of colour blindness — and it is made in a doorway, at a glance,
-  // often in bad light. The label already carries the meaning; the icon gives a
-  // second non-colour channel so the verdict never rests on hue alone.
-  const VerdictIcon =
-    verdict?.tone === 'good' ? CheckCircle2 : verdict?.tone === 'bad' ? XCircle : Clock
-
   return (
     <Card>
       <CardHeader>
@@ -202,8 +174,9 @@ export function DoorPanel() {
           )}
         </CardTitle>
         <CardDescription>
-          The attendee signs in Xaman — a screenshot can't sign, so this proves they hold the
-          ticket right now.
+          {byCode
+            ? "Scan each guest's code. It is signed and changes every few seconds, so a screenshot won't get anyone in."
+            : "The attendee signs in Xaman — a screenshot can't sign, so this proves they hold the ticket right now."}
         </CardDescription>
       </CardHeader>
 
@@ -222,9 +195,15 @@ export function DoorPanel() {
                 </option>
               ))}
             </select>
-            <Button onClick={() => void scan()} disabled={busy || !slug} className="w-full">
-              {busy ? 'Preparing…' : 'Check someone in'}
-            </Button>
+            {byCode ? (
+              <Button onClick={() => setPhase({ kind: 'camera' })} disabled={!slug} className="w-full">
+                Scan tickets
+              </Button>
+            ) : (
+              <Button onClick={() => void scan()} disabled={busy || !slug} className="w-full">
+                {busy ? 'Preparing…' : 'Check someone in'}
+              </Button>
+            )}
 
             {staff !== null && (
               <div className="space-y-2 border-t pt-3">
@@ -314,19 +293,7 @@ export function DoorPanel() {
               </>
             )}
 
-            {verdict && result && result.state !== 'pending' && (
-              <div className={`w-full rounded-xl border-2 p-5 text-center ${toneClass}`}>
-                <VerdictIcon className="mx-auto size-7" aria-hidden />
-                <div className="mt-2 text-xl font-semibold tracking-tight">{verdict.label}</div>
-                <div className="mt-1 text-sm">{result.reason ?? verdict.detail}</div>
-                {result.holder && <div className="mt-2 text-sm font-medium">{result.holder}</div>}
-                {result.ticket && (result.ticket.tier || result.ticket.seat) && (
-                  <div className="text-xs opacity-80">
-                    {[result.ticket.tier, result.ticket.seat].filter(Boolean).join(' · ')}
-                  </div>
-                )}
-              </div>
-            )}
+            {result && result.state !== 'pending' && <VerdictCard result={result} />}
 
             <div className="flex gap-2">
               <Button size="sm" onClick={() => void scan()} disabled={busy}>
@@ -337,6 +304,10 @@ export function DoorPanel() {
               </Button>
             </div>
           </div>
+        )}
+
+        {phase.kind === 'camera' && (
+          <DoorCodeScan slug={slug} onDone={() => setPhase({ kind: 'idle' })} onAdmitted={() => void loadDoor()} />
         )}
 
         {phase.kind === 'failed' && (

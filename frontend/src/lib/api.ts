@@ -922,6 +922,18 @@ export function startCheckIn(slug: string): Promise<CheckInCreated> {
   })
 }
 
+/**
+ * Submit a code the door staff scanned. Always answers with a verdict in the same
+ * shape as a signature check-in, including for a bad or expired code, so the
+ * screen shows a refusal the way it shows any other.
+ */
+export function scanCode(slug: string, token: string): Promise<CheckInState> {
+  return request(`/events/${encodeURIComponent(slug)}/checkin/scan`, CheckInStateSchema, {
+    method: 'POST',
+    body: { token },
+  })
+}
+
 export function pollCheckIn(uuid: string): Promise<CheckInState> {
   return request(`/checkin/${encodeURIComponent(uuid)}`, CheckInStateSchema)
 }
@@ -932,7 +944,13 @@ export const StaffListSchema = z.object({
 
 export const DoorEventsSchema = z.object({
   events: z.array(
-    z.object({ slug: z.string(), title: z.string(), via: z.enum(['organizer', 'staff']) }),
+    z.object({
+      slug: z.string(),
+      title: z.string(),
+      via: z.enum(['organizer', 'staff']),
+      /** Absent from a server that predates code entry: treat as SIGNATURE. */
+      doorMode: DoorModeSchema.nullish(),
+    }),
   ),
 })
 
