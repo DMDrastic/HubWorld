@@ -196,3 +196,39 @@ describe('GiftPanel polling', () => {
     expect(await screen.findByText(/withdrawing/i)).toBeTruthy()
   })
 })
+
+describe('GiftPanel selection from elsewhere on the page', () => {
+  const SECOND = 'B'.repeat(64)
+
+  it('preselects the ticket whose card asked for a gift', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = typeof input === 'string' ? input : input.toString()
+        const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } })
+        if (url.includes('/tickets/mine')) {
+          const second = { ...INVENTORY.tickets[0]!, nfTokenId: SECOND, event: { ...INVENTORY.tickets[0]!.event, slug: 'second-night', title: 'Second Night' } }
+          return json({ ...INVENTORY, tickets: [INVENTORY.tickets[0], second] })
+        }
+        if (url.includes('/api/gifts?role=')) return json({ gifts: [] })
+        throw new Error(`unexpected fetch: ${url}`)
+      }),
+    )
+
+    const { rerender } = render(
+      <StrictMode>
+        <GiftPanel onChanged={vi.fn()} selectedId={null} />
+      </StrictMode>,
+    )
+    const select = (await screen.findByLabelText(/^ticket$/i)) as HTMLSelectElement
+    // Defaults to the first ticket, as before.
+    await waitFor(() => expect(select.value).toBe(NFTOKEN_ID))
+
+    rerender(
+      <StrictMode>
+        <GiftPanel onChanged={vi.fn()} selectedId={SECOND} />
+      </StrictMode>,
+    )
+    await waitFor(() => expect(select.value).toBe(SECOND))
+  })
+})

@@ -51,7 +51,14 @@ function ticketLabel(t: OwnedTicket) {
   return bits ? `${t.event.title} — ${bits}` : t.event.title
 }
 
-export function GiftPanel({ onChanged }: { onChanged: () => void }) {
+export function GiftPanel({
+  onChanged,
+  selectedId,
+}: {
+  onChanged: () => void
+  /** A ticket chosen elsewhere on the page (its card's Gift button). */
+  selectedId?: string | null
+}) {
   const [tickets, setTickets] = useState<OwnedTicket[]>([])
   const [incoming, setIncoming] = useState<GiftListItem[]>([])
   const [outgoing, setOutgoing] = useState<GiftListItem[]>([])
@@ -87,6 +94,11 @@ export function GiftPanel({ onChanged }: { onChanged: () => void }) {
   useEffect(() => {
     void refresh()
   }, [refresh])
+
+  // Keyed on the id, a primitive, so choosing the same ticket twice is harmless.
+  useEffect(() => {
+    if (selectedId) setNfTokenId(selectedId)
+  }, [selectedId])
 
   // The gift being tracked, as a primitive. The effect below keys on THIS, not
   // on `phase` — a dependency that changes on every poll restarts the effect and
@@ -199,12 +211,12 @@ export function GiftPanel({ onChanged }: { onChanged: () => void }) {
   }
 
   return (
-    <Card>
+    <Card id="gift-panel">
       <CardHeader>
         <CardTitle>Gift a ticket</CardTitle>
         <CardDescription>
-          Free peer-to-peer. Two signatures: you offer it, they accept it — the ticket only
-          moves when they do.
+          Send a ticket to a friend for free. They accept it, and only then does it move to their
+          wallet.
         </CardDescription>
       </CardHeader>
 

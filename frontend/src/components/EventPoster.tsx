@@ -35,7 +35,7 @@
  */
 import { CalendarDays, MapPin } from 'lucide-react'
 import { dropsToXrp, type EventSummary } from '@/lib/api'
-import { posterSrcSet, posterUrl } from '@/lib/poster'
+import { hueFrom, posterSrcSet, posterUrl } from '@/lib/poster'
 
 const dateFmt = new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'short' })
 const dateYearFmt = new Intl.DateTimeFormat(undefined, {
@@ -59,26 +59,6 @@ function formatDate(when: Date): string {
   return when.getFullYear() === new Date().getFullYear()
     ? dateFmt.format(when)
     : dateYearFmt.format(when)
-}
-
-/**
- * A stable hue from the slug, spread by the golden angle.
- *
- * djb2 alone was not enough. Taking the hash modulo 360 directly clustered the
- * real data badly: five of six seeded slugs landed inside a 44 degree band of
- * green, so a wall of fallbacks looked like one event repeated. Similar strings
- * — same length, lowercase, hyphenated — produce nearby hashes, and the modulo
- * preserves that nearness.
- *
- * Multiplying by the golden angle before wrapping is the standard fix: it maps
- * adjacent inputs to maximally distant hues, so slugs that differ by a character
- * end up on opposite sides of the wheel. Still deterministic, so an event keeps
- * its colour across reloads and devices.
- */
-function hueFrom(slug: string): number {
-  let h = 5381
-  for (let i = 0; i < slug.length; i++) h = ((h << 5) + h + slug.charCodeAt(i)) | 0
-  return (Math.abs(h) * 137.508) % 360
 }
 
 function FallbackPoster({ event, titled }: { event: EventSummary; titled: boolean }) {
