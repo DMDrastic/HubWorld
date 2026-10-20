@@ -2,7 +2,9 @@ import { useCallback, useEffect, useState } from 'react'
 import {
   ApiError,
   cancelMintJob,
+  dropsToXrp,
   fetchDelegation,
+  fetchMintEstimate,
   fetchMintJob,
   fetchMintJobs,
   isOpenJob,
@@ -10,6 +12,7 @@ import {
   startBulkMint,
   type DelegationMe,
   type EventSummary,
+  type MintEstimate,
   type MintJob,
 } from '@/lib/api'
 import { Button } from '@/components/ui/button'
@@ -23,6 +26,7 @@ import {
 } from '@/components/ui/card'
 
 const POLL_MS = 3000
+const ESTIMATE_DEBOUNCE_MS = 350
 
 /**
  * Mint a whole run of tickets with no further signatures.
@@ -49,6 +53,9 @@ export function BulkMintPanel({
   // Whether the organizer has approved minting, so the form can say what to do
   // first instead of letting them start something the server will refuse.
   const [delegation, setDelegation] = useState<DelegationMe | null>(null)
+  // What the typed count will ask of the organizer, keyed by the count it was
+  // asked for so a stale answer is never shown beside a newer number.
+  const [estimate, setEstimate] = useState<{ slug: string; count: number; value: MintEstimate } | null>(null)
 
   // Keep the selection valid if the caller's event list changes underneath us.
   useEffect(() => {
@@ -69,6 +76,27 @@ export function BulkMintPanel({
       stopped = true
     }
   }, [])
+
+  // Asked once per settled count, not per keystroke and never on a timer: this
+  // is a one-off lookup, and a poll keyed on its own result is the GiftPanel runaway.
+  const countForEstimate = Number(count)
+  const estimateWanted = Number.isInteger(countForEstimate) && countForEstimate >= 1 && countForEstimate <= 5000
+  useEffect(() => {
+    if (!slug || !estimateWanted) return
+    let stopped = false
+    const timer = window.setTimeout(() => {
+      fetchMintEstimate(slug, countForEstimate).then(
+        (value) => {
+          if (!stopped) setEstimate({ slug, count: countForEstimate, value })
+        },
+        () => undefined, // no preview is not a refusal; the server still decides on start
+      )
+    }, ESTIMATE_DEBOUNCE_MS)
+    return () => {
+      stopped = true
+      window.clearTimeout(timer)
+    }
+  }, [slug, countForEstimate, estimateWanted])
 
   // Pick a run back up after a reload or a switch of event: it may well still be
   // going, and a page that forgot would invite starting a second.
@@ -153,9 +181,13 @@ export function BulkMintPanel({
   const notApproved = delegation?.available === true && delegation.state === 'not_granted'
 
   const open = job !== null && isOpenJob(job)
+  const remaining = job && open ? secondsLeft(job) : null
   const pct = job && job.total > 0 ? Math.min(100, Math.round((job.minted / job.total) * 100)) : 0
   const countNum = Number(count)
   const countValid = Number.isInteger(countNum) && countNum >= 1
+  const shownEstimate = estimate && estimate.slug === slug && estimate.count === countNum ? estimate.value : null
+  // Only a definite "no" stops the button: unknown must not block a run the server may allow.
+  const shortOfReserve = shownEstimate?.enough === false
 
   return (
     <Card>
@@ -202,10 +234,12 @@ export function BulkMintPanel({
                 placeholder="How many tickets"
                 aria-label="how many tickets"
               />
-              <Button onClick={() => void start()} disabled={busy || !slug || !countValid || notApproved}>
+              <Button onClick={() => void start()} disabled={busy || !slug || !countValid || notApproved || shortOfReserve}>
                 {busy ? 'Starting…' : 'Start minting'}
               </Button>
             </div>
+
+            {shownEstimate && <CostPreview estimate={shownEstimate} />}
           </div>
         )}
 
@@ -229,13 +263,26 @@ export function BulkMintPanel({
               <div className="bg-primary h-full transition-[width] duration-500" style={{ width: `${pct}%` }} />
             </div>
 
-            {job.statusReason && job.status !== 'DONE' && (
-              <p
-                className={job.status === 'FAILED' || job.status === 'PAUSED' ? 'text-destructive text-sm' : 'text-muted-foreground text-sm'}
-                role="status"
-              >
-                {job.statusReason}
+            {job.waiting ? (
+              // A wait is the system working as designed, not a fault: say so, and
+              // say it will carry on by itself.
+              <p className="text-muted-foreground text-sm" role="status">
+                {WAIT_COPY[job.waiting]}
               </p>
+            ) : (
+              job.statusReason &&
+              job.status !== 'DONE' && (
+                <p
+                  className={job.status === 'FAILED' || job.status === 'PAUSED' ? 'text-destructive text-sm' : 'text-muted-foreground text-sm'}
+                  role="status"
+                >
+                  {job.statusReason}
+                </p>
+              )
+            )}
+
+            {open && !job.waiting && remaining !== null && (
+              <p className="text-muted-foreground text-xs">About {formatDuration(remaining)} left at this pace. You can close this page; it carries on.</p>
             )}
 
             {job.failedTxs > 0 && (
@@ -275,8 +322,70 @@ export function BulkMintPanel({
   )
 }
 
+const WAIT_COPY = {
+  fees: 'Network fees are unusually high right now, so minting is waiting for them to fall. It carries on by itself, usually within a few minutes. Nothing is lost.',
+  network: 'The network is busy. Minting will retry by itself in a moment.',
+  account: 'Waiting for a ticket sale on your account to finish, then minting carries on.',
+} as const
+
+const WAIT_LABEL = { fees: 'Waiting for fees to fall', network: 'Network busy', account: 'Waiting for a sale' } as const
+
+/** Whole seconds left at the pace so far, or null before there is enough to go on. */
+function secondsLeft(job: MintJob): number | null {
+  const elapsed = (Date.now() - new Date(job.createdAt).getTime()) / 1000
+  if (job.minted < MIN_MINTED_FOR_PACE || elapsed <= 0) return null
+  const rate = job.minted / elapsed
+  return Math.ceil((job.total - job.minted) / rate)
+}
+
+const MIN_MINTED_FOR_PACE = 40
+
+/** "under a minute", "about 12 minutes", "about 2 hours": a person's words, not a stopwatch. */
+function formatDuration(seconds: number): string {
+  if (seconds < 60) return 'under a minute'
+  const minutes = Math.round(seconds / 60)
+  if (minutes < 90) return `${minutes} minute${minutes === 1 ? '' : 's'}`
+  const hours = Math.round((seconds / 3600) * 2) / 2
+  return `${hours} hours`
+}
+
+function CostPreview({ estimate }: { estimate: MintEstimate }) {
+  const reserve = dropsToXrp(estimate.reserveDrops)
+  const have = estimate.spendableDrops === null ? null : dropsToXrp(estimate.spendableDrops)
+  const shortBy =
+    estimate.enough === false && estimate.spendableDrops !== null
+      ? dropsToXrp((BigInt(estimate.reserveDrops) - BigInt(estimate.spendableDrops)).toString())
+      : null
+  return (
+    <div className="space-y-1 text-sm" role="status">
+      <p>
+        <span className="font-medium">About {reserve} XRP</span> of your balance is set aside while
+        these tickets are in your account. It is held, not spent, and is released as tickets sell.
+      </p>
+      {have !== null && estimate.enough !== false && (
+        <p className="text-muted-foreground">You have {have} XRP free, which covers it.</p>
+      )}
+      {shortBy !== null && (
+        <p className="text-destructive">
+          You have {have} XRP free. Add about {shortBy} XRP to your wallet before starting.
+        </p>
+      )}
+      {have === null && (
+        <p className="text-muted-foreground">
+          We couldn't read your balance just now. You can still start; it is checked again before
+          anything is minted.
+        </p>
+      )}
+      <p className="text-muted-foreground">
+        Takes about {formatDuration(estimate.seconds)}. It runs by itself, with nothing to sign.
+      </p>
+    </div>
+  )
+}
+
 function statusLabel(job: MintJob): string {
   if (job.cancelRequested && isOpenJob(job)) return 'Stopping after the current batch…'
+  if (job.waiting) return WAIT_LABEL[job.waiting]
   switch (job.status) {
     case 'QUEUED':
       return 'Waiting to start'

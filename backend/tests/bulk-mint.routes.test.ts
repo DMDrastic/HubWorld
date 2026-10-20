@@ -345,3 +345,84 @@ describe('managing a run', () => {
     expect((await request(app).get(`/api/events/${event.slug}/mint/jobs`).set('Authorization', as(other))).status).toBe(403)
   })
 })
+
+describe('GET /events/:slug/mint/estimate', () => {
+  const estimate = (actor: Actor, slug: string, count: number | string) =>
+    request(app).get(`/api/events/${slug}/mint/estimate?count=${count}`).set('Authorization', as(actor))
+
+  it('quotes the same reserve the start route enforces, and what the organizer has', async () => {
+    const org = await mkUser('org')
+    const event = await mkEvent(org)
+    accountFunding.mockResolvedValue({ spendableDrops: 15n * XRP, reserveIncDrops: 200_000n })
+
+    const res = await estimate(org, event.slug, 1000)
+
+    expect(res.status).toBe(200)
+    // 47 pages x 0.2 XRP, as the start route's refusal states it.
+    expect(res.body).toMatchObject({ count: 1000, reserveDrops: '9400000', spendableDrops: '15000000', enough: true })
+    expect(res.body.seconds).toBeGreaterThan(600)
+    expect(res.body.seconds).toBeLessThan(1000)
+  })
+
+  it('says "not enough" at the very figure the start route refuses at (positive control)', async () => {
+    const org = await mkUser('org')
+    const event = await mkEvent(org)
+    accountFunding.mockResolvedValue({ spendableDrops: 5n * XRP, reserveIncDrops: 200_000n })
+
+    const quoted = await estimate(org, event.slug, 1000)
+    const started = await start(org, event.slug, 1000)
+
+    expect(quoted.body.enough).toBe(false)
+    expect(started.status).toBe(409)
+    // And exactly enough is enough, on both.
+    accountFunding.mockResolvedValue({ spendableDrops: 9_400_000n, reserveIncDrops: 200_000n })
+    expect((await estimate(org, event.slug, 1000)).body.enough).toBe(true)
+    expect((await start(org, event.slug, 1000)).status).toBe(201)
+  })
+
+  it('says "unknown", never "nothing", when the ledger cannot be read', async () => {
+    const org = await mkUser('org')
+    const event = await mkEvent(org)
+    accountFunding.mockRejectedValue(new Error('node down'))
+
+    const res = await estimate(org, event.slug, 1000)
+
+    expect(res.status).toBe(200)
+    expect(res.body.spendableDrops).toBeNull()
+    expect(res.body.enough).toBeNull()
+    expect(res.body.reserveDrops).toBe('9400000')
+  })
+
+  it('is the event organizer\'s alone, and validates the count', async () => {
+    const org = await mkUser('org')
+    const other = await mkUser('other')
+    const event = await mkEvent(org)
+
+    expect((await request(app).get(`/api/events/${event.slug}/mint/estimate?count=10`)).status).toBe(401)
+    expect((await estimate(other, event.slug, 10)).status).toBe(403)
+    expect((await estimate(org, event.slug, 0)).status).toBe(400)
+    expect((await estimate(org, event.slug, 'lots')).status).toBe(400)
+    expect((await estimate(org, event.slug, 5001)).status).toBe(400)
+    expect((await estimate(org, 'no-such-event', 10)).status).toBe(404)
+  })
+})
+
+describe('the job view says why a queued run is waiting', () => {
+  it('names a fee wait, and only a queued run waits', async () => {
+    const org = await mkUser('org')
+    const event = await mkEvent(org)
+    const job = await prisma.mintJob.create({
+      data: {
+        network: NETWORK, eventId: event.id, organizerId: org.id, organizerAddress: org.address, delegateAddress: DELEGATE, total: 10,
+        status: 'QUEUED', statusReason: 'Network fees are high right now (6266 drops per ticket); waiting for them to fall',
+      },
+    })
+
+    const queued = await request(app).get(`/api/mint/jobs/${job.id}`).set('Authorization', as(org))
+    expect(queued.body.waiting).toBe('fees')
+
+    await prisma.mintJob.update({ where: { id: job.id }, data: { status: 'PAUSED' } })
+    const paused = await request(app).get(`/api/mint/jobs/${job.id}`).set('Authorization', as(org))
+    expect(paused.body.waiting).toBeNull()
+  })
+})

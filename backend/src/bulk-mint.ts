@@ -40,6 +40,7 @@ import {
   judgeWave,
   nextWaveSize,
   waveOutcome,
+  WAIT_REASONS,
 } from './bulk-mint-policy.js'
 
 export type WorkerDeps = {
@@ -198,7 +199,7 @@ export async function runMintJob(jobId: string, deps: WorkerDeps): Promise<void>
           return void (await finish(job.id, 'PAUSED', 'Your minting permission was withdrawn. Approve it again to continue.'))
         }
         if (permission === 'unknown') {
-          return void (await wait(job.id, THROTTLE_BACKOFF_MS, 'Could not read the ledger; retrying shortly'))
+          return void (await wait(job.id, THROTTLE_BACKOFF_MS, WAIT_REASONS.ledgerUnreadable))
         }
 
         // Never mint past the advertised size, whatever else has happened: a ticket
@@ -256,7 +257,7 @@ export async function runMintJob(jobId: string, deps: WorkerDeps): Promise<void>
         if (submitted.every((r) => r instanceof MintSubmitThrottled)) {
           // The node is refusing us for load. Nothing landed, and hammering it is
           // how a throttle becomes a ban.
-          return void (await wait(job.id, THROTTLE_BACKOFF_MS, 'The network node is busy; retrying shortly'))
+          return void (await wait(job.id, THROTTLE_BACKOFF_MS, WAIT_REASONS.nodeBusy))
         }
         // Loop round: the pending wave is settled at the top.
           return 'again' as const
@@ -264,7 +265,7 @@ export async function runMintJob(jobId: string, deps: WorkerDeps): Promise<void>
         deps.accountWaitMs ?? 30_000,
       )
       if (leased.busy) {
-        return void (await wait(job.id, ACCOUNT_BUSY_BACKOFF_MS, 'Waiting for a sale on your account to finish'))
+        return void (await wait(job.id, ACCOUNT_BUSY_BACKOFF_MS, WAIT_REASONS.accountBusy))
       }
       if (leased.value !== 'again') return
     }

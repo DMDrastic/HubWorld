@@ -22,7 +22,7 @@ import { accountFunding } from '../ledger.js'
 import { currentDelegate } from '../delegate-account.js'
 import { delegationAvailable, readPermission, MINT_PERMISSION } from '../delegation.js'
 import { assertPublicBaseUrl } from '../nft-metadata.js'
-import { planBulkMint, reserveNeededDrops, MAX_JOB_TICKETS } from '../bulk-mint-policy.js'
+import { planBulkMint, reserveNeededDrops, estimateMintSeconds, waitKind, MAX_JOB_TICKETS } from '../bulk-mint-policy.js'
 
 export const bulkMintRouter = Router()
 
@@ -38,6 +38,8 @@ function view(job: JobRow, slug?: string) {
     eventSlug: slug,
     status: job.status,
     statusReason: job.statusReason,
+    // Why a queued run is waiting, in a kind the page can put in plain words.
+    waiting: waitKind(job.status, job.statusReason),
     total: job.total,
     minted: job.minted,
     failedTxs: job.failedTxs,
@@ -59,6 +61,59 @@ async function committedFor(eventId: string): Promise<number> {
   ])
   return requests + jobs.reduce((n, j) => n + Math.max(0, j.total - j.minted), 0)
 }
+
+const EstimateQuery = z.object({ count: z.coerce.number().int().min(1).max(MAX_JOB_TICKETS) })
+
+/**
+ * What a run of N tickets will ask of the organizer, BEFORE they start one.
+ *
+ * Reserve is the thing an organizer can get wrong (it is locked while the
+ * tickets sit in their account and returns as they sell), and until now it was
+ * only mentioned in the refusal. The figure is the same one the start route
+ * enforces, so the page can never promise what the server then refuses.
+ * `spendableDrops` is null when the ledger could not be read: "we do not know"
+ * must not render as "you have nothing", the rule the health endpoint follows.
+ */
+bulkMintRouter.get('/events/:slug/mint/estimate', requireAuth, requireOrganizer, async (req, res) => {
+  const params = SlugParams.safeParse(req.params)
+  const query = EstimateQuery.safeParse(req.query)
+  if (!params.success || !query.success) {
+    res.status(400).json({ error: 'Invalid request' })
+    return
+  }
+  const event = await prisma.event.findUnique({
+    where: { slug: params.data.slug },
+    include: { organizer: true },
+  })
+  if (!event) {
+    res.status(404).json({ error: 'Event not found' })
+    return
+  }
+  if (event.organizerId !== req.userId) {
+    res.status(403).json({ error: 'Only the event organizer can mint tickets' })
+    return
+  }
+
+  const count = query.data.count
+  let spendableDrops: bigint | null = null
+  let reserveNeeded: bigint
+  try {
+    const funding = await accountFunding(event.organizer.xrplAddress)
+    spendableDrops = funding.spendableDrops
+    reserveNeeded = reserveNeededDrops(count, funding.reserveIncDrops)
+  } catch {
+    // The per-object reserve is 0.2 XRP on every network we run; used only to
+    // size the figure when the ledger cannot be read.
+    reserveNeeded = reserveNeededDrops(count, 200_000n)
+  }
+  res.json({
+    count,
+    reserveDrops: reserveNeeded.toString(),
+    spendableDrops: spendableDrops === null ? null : spendableDrops.toString(),
+    enough: spendableDrops === null ? null : spendableDrops >= reserveNeeded,
+    seconds: estimateMintSeconds(count),
+  })
+})
 
 bulkMintRouter.post('/events/:slug/mint/bulk', requireAuth, requireOrganizer, async (req, res) => {
   const params = SlugParams.safeParse(req.params)

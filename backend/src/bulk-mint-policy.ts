@@ -111,9 +111,46 @@ export function reserveNeededDrops(count: number, reserveIncDrops: bigint): bigi
   return BigInt(pages) * reserveIncDrops
 }
 
+/**
+ * Tickets minted per second, from the MAINNET runs (1,000 in 736s = 1.36/s with
+ * five fee waits; 100 in 48s = 2.1/s). The slower figure is used so a quoted time
+ * is one an organizer is unlikely to beat by much and never badly miss.
+ */
+export const MINT_TICKETS_PER_SECOND = 1.3
+
+/** How long `count` tickets take at the measured rate, rounded up to whole seconds. */
+export function estimateMintSeconds(count: number): number {
+  return Math.ceil(count / MINT_TICKETS_PER_SECOND)
+}
+
+/**
+ * Why a run is waiting, as a kind the UI can put in plain words. These are the
+ * reasons the worker writes to `statusReason` when it QUEUES a run for a retry;
+ * anything else (a pause, a failure) is the organizer's concern and is not a wait.
+ */
+export const WAIT_REASONS = {
+  ledgerUnreadable: 'Could not read the ledger; retrying shortly',
+  nodeBusy: 'The network node is busy; retrying shortly',
+  accountBusy: 'Waiting for a sale on your account to finish',
+} as const
+
+export type WaitKind = 'fees' | 'network' | 'account'
+
+/** `reason` is only a wait when the run is queued for a retry. */
+export function waitKind(status: string, reason: string | null): WaitKind | null {
+  if (status !== 'QUEUED' || !reason) return null
+  if (reason === WAIT_REASONS.accountBusy) return 'account'
+  if (reason === WAIT_REASONS.ledgerUnreadable || reason === WAIT_REASONS.nodeBusy) return 'network'
+  if (reason.startsWith(FEE_WAIT_PREFIX)) return 'fees'
+  return null
+}
+
 export type FeeQuote = { minimumFee: number; openLedgerFee: number }
 
 export type FeeDecision = { ok: true; feeDrops: number } | { ok: false; reason: string }
+
+/** The start of the reason `decideFee` gives when it waits; `waitKind` recognises a wait by it. */
+export const FEE_WAIT_PREFIX = 'Network fees are high right now'
 
 /** Margin over the quoted open-ledger fee, so a wave priced at the edge still clears. */
 const FEE_MARGIN = 1.2
@@ -131,7 +168,7 @@ export function decideFee(quote: FeeQuote, maxFeeDrops: number): FeeDecision {
   if (wanted > maxFeeDrops) {
     return {
       ok: false,
-      reason: `Network fees are high right now (${wanted} drops per ticket); waiting for them to fall`,
+      reason: `${FEE_WAIT_PREFIX} (${wanted} drops per ticket); waiting for them to fall`,
     }
   }
   return { ok: true, feeDrops: wanted }
