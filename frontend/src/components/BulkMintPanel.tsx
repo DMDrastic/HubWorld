@@ -192,7 +192,7 @@ export function BulkMintPanel({
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Create your tickets</CardTitle>
+        <CardTitle>Create tickets</CardTitle>
         <CardDescription>
           Choose how many, and HubWorld creates them for you. There's nothing to approve one by
           one, and you can stop at any time.

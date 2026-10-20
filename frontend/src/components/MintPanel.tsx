@@ -124,9 +124,9 @@ export function MintPanel({
     return (
       <Card>
         <CardHeader>
-          <CardTitle>Create one ticket</CardTitle>
+          <CardTitle>Add one ticket</CardTitle>
           <CardDescription>
-            Create an event first, then you can create tickets for it.
+            Create an event first, then you can add tickets to it.
           </CardDescription>
         </CardHeader>
       </Card>
@@ -137,13 +137,13 @@ export function MintPanel({
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          Create one ticket
+          Add one ticket
           {phase.kind === 'awaiting' && phase.payload.mode === 'stub' && (
             <Badge variant="secondary">stub mode</Badge>
           )}
         </CardTitle>
         <CardDescription>
-          The ticket is created from your wallet and carries your resale royalty.
+          You approve it in Xaman, and it carries your resale royalty.
         </CardDescription>
       </CardHeader>
 
@@ -184,7 +184,7 @@ export function MintPanel({
             </div>
 
             <Button onClick={() => void start()} disabled={busy || !slug} className="w-full">
-              {busy ? 'Preparing…' : 'Create a ticket'}
+              {busy ? 'Preparing…' : 'Add a ticket'}
             </Button>
           </div>
         )}

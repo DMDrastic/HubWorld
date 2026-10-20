@@ -78,7 +78,7 @@ afterEach(() => {
 })
 
 async function startMint() {
-  screen.getByRole('button', { name: /create a ticket/i }).click()
+  screen.getByRole('button', { name: /add a ticket/i }).click()
   await screen.findByAltText(/mint qr/i)
 }
 

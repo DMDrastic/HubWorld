@@ -49,7 +49,7 @@ const COPY: Record<
   }
 > = {
   mint: {
-    title: 'Creating tickets',
+    title: 'Allow ticket creation',
     description:
       "Say yes once, and HubWorld can create your event's tickets without asking you to approve each one. It can only create tickets: it can't spend your money or move your tickets. You can turn it off here at any time.",
     on: 'HubWorld can create tickets for you.',
@@ -62,7 +62,7 @@ const COPY: Record<
     qrRevoke: 'Xaman revoke QR code',
   },
   offers: {
-    title: 'Selling tickets',
+    title: 'Allow ticket selling',
     description:
       "When someone buys a ticket at your price, HubWorld lists that one ticket for sale at that moment, so you never list them all up front. It can't spend your money, but it can list any ticket in your account, so turn this on when you're ready to open sales. You can turn it off any time.",
     on: 'HubWorld can sell tickets for you.',

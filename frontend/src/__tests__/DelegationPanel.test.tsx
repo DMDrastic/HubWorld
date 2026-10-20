@@ -283,7 +283,7 @@ describe('DelegationPanel: minting and selling are separate', () => {
     renderPanel()
 
     expect(await screen.findByText(/can create tickets for you/i)).toBeTruthy()
-    expect(screen.queryByText(/selling tickets/i)).toBeNull()
+    expect(screen.queryByText(/allow ticket selling/i)).toBeNull()
   })
 
   it('does not word an unreadable ledger as a revocation on either card', async () => {
