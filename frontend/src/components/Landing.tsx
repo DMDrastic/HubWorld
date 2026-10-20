@@ -333,7 +333,7 @@ export function Landing({
         className="pointer-events-none absolute inset-0 -z-10"
         style={{
           // Canvas tint (layer 1 of the comment above) lives here rather
-          // than on the root so the mask below can fade it out at both
+          // than on the root so the fades below can dissolve it at both
           // ends — a tinted root ended in a hard seam against the footer.
           backgroundImage: [
             'linear-gradient(color-mix(in oklch, var(--accent) var(--wash-tint), transparent), color-mix(in oklch, var(--accent) var(--wash-tint), transparent))',
@@ -356,9 +356,6 @@ export function Landing({
             // down the page. 0% (transparent) in dark.
             'linear-gradient(180deg, color-mix(in oklch, white var(--lift), transparent), transparent 48vh)',
           ].join(', '),
-          maskImage: 'linear-gradient(to bottom, transparent, black 5%, black 90%, transparent)',
-          WebkitMaskImage:
-            'linear-gradient(to bottom, transparent, black 5%, black 90%, transparent)',
         }}
       >
         <div
@@ -368,6 +365,21 @@ export function Landing({
               'radial-gradient(circle, color-mix(in oklch, var(--accent) var(--wash-dot), transparent) 1px, transparent 1.4px)',
             backgroundSize: '28px 28px',
           }}
+        />
+        {/* The fade at both ends of the page, as two small overlays in the page's own
+            colour instead of a `mask-image` on this whole layer. This layer is as tall
+            as the page, and a mask on something that size makes the browser draw the
+            layer and its mask off-screen as one huge texture (on a phone: over 1000px
+            wide by many thousands tall, twice), which iOS Safari handles by tiling and
+            purging while you scroll. The overlays look the same (5% in, 10% out, over
+            the page background this sits on) and cost almost nothing. */}
+        <div
+          className="absolute inset-x-0 top-0 h-[5%]"
+          style={{ background: 'linear-gradient(var(--background), transparent)' }}
+        />
+        <div
+          className="absolute inset-x-0 bottom-0 h-[10%]"
+          style={{ background: 'linear-gradient(transparent, var(--background))' }}
         />
       </div>
       {/* ------------------------------------------------------------- 1.

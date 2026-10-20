@@ -54,7 +54,7 @@
  * token no longer exists (Fraunces was removed), so this reverts to the
  * single-typeface system the rest of the page already uses.
  */
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import { CheckCircle2 } from 'lucide-react'
 import iphoneFrame from '@/assets/iphone-17-pro-cosmic-orange-portrait.png'
 import { chooseActiveStep } from '@/lib/active-step'
@@ -103,33 +103,79 @@ const STEPS: { title: string; body: string; screen: ScreenId }[] = [
 ]
 
 /**
- * The event picture on the ticket screen: a vaporwave sunset, standing in for an
- * uploaded event photo. Illustrated rather than a stock photo, so it never needs
- * a network request and stays crisp at any phone-frame size.
+ * Every screen in the phone is a full-bleed vaporwave scene with its content laid
+ * over it, so the glass is never left showing the page's own colour above or below
+ * the content. Before this only the ticket had a picture; the other four were plain
+ * `bg-card` with text centred in it, so in the light theme the top and bottom of the
+ * phone were the site's white.
  *
- * It FILLS the screen. The first version drew a skyline with `meet` scaling,
- * anchored to the bottom, so any height the picture area had beyond the scene's
- * own aspect ratio showed the gradient behind it as a band across the top, which
- * read as the page's colour and not as part of the picture. `slice` scales the
- * scene to cover the box and crops the overflow instead, so there is never a gap;
- * the composition is centred, with the sun and horizon placed so a crop of either
- * axis loses only sky or floor, never the subject.
+ * The scenes are illustrated, not photographs, so there is nothing to download and
+ * they stay crisp at any size. They share one drawing with a palette each. They fill
+ * with `slice` (cover), on a dark base of their own, so there is never a gap.
  *
- * The magenta, cyan and violet here are the point of the style, and the project's
- * own design notes ban purple-and-pink gradients for UI. They are kept to this one
- * illustration inside a phone, at the owner's request, and nothing on the page
- * itself uses them.
+ * The magenta, cyan and violet are the point of the style, and the project's own
+ * design notes ban purple-and-pink gradients for UI. They are kept to these phone
+ * illustrations, at the owner's request, and nothing on the page itself uses them.
  */
-function VaporwaveArt() {
-  // Perspective grid: horizontal lines bunch up toward the horizon (y = 92) the way
-  // a receding floor does, and the verticals all run to one vanishing point.
+type Palette = {
+  /** Five stops, zenith to horizon. */
+  sky: [string, string, string, string, string]
+  /** A striped sun resting on the horizon; omitted for a moonlit scene. */
+  sun?: { stops: [string, string, string]; y: number; r: number }
+  moon?: { x: number; y: number; r: number }
+  floor: [string, string]
+  grid: string
+  palms?: boolean
+}
+
+const SUNSET: Palette = {
+  sky: ['#120a30', '#3a1273', '#b1288f', '#ff5e9c', '#ffb36b'],
+  sun: { stops: ['#fff176', '#ff6fb5', '#c61aa6'], y: 68, r: 26 },
+  floor: ['#2c0b52', '#0c0524'],
+  grid: '#2de2e6',
+  palms: true,
+}
+const NIGHT: Palette = {
+  sky: ['#050316', '#120a3d', '#2a1473', '#5a2aa3', '#9b4be0'],
+  moon: { x: 68, y: 30, r: 15 },
+  floor: ['#1a0a3d', '#080420'],
+  grid: '#ff4fd8',
+}
+const DUSK: Palette = {
+  sky: ['#150726', '#3d0f5c', '#a3237f', '#ff5a7a', '#ffb066'],
+  sun: { stops: ['#fff3a0', '#ffb347', '#ff5e7a'], y: 72, r: 22 },
+  floor: ['#2a0840', '#0b0420'],
+  grid: '#ff7ad9',
+}
+const TWILIGHT: Palette = {
+  sky: ['#050d26', '#0a2352', '#15509a', '#2b97c4', '#9af0ee'],
+  sun: { stops: ['#ffffff', '#bff8ff', '#5fd9e6'], y: 74, r: 20 },
+  floor: ['#082a4a', '#040f24'],
+  grid: '#7df9ff',
+}
+const NEON: Palette = {
+  sky: ['#021311', '#05332e', '#0a6b5c', '#14b894', '#8dffd9'],
+  sun: { stops: ['#f4ff8a', '#7dffb0', '#14b894'], y: 72, r: 22 },
+  floor: ['#06382f', '#02120f'],
+  grid: '#7dffb0',
+}
+
+function VaporBackdrop({ palette }: { palette: Palette }) {
+  // All five scenes are mounted at once, so each needs ids of its own; two
+  // `<linearGradient id="sky">` in one document would all resolve to the first.
+  const uid = useId().replace(/:/g, '')
   const horizon = 92
+  // Perspective grid: horizontal lines bunch toward the horizon the way a receding
+  // floor does, and the verticals all run to one vanishing point.
   const rows = [0.15, 0.28, 0.4, 0.55, 0.7, 0.85, 1].map((t) => horizon + 58 * t * t)
   const spokes = Array.from({ length: 15 }, (_, i) => -125 + i * 25)
   const stars: Array<[number, number, number]> = [
     [8, 10, 0.7], [22, 22, 0.5], [35, 8, 0.8], [47, 17, 0.5], [60, 6, 0.7], [72, 20, 0.5],
     [85, 9, 0.8], [93, 24, 0.5], [14, 34, 0.45], [64, 33, 0.45], [90, 40, 0.4], [30, 40, 0.4],
+    [50, 30, 0.5], [78, 45, 0.4], [6, 50, 0.4],
   ]
+  const { sky, sun, moon, floor, grid, palms } = palette
+
   return (
     <svg
       viewBox="0 0 100 150"
@@ -138,24 +184,26 @@ function VaporwaveArt() {
       aria-hidden
     >
       <defs>
-        <linearGradient id="vw-sky" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stopColor="#120a30" />
-          <stop offset="0.38" stopColor="#3a1273" />
-          <stop offset="0.68" stopColor="#b1288f" />
-          <stop offset="0.86" stopColor="#ff5e9c" />
-          <stop offset="1" stopColor="#ffb36b" />
+        <linearGradient id={`${uid}-sky`} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor={sky[0]} />
+          <stop offset="0.38" stopColor={sky[1]} />
+          <stop offset="0.68" stopColor={sky[2]} />
+          <stop offset="0.86" stopColor={sky[3]} />
+          <stop offset="1" stopColor={sky[4]} />
         </linearGradient>
-        <linearGradient id="vw-sun" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stopColor="#fff176" />
-          <stop offset="0.5" stopColor="#ff6fb5" />
-          <stop offset="1" stopColor="#c61aa6" />
+        <linearGradient id={`${uid}-floor`} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor={floor[0]} />
+          <stop offset="1" stopColor={floor[1]} />
         </linearGradient>
-        <linearGradient id="vw-floor" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stopColor="#2c0b52" />
-          <stop offset="1" stopColor="#0c0524" />
-        </linearGradient>
+        {sun && (
+          <linearGradient id={`${uid}-sun`} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stopColor={sun.stops[0]} />
+            <stop offset="0.5" stopColor={sun.stops[1]} />
+            <stop offset="1" stopColor={sun.stops[2]} />
+          </linearGradient>
+        )}
         {/* The sun is cut by bars that thicken toward the horizon, the genre's signature. */}
-        <mask id="vw-sunmask">
+        <mask id={`${uid}-bars`}>
           <rect width="100" height="150" fill="white" />
           <rect x="0" y="66" width="100" height="1" fill="black" />
           <rect x="0" y="71" width="100" height="1.6" fill="black" />
@@ -165,19 +213,30 @@ function VaporwaveArt() {
         </mask>
       </defs>
 
-      <rect width="100" height={horizon} fill="url(#vw-sky)" />
+      <rect width="100" height={horizon} fill={`url(#${uid}-sky)`} />
       {stars.map(([x, y, o], i) => (
-        <circle key={i} cx={x} cy={y} r="0.5" fill={i % 3 === 0 ? '#7df9ff' : '#ffffff'} fillOpacity={o} />
+        <circle key={i} cx={x} cy={y} r="0.5" fill={i % 3 === 0 ? grid : '#ffffff'} fillOpacity={o} />
       ))}
 
-      {/* The sun, with a soft halo behind it. */}
-      <circle cx="50" cy="68" r="38" fill="#ff5e9c" fillOpacity="0.14" />
-      <circle cx="50" cy="68" r="31" fill="#ff8fd0" fillOpacity="0.16" />
-      <circle cx="50" cy="68" r="26" fill="url(#vw-sun)" mask="url(#vw-sunmask)" />
+      {sun && (
+        <>
+          <circle cx="50" cy={sun.y} r={sun.r + 12} fill={sun.stops[1]} fillOpacity="0.14" />
+          <circle cx="50" cy={sun.y} r={sun.r + 5} fill={sun.stops[1]} fillOpacity="0.16" />
+          <circle cx="50" cy={sun.y} r={sun.r} fill={`url(#${uid}-sun)`} mask={`url(#${uid}-bars)`} />
+        </>
+      )}
+      {moon && (
+        <>
+          <circle cx={moon.x} cy={moon.y} r={moon.r + 9} fill="#c9b8ff" fillOpacity="0.1" />
+          <circle cx={moon.x} cy={moon.y} r={moon.r + 4} fill="#c9b8ff" fillOpacity="0.16" />
+          <circle cx={moon.x} cy={moon.y} r={moon.r} fill="#f1ecff" />
+          <circle cx={moon.x - 4} cy={moon.y - 3} r={moon.r * 0.22} fill="#d6ccff" fillOpacity="0.8" />
+          <circle cx={moon.x + 5} cy={moon.y + 4} r={moon.r * 0.15} fill="#d6ccff" fillOpacity="0.8" />
+        </>
+      )}
 
-      {/* Floor and grid. */}
-      <rect y={horizon} width="100" height={150 - horizon} fill="url(#vw-floor)" />
-      <g stroke="#2de2e6" strokeWidth="0.35" strokeOpacity="0.85">
+      <rect y={horizon} width="100" height={150 - horizon} fill={`url(#${uid}-floor)`} />
+      <g stroke={grid} strokeWidth="0.35" strokeOpacity="0.85">
         {rows.map((y, i) => (
           <line key={i} x1="0" x2="100" y1={y} y2={y} />
         ))}
@@ -185,154 +244,185 @@ function VaporwaveArt() {
           <line key={i} x1="50" y1={horizon} x2={xb} y2="150" />
         ))}
       </g>
-      <rect y={horizon - 0.4} width="100" height="0.8" fill="#7df9ff" fillOpacity="0.9" />
+      <rect y={horizon - 0.4} width="100" height="0.8" fill={grid} fillOpacity="0.9" />
 
-      {/* Palms, in silhouette either side of the sun. */}
-      <g stroke="#0a031c" strokeLinecap="round" fill="none">
-        <path d="M12 94 C13 82 11 72 14 59" strokeWidth="1.7" />
-        <g strokeWidth="1.2">
-          <path d="M14 59 Q7 54 2 59" />
-          <path d="M14 59 Q9 51 4 50" />
-          <path d="M14 59 Q14 50 12 46" />
-          <path d="M14 59 Q20 52 26 53" />
-          <path d="M14 59 Q21 57 27 62" />
+      {palms && (
+        <g stroke="#0a031c" strokeLinecap="round" fill="none">
+          <path d="M12 94 C13 82 11 72 14 59" strokeWidth="1.7" />
+          <g strokeWidth="1.2">
+            <path d="M14 59 Q7 54 2 59" />
+            <path d="M14 59 Q9 51 4 50" />
+            <path d="M14 59 Q14 50 12 46" />
+            <path d="M14 59 Q20 52 26 53" />
+            <path d="M14 59 Q21 57 27 62" />
+          </g>
+          <path d="M88 94 C87 84 90 73 86 61" strokeWidth="1.7" />
+          <g strokeWidth="1.2">
+            <path d="M86 61 Q93 56 98 61" />
+            <path d="M86 61 Q91 53 96 52" />
+            <path d="M86 61 Q86 52 88 48" />
+            <path d="M86 61 Q80 54 74 55" />
+            <path d="M86 61 Q79 59 73 64" />
+          </g>
         </g>
-        <path d="M88 94 C87 84 90 73 86 61" strokeWidth="1.7" />
-        <g strokeWidth="1.2">
-          <path d="M86 61 Q93 56 98 61" />
-          <path d="M86 61 Q91 53 96 52" />
-          <path d="M86 61 Q86 52 88 48" />
-          <path d="M86 61 Q80 54 74 55" />
-          <path d="M86 61 Q79 59 73 64" />
-        </g>
-      </g>
+      )}
     </svg>
   )
 }
 
+/** A screen's frame: its scene, filling the glass, with the content laid over it. */
+function ScreenShell({ palette, children }: { palette: Palette; children: ReactNode }) {
+  return (
+    // The dark base is the scene's own, not a theme colour: nothing of the page can
+    // show through, before the art paints or while a screen is fading.
+    <div className="relative h-full overflow-hidden bg-[#0a0420] text-white">
+      <VaporBackdrop palette={palette} />
+      {children}
+    </div>
+  )
+}
+
+/** Content sits in a dark panel so it reads against any part of the scene behind it. */
+const PANEL = 'rounded-2xl bg-[#0a0420]/75 ring-1 ring-white/15'
+
 function TicketScreen() {
   return (
-    <div className="flex h-full flex-col">
-      {/* The base colour is the scene's own deep violet, not a theme colour, so
-          even before the artwork paints nothing of the page shows through. */}
-      <div className="relative flex flex-1 flex-col justify-end overflow-hidden bg-[#120a30] p-4">
-        <VaporwaveArt />
-        {/* Same technique `EventPoster` uses over a real photo: a scrim so
-            the title stays legible regardless of what the art behind it
-            looks like, rather than tuning the art to dodge the text. */}
-        <div className="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-black/70 to-transparent" />
-        <div className="relative font-heading text-lg leading-tight font-semibold tracking-[-0.02em] text-white">
-          Skyline Sessions
+    <ScreenShell palette={SUNSET}>
+      {/* A scrim so the title stays legible whatever the art behind it looks like,
+          rather than tuning the art to dodge the text (the technique `EventPoster`
+          uses over a real photo). */}
+      <div className="absolute inset-x-0 bottom-0 h-3/5 bg-gradient-to-t from-black/80 via-black/45 to-transparent" />
+      <div className="relative flex h-full flex-col justify-end gap-3 p-4">
+        <div>
+          <div className="font-heading text-lg leading-tight font-semibold tracking-[-0.02em] text-white">
+            Skyline Sessions
+          </div>
+          <div className="mt-1 font-mono text-[0.6rem] tracking-[0.18em] text-white/70 uppercase">
+            The Observatory, Rooftop
+          </div>
         </div>
-        <div className="relative mt-1 font-mono text-[0.6rem] tracking-[0.18em] text-white/60 uppercase">
-          The Observatory, Rooftop
+        <div className={`${PANEL} space-y-2.5 p-4 text-xs`}>
+          <div className="flex items-center justify-between">
+            <span className="text-white/65">Held by</span>
+            <span className="font-mono">@arin_k</span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-white/65">Token</span>
+            <span className="font-mono">000861…A42F</span>
+          </div>
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-400/15 px-2.5 py-1 font-medium text-emerald-200 ring-1 ring-emerald-300/30">
+            not yet redeemed
+          </span>
         </div>
       </div>
-      <div className="bg-card space-y-2.5 p-4 text-xs">
-        <div className="flex items-center justify-between">
-          <span className="text-muted-foreground">Held by</span>
-          <span className="font-mono">@arin_k</span>
-        </div>
-        <div className="flex items-center justify-between">
-          <span className="text-muted-foreground">Token</span>
-          <span className="font-mono">000861…A42F</span>
-        </div>
-        <span className="bg-live/10 text-live border-live/25 inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 font-medium">
-          not yet redeemed
-        </span>
-      </div>
-    </div>
+    </ScreenShell>
   )
 }
 
 function GiftScreen() {
   return (
-    <div className="flex h-full flex-col justify-center p-5 text-center">
-      <div className="text-foreground text-sm font-medium">Gift a ticket</div>
-      <div className="text-muted-foreground mt-1 text-xs">
-        Free peer-to-peer. Two signatures — you offer it, they accept it.
+    <ScreenShell palette={NIGHT}>
+      <div className="relative flex h-full flex-col justify-center px-4">
+        <div className={`${PANEL} p-5 text-center`}>
+          <div className="text-sm font-medium text-white">Gift a ticket</div>
+          <div className="mt-1 text-xs text-white/70">
+            Free peer-to-peer. Two signatures — you offer it, they accept it.
+          </div>
+          <div className="mt-5 rounded-xl bg-white/10 p-4">
+            <div className="text-[0.65rem] text-white/65">Gift to</div>
+            <div className="mt-0.5 font-mono text-sm">@mina_v</div>
+            <span className="mt-3 inline-flex items-center rounded-full bg-white/10 px-2.5 py-1 text-[0.65rem] font-medium text-white ring-1 ring-white/25">
+              offered
+            </span>
+          </div>
+          <p className="mt-4 text-xs leading-relaxed text-white/70">
+            Offer is live on-ledger. @mina_v can now accept.
+          </p>
+        </div>
       </div>
-      <div className="bg-muted mt-5 rounded-xl p-4">
-        <div className="text-muted-foreground text-[0.65rem]">Gift to</div>
-        <div className="mt-0.5 font-mono text-sm">@mina_v</div>
-        <span className="bg-primary/10 text-primary border-primary/25 mt-3 inline-flex items-center rounded-full border px-2.5 py-1 text-[0.65rem] font-medium">
-          offered
-        </span>
-      </div>
-      <p className="text-muted-foreground mt-4 text-xs leading-relaxed">
-        Offer is live on-ledger. @mina_v can now accept.
-      </p>
-    </div>
+    </ScreenShell>
   )
 }
 
 function AuctionScreen() {
   const points = '0,38 10,38 10,30 30,30 30,20 55,20 55,6 90,6'
   return (
-    <div className="flex h-full flex-col justify-center p-5">
-      <div className="text-muted-foreground font-mono text-[0.65rem] tracking-[0.14em] uppercase">
-        Leading bid
+    <ScreenShell palette={DUSK}>
+      <div className="relative flex h-full flex-col justify-center px-4">
+        <div className={`${PANEL} p-5`}>
+          <div className="font-mono text-[0.65rem] tracking-[0.14em] text-white/65 uppercase">
+            Leading bid
+          </div>
+          <div className="mt-1 flex items-baseline gap-1.5">
+            <span className="font-mono text-3xl font-semibold tabular-nums">13.00</span>
+            <span className="text-xs font-medium text-white/65">XRP</span>
+          </div>
+          <div className="mt-1 text-xs text-white/65">@mina_v · just now</div>
+          <svg viewBox="0 0 90 44" className="mt-5 h-16 w-full" preserveAspectRatio="none" aria-hidden>
+            <polyline
+              points={points}
+              fill="none"
+              stroke="#7df9ff"
+              strokeWidth="2.5"
+              strokeLinejoin="round"
+              strokeLinecap="round"
+            />
+          </svg>
+          <div className="mt-4 flex items-center justify-between text-xs">
+            <span className="text-white/65">Reserve</span>
+            <span className="font-mono text-emerald-300">met</span>
+          </div>
+          <div className="mt-1.5 flex items-center justify-between text-xs">
+            <span className="text-white/65">Bids</span>
+            <span className="font-mono">4 / 3 bidders</span>
+          </div>
+        </div>
       </div>
-      <div className="mt-1 flex items-baseline gap-1.5">
-        <span className="font-mono text-3xl font-semibold tabular-nums">13.00</span>
-        <span className="text-muted-foreground text-xs font-medium">XRP</span>
-      </div>
-      <div className="text-muted-foreground mt-1 text-xs">@mina_v · just now</div>
-      <svg viewBox="0 0 90 44" className="mt-5 h-16 w-full" preserveAspectRatio="none" aria-hidden>
-        <polyline
-          points={points}
-          fill="none"
-          stroke="var(--color-chart-1)"
-          strokeWidth="2.5"
-          strokeLinejoin="round"
-          strokeLinecap="round"
-        />
-      </svg>
-      <div className="mt-4 flex items-center justify-between text-xs">
-        <span className="text-muted-foreground">Reserve</span>
-        <span className="text-live font-mono">met</span>
-      </div>
-      <div className="mt-1.5 flex items-center justify-between text-xs">
-        <span className="text-muted-foreground">Bids</span>
-        <span className="font-mono">4 / 3 bidders</span>
-      </div>
-    </div>
+    </ScreenShell>
   )
 }
 
 function CapScreen() {
   return (
-    <div className="flex h-full flex-col justify-center p-5">
-      <div className="text-muted-foreground mb-3 text-xs">
-        Cap is 150% of face value (12.00 XRP)
-      </div>
-      <div className="flex items-center gap-2">
-        <div className="border-input bg-muted text-muted-foreground flex-1 rounded-lg border px-3 py-2 font-mono text-sm">
-          15
+    <ScreenShell palette={TWILIGHT}>
+      <div className="relative flex h-full flex-col justify-center px-4">
+        <div className={`${PANEL} p-5`}>
+          <div className="mb-3 text-xs text-white/80">Cap is 150% of face value (12.00 XRP)</div>
+          <div className="flex items-center gap-2">
+            <div className="flex-1 rounded-lg bg-black/30 px-3 py-2 font-mono text-sm text-white/80 ring-1 ring-white/20">
+              15
+            </div>
+            <span className="rounded-lg bg-white px-3.5 py-2 text-sm font-medium text-neutral-950">
+              List
+            </span>
+          </div>
+          <p className="mt-3 text-xs leading-relaxed text-rose-300">
+            This event&rsquo;s organizer has limited resale prices to 12 XRP.
+          </p>
         </div>
-        <span className="bg-primary text-primary-foreground rounded-lg px-3.5 py-2 text-sm font-medium">
-          List
-        </span>
       </div>
-      <p className="text-destructive mt-3 text-xs leading-relaxed">
-        This event&rsquo;s organizer has limited resale prices to 12 XRP.
-      </p>
-    </div>
+    </ScreenShell>
   )
 }
 
 function DoorScreen() {
   return (
-    <div className="flex h-full flex-col items-center justify-center p-5 text-center">
-      <div className="bg-live/10 text-live flex size-14 items-center justify-center rounded-full">
-        <CheckCircle2 className="size-7" aria-hidden />
+    <ScreenShell palette={NEON}>
+      <div className="relative flex h-full flex-col justify-center px-4">
+        <div className={`${PANEL} flex flex-col items-center p-5 text-center`}>
+          <div className="flex size-14 items-center justify-center rounded-full bg-emerald-400/15 text-emerald-300 ring-1 ring-emerald-300/30">
+            <CheckCircle2 className="size-7" aria-hidden />
+          </div>
+          <div className="mt-4 text-lg font-semibold text-emerald-300">Admitted</div>
+          <div className="mt-1 text-xs text-white/70">Valid ticket, checked in.</div>
+          <div className="mt-3 font-mono text-xs">@arin_k</div>
+        </div>
       </div>
-      <div className="text-live mt-4 text-lg font-semibold">Admitted</div>
-      <div className="text-muted-foreground mt-1 text-xs">Valid ticket, checked in.</div>
-      <div className="mt-3 font-mono text-xs">@arin_k</div>
-    </div>
+    </ScreenShell>
   )
 }
+
+const SCREEN_IDS: ScreenId[] = ['ticket', 'gift', 'auction', 'cap', 'door']
 
 const SCREENS: Record<ScreenId, () => React.JSX.Element> = {
   ticket: TicketScreen,
@@ -406,7 +496,6 @@ const SCREENS: Record<ScreenId, () => React.JSX.Element> = {
 const SCREEN = { left: 2.386, right: 2.386, top: 3.252, bottom: 3.252, radius: '13.72% / 6.78%' }
 
 function PhoneFrame({ screen }: { screen: ScreenId }) {
-  const Screen = SCREENS[screen]
   return (
     <div className="mx-auto w-full max-w-[300px]">
       {/* The device's shadow is a static, rounded box-shadow BEHIND the frame, not a
@@ -422,13 +511,10 @@ function PhoneFrame({ screen }: { screen: ScreenId }) {
           className="absolute inset-0 z-0 rounded-[17%/8.25%] shadow-[0_18px_22px_hsl(var(--shadow-color)/0.28)]"
         />
         <div
-          /* `bg-card`, not `bg-background` — the screen sits inside a frame
-             on a page whose own body is `bg-background`, so matching that
-             token made the "lit screen" indistinguishable from a hole in
-             the page in dark mode (card is reliably a shade lighter than
-             background in both themes, which is also the direction a real
-             backlit screen should read). */
-          className="bg-card absolute z-0 overflow-hidden"
+          /* The glass has a dark base of its own (the scenes' deep violet), not a theme
+             token. `bg-card` here was white in the light theme, and showed above and
+             below any screen that did not paint to its edges. */
+          className="absolute z-0 overflow-hidden bg-[#0a0420]"
           style={{
             left: `${SCREEN.left}%`,
             right: `${SCREEN.right}%`,
@@ -447,9 +533,26 @@ function PhoneFrame({ screen }: { screen: ScreenId }) {
               no such gap: content renders full-bleed under the island, which
               is a hardware cutout sitting ON TOP of the display, not a
               reserved blank strip. */}
-          <div key={screen} className="screen-fade absolute inset-0">
-            <Screen />
-          </div>
+          {/* All five screens stay mounted and CROSS-FADE by opacity. The old version
+              destroyed and rebuilt the visible screen, art included, every time the
+              step changed, which put a layout and paint hitch in the middle of the
+              scroll, and showed the theme's white behind each fade-in. Changing
+              opacity is done by the compositor alone, so a step change costs the main
+              thread nothing. Only the active one is exposed to assistive tech. */}
+          {SCREEN_IDS.map((id) => {
+            const Each = SCREENS[id]
+            return (
+              <div
+                key={id}
+                aria-hidden={id !== screen}
+                className={`absolute inset-0 transition-opacity duration-300 ${
+                  id === screen ? 'opacity-100' : 'pointer-events-none opacity-0'
+                }`}
+              >
+                <Each />
+              </div>
+            )
+          })}
           {/* A faint diagonal gloss, the way a glass screen catches light in
               product photography — purely decorative, so it's excluded from
               the fade/remount key and never competes with the content. */}
