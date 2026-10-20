@@ -178,14 +178,14 @@ describe('POST /events/:slug/mint/bulk', () => {
   it('refuses when the organizer cannot carry the reserve, and says how much', async () => {
     const org = await mkUser('org')
     const event = await mkEvent(org)
-    // 1000 tickets needs 33 pages x 0.2 = 6.6 XRP.
+    // 1000 tickets needs 47 pages x 0.2 = 9.4 XRP (41 pages measured, with margin).
     accountFunding.mockResolvedValue({ spendableDrops: 5n * XRP, reserveIncDrops: 200_000n })
 
     const res = await start(org, event.slug, 1000)
 
     expect(res.status).toBe(409)
     expect(res.body.code).toBe('INSUFFICIENT_RESERVE')
-    expect(res.body.error).toMatch(/6\.6 XRP/)
+    expect(res.body.error).toMatch(/9\.4 XRP/)
     expect(res.body.error).toMatch(/5 XRP spendable/)
   })
 

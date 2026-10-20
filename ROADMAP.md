@@ -434,8 +434,9 @@ HubWorld signs with its own key. The single largest consumer of the quota
 disappears. MPT would have made the quota slightly *worse*.
 
 Throughput is not a concern — 1,000 mints is 1,000 ordinary transactions, and
-NFTs pack into `NFTokenPage`s at 32 per page, so the organizer's reserve for
-1,000 unsold tickets is roughly 6 XRP rather than 200.
+NFTs pack into `NFTokenPage`s, and pages split as they fill: **measured, 1,000
+tickets took 41 pages (24.4 per page), 8.2 XRP of reserve**, not the 6.6 XRP a
+32-per-page reading gives. Still ~25x cheaper than 200 XRP for 1,000 offers.
 
 ### What it costs, stated honestly
 

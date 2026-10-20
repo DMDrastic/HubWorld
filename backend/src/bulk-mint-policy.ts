@@ -26,8 +26,31 @@ export const WAVE_SIZE = 20
  */
 export const MAX_JOB_TICKETS = 5_000
 
-/** An NFTokenPage holds 32 tokens, and each page is one owned object. */
-const NFTS_PER_PAGE = 32
+/**
+ * Tickets per NFTokenPage, as MEASURED rather than as specified.
+ *
+ * A page holds at most 32, and the documentation reads as if that were the
+ * figure to divide by. It is not: pages SPLIT as they fill, so they run fuller
+ * than half and emptier than full. Measured on devnet by minting 1,000 tickets
+ * through the shipped worker: 41 pages, 24.4 tickets per page (earlier runs: 100
+ * -> 4 pages, 250 -> 9, 500 -> 23). Dividing by 32 gave 33 pages and understated
+ * the reserve by about a fifth — the product would have let an organizer start a
+ * run it could not finish, and found out at ticket 900.
+ *
+ * 22 sits ~10% below the measured average, so the estimate stays above what any
+ * of those runs actually needed. Where the NFTokenID falls decides which page a
+ * token lands in, so a different run splits differently. Re-measure before
+ * raising it; `bulk-mint-policy.test.ts` pins the measurements.
+ */
+export const NFTS_PER_PAGE = 22
+
+/** Page counts actually observed, for the test that keeps the estimate honest. */
+export const MEASURED_PAGES: ReadonlyArray<{ tickets: number; pages: number }> = [
+  { tickets: 100, pages: 4 },
+  { tickets: 250, pages: 9 },
+  { tickets: 500, pages: 23 },
+  { tickets: 1000, pages: 41 },
+]
 
 export type PlanInput = {
   requested: number
@@ -77,11 +100,11 @@ export function planBulkMint(input: PlanInput): Plan {
 /**
  * Reserve the organizer must be able to lock for `count` more tickets.
  *
- * Reserve is per NFTokenPage, not per ticket (32 per page, measured on mainnet),
- * and the pages may not start empty or aligned: a run of 32 can straddle two
- * pages. One extra page is therefore added rather than assuming alignment. Too
- * high a figure refuses an organizer who could have afforded it; too low lets the
- * job start and die half-way with `tecINSUFFICIENT_RESERVE`, which is worse.
+ * Reserve is per NFTokenPage, not per ticket, and the pages fill unevenly (see
+ * `NFTS_PER_PAGE`); one extra page is added because a run need not start on a
+ * page boundary. Too high a figure refuses an organizer who could have afforded
+ * it; too low lets the job start and die half-way with
+ * `tecINSUFFICIENT_RESERVE`, which is worse.
  */
 export function reserveNeededDrops(count: number, reserveIncDrops: bigint): bigint {
   const pages = Math.ceil(count / NFTS_PER_PAGE) + 1
