@@ -30,7 +30,7 @@ import { tryGetPayload, xaman, SIGNIN_TTL_MINUTES } from '../xaman.js'
 import { issuesOf, slugSchema } from '../schemas.js'
 import { requireAuth } from '../session.js'
 import { checkDoorAccess } from '../door-access.js'
-import { holdsNft } from '../ledger.js'
+import { admit } from '../door-admit.js'
 import { addStaff, revokeStaff } from '../door-access.js'
 import { usernameSchema } from '../schemas.js'
 
@@ -176,114 +176,9 @@ redemptionRouter.get('/checkin/:uuid', requireAuth, async (req, res) => {
     return
   }
 
-  // Signed. The address is proven; what they hold is not.
-  const address = status.account
-
-  const candidates = await prisma.ticket.findMany({
-    where: { eventId: redemption.eventId, ownerAddress: address },
-    orderBy: { createdAt: 'asc' },
-    include: { owner: { select: { id: true, username: true } } },
-  })
-
-  const holder = await prisma.user.findUnique({ where: { xrplAddress: address } })
-
-  // Already-used tickets are reported distinctly from having none: "this ticket
-  // was already scanned" and "you have no ticket" are different conversations at
-  // a door.
-  const unredeemed = candidates.filter((t) => t.status !== 'REDEEMED')
-  if (candidates.length > 0 && unredeemed.length === 0) {
-    await prisma.redemption.update({
-      where: { id: redemption.id },
-      data: {
-        status: 'ALREADY_USED',
-        resolvedAddress: address,
-        holderId: holder?.id ?? null,
-        ticketId: candidates[0]!.id,
-        failureReason: 'That ticket has already been checked in',
-      },
-    })
-    res.json({
-      ...view(),
-      state: 'already_used',
-      holder: holder ? `@${holder.username}` : null,
-      reason: 'That ticket has already been checked in',
-    })
-    return
-  }
-
-  // Our ownership column is a cache, so confirm against the ledger before
-  // admitting anyone. A stale row would let someone in on a ticket they sold.
-  let ticket = null
-  for (const candidate of unredeemed) {
-    try {
-      if (await holdsNft(address, candidate.nfTokenId)) {
-        ticket = candidate
-        break
-      }
-      // Cache disagreed with the ledger — record that we noticed.
-      await prisma.ticket.update({
-        where: { id: candidate.id },
-        data: { ownerId: null, ownerAddress: null, syncedAt: new Date() },
-      })
-    } catch {
-      // Ledger unreachable. Refusing entry on a network blip is worse than the
-      // alternative here, so fall back to the cached claim and let the audit
-      // trail carry it.
-      ticket = candidate
-      break
-    }
-  }
-
-  if (!ticket) {
-    await prisma.redemption.update({
-      where: { id: redemption.id },
-      data: {
-        status: 'NO_TICKET',
-        resolvedAddress: address,
-        holderId: holder?.id ?? null,
-        failureReason: 'No valid ticket for this event',
-      },
-    })
-    res.json({
-      ...view(),
-      state: 'no_ticket',
-      holder: holder ? `@${holder.username}` : null,
-      reason: 'No valid ticket for this event',
-    })
-    return
-  }
-
-  // Admit. The ticket and the record change together, so a ticket can never be
-  // marked used without an audit row naming who admitted them.
-  const [, updated] = await prisma.$transaction([
-    prisma.ticket.update({ where: { id: ticket.id }, data: { status: 'REDEEMED' } }),
-    prisma.redemption.update({
-      where: { id: redemption.id },
-      data: {
-        status: 'REDEEMED',
-        resolvedAddress: address,
-        holderId: holder?.id ?? null,
-        ticketId: ticket.id,
-        redeemedAt: new Date(),
-      },
-      include: {
-        holder: { select: { username: true } },
-        ticket: { select: { seat: true, tier: true, nfTokenId: true } },
-      },
-    }),
-  ])
-
-  res.json({
-    checkInId: updated.id,
-    state: 'redeemed',
-    holder: updated.holder ? `@${updated.holder.username}` : null,
-    ticket: {
-      seat: updated.ticket?.seat ?? null,
-      tier: updated.ticket?.tier ?? null,
-      nfTokenId: updated.ticket?.nfTokenId ?? '',
-    },
-    redeemedAt: updated.redeemedAt?.toISOString(),
-  })
+  // Signed. The address is proven; what they hold is not, so the shared admit
+  // logic decides that (see `door-admit.ts`).
+  res.json(await admit({ redemptionId: redemption.id, eventId: redemption.eventId, address: status.account }))
 })
 
 /**
