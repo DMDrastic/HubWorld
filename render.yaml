@@ -92,6 +92,15 @@ services:
       - key: PLATFORM_SEED
         sync: false
 
+      # The key that signs DELEGATED transactions: minting as an organizer who has
+      # granted NFTokenMint, and listing one ticket at checkout for one who has
+      # granted NFTokenCreateOffer. A SEPARATE key from PLATFORM_SEED on purpose,
+      # and the server refuses to start if the two are equal. Without it the
+      # delegation panels stay hidden and the bulk-mint sweep stays off. See
+      # docs/delegate-account.md before setting it.
+      - key: DELEGATE_SEED
+        sync: false
+
       # Switches payload resolution from polling to Xaman callbacks. Only useful
       # once there is a public URL for Xaman to call, which is the case here.
       - key: XAMAN_WEBHOOK_SECRET
