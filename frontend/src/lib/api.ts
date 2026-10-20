@@ -452,7 +452,14 @@ export const OwnedTicketSchema = z.object({
   syncedAt: z.string().nullable(),
   // null when unverified; false means the ledger disagrees with our cache.
   onLedger: z.boolean().nullable(),
-  event: z.object({ slug: z.string(), title: z.string(), startsAt: z.string() }),
+  event: z.object({
+    slug: z.string(),
+    title: z.string(),
+    startsAt: z.string(),
+    // Absent from a server that predates them; a ticket still renders without.
+    venue: z.string().nullish(),
+    imageUrl: z.string().nullish(),
+  }),
   /** Auctions are secondary-market only: sold-out events, non-organizer holders. */
   canAuction: z.boolean(),
   auctionBlockedReason: z.string().nullable(),

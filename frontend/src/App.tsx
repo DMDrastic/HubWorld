@@ -23,6 +23,7 @@ import { DelegationPanel } from '@/components/DelegationPanel'
 import { BulkMintPanel } from '@/components/BulkMintPanel'
 import { CheckoutDialog } from '@/components/CheckoutDialog'
 import { GiftPanel } from '@/components/GiftPanel'
+import { TicketWallet } from '@/components/TicketWallet'
 import { SellPanel } from '@/components/SellPanel'
 import { DoorPanel } from '@/components/DoorPanel'
 import { NavBar } from '@/components/NavBar'
@@ -75,10 +76,8 @@ function HandleLookup() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Resolve a handle</CardTitle>
-        <CardDescription>
-          @username → XRPL address, so raw r-addresses never reach the UI
-        </CardDescription>
+        <CardTitle>Look up a handle</CardTitle>
+        <CardDescription>Check whose wallet an @handle points to before you gift to it.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
         <form onSubmit={submit} className="flex gap-2">
@@ -238,6 +237,20 @@ export default function App() {
     void restore()
   }, [load, restore])
 
+  // The Tickets page: which ticket's Gift button was pressed, and a counter the
+  // wallet reloads on once a gift settles.
+  const [giftTarget, setGiftTarget] = useState<string | null>(null)
+  const [walletVersion, setWalletVersion] = useState(0)
+  const handleGiftChanged = useCallback(() => {
+    setWalletVersion((v) => v + 1)
+    handleMinted()
+  }, [handleMinted])
+  const chooseGift = useCallback((nfTokenId: string) => {
+    setGiftTarget(nfTokenId)
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    document.getElementById('gift-panel')?.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'center' })
+  }, [])
+
   const [doorEvents, setDoorEvents] = useState<DoorEvent[]>([])
   const route = useRoute()
 
@@ -316,10 +329,11 @@ export default function App() {
               <div>
                 <h1 className="text-3xl font-semibold tracking-[-0.02em]">Your tickets</h1>
                 <p className="text-muted-foreground mt-1.5 text-sm leading-relaxed">
-                  Held in your wallet. Gift one to any @handle — it moves on-ledger.
+                  These live in your own wallet, so they're yours even if HubWorld disappears.
                 </p>
               </div>
-              <GiftPanel onChanged={handleMinted} />
+              <TicketWallet version={walletVersion} onGift={chooseGift} />
+              <GiftPanel onChanged={handleGiftChanged} selectedId={giftTarget} />
               <HandleLookup />
             </section>
           ) : (

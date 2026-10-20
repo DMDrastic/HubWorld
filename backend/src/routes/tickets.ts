@@ -45,6 +45,8 @@ ticketsRouter.get('/tickets/mine', requireAuth, async (req, res) => {
           id: true,
           slug: true,
           title: true,
+          venue: true,
+          imageUrl: true,
           startsAt: true,
           organizerId: true,
           resalePolicy: true,
@@ -100,6 +102,8 @@ ticketsRouter.get('/tickets/mine', requireAuth, async (req, res) => {
       event: {
         slug: t.event.slug,
         title: t.event.title,
+        venue: t.event.venue,
+        imageUrl: t.event.imageUrl,
         startsAt: t.event.startsAt.toISOString(),
       },
       canAuction: eligibility.get(t.event.id)?.allowed ?? false,
