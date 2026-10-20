@@ -1369,6 +1369,20 @@ delegate itself returns `tesSUCCESS`. The ledger cannot narrow it, so these hold
   Listing is planned); sale settlement is poll-driven by the buyer's client, as
   resale already is.
 
+**Verifying on the real ledger.** Three scripts run the SHIPPED code against a real
+ledger rather than a fake: `bulk-mint-devnet-check.ts` (the worker),
+`primary-sale-devnet-check.ts` (the checkout, the broker match, the payout) and
+`mainnet-sale-check.ts`. The last spends real XRP: dry-run by default, throwaway
+accounts, funded by you, swept back at the end (about 10 XRP in, about 4 back, about
+5.6 locked as base reserves and NFT pages). It is a parent and a child because the
+code under test reads its signing keys from the environment exactly as production
+does: the parent generates every key in memory, prints only addresses, and gives the
+seeds to the child's environment and nowhere else. `--rehearse` runs the identical
+flow on devnet from the faucet — run it after ANY change to the script, and it is the
+reason the script's own bugs were found for free. They write rows into whatever
+database you point them at: use a clean local one, because they refuse a database
+holding another ledger's rows (the same guard the server applies at boot).
+
 **Batch transactions do not rescue this, on two counts.** The `Batch` amendment
 (XLS-56) would let one signature carry several inner mints, but a signature-
 validation flaw found on 19 Feb 2026 led to rippled 3.1.1 marking both `Batch`
