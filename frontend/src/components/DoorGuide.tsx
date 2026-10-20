@@ -108,7 +108,7 @@ export function DoorGuide({
         <DialogHeader>
           <DialogTitle>At the door</DialogTitle>
           <DialogDescription>
-            {byCode ? 'Hold this up to the door staff.' : 'Do these three things before you reach the front.'}
+            {byCode ? 'Hold this up to the door staff.' : 'When you reach the front, do these three things.'}
           </DialogDescription>
         </DialogHeader>
 
@@ -164,7 +164,11 @@ export function DoorGuide({
             )
           ) : (
           <ol className="space-y-2.5 text-sm">
-            {['Open Xaman now, before you reach the front.', 'Tap Scan.', "Point it at the door staff's screen and approve."].map(
+            {[
+              "Point your phone's camera at the door staff's screen. (Or open Xaman and tap Scan.)",
+              'Xaman opens a request. Approve it.',
+              "The door staff's screen confirms you.",
+            ].map(
               (step, i) => (
                 <li key={step} className="flex gap-3">
                   <span

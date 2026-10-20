@@ -1632,9 +1632,13 @@ ticket rather than a collectible.
 switchable after creation because nothing about a ticket depends on it):
 
 - **`SIGNATURE`** — staff show a code, the attendee signs it in Xaman. The strongest
-  proof, and the only one that existed before 2026-10-20.
+  proof, the only one that existed before 2026-10-20, **and the default for every event**.
+  The attendee does not need to open Xaman's scanner first: the QR is a link, so pointing
+  the phone's own camera at it opens Xaman at the request (confirmed on a real phone
+  2026-10-20; Xaman's docs describe the same).
 - **`QR`** — the attendee shows a short-lived code and staff scan it with their phone
-  camera. Faster, and it uses no Xaman payload.
+  camera. Faster, and it uses no Xaman payload, but it proves less, so an organizer
+  **opts in** to it; no event drifts into it because the server happens to support it.
 
 **Why a second way exists.** Each signature check-in creates a Xaman payload per
 attendee (`DOOR_CHECKIN`, the vendor quota the roadmap names as the top risk) and
@@ -1669,8 +1673,8 @@ never an admitted state".
 - **The ledger is read twice.** Once when the holder asks for a code (a ticket gifted in
   Xaman gets no working code) and again at the door (a ticket given away in the 45
   seconds since). An unreadable ledger is never a refusal at either step.
-- **Off until configured.** `DOOR_TOKEN_SECRET` unset: the routes answer 503, new events
-  keep the Xaman flow, the create form does not offer the choice (`GET /policy` carries
+- **Off until configured.** `DOOR_TOKEN_SECRET` unset: the routes answer 503, the create
+  form does not offer the choice (`GET /policy` carries
   `doorCodes`). Replacing the secret is the whole rotation story: codes live 45 seconds.
 - **Every scan leaves an audit row** (`Redemption.method = QR`), junk included — a
   disputed entry is exactly when "what did staff scan at 9:42" matters. A QR that is not a

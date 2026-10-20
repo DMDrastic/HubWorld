@@ -213,9 +213,9 @@ const CreateEventBody = z
       .string()
       .regex(/^[1-9][0-9]{0,17}$/, 'primaryPriceDrops must be a positive integer string of drops')
       .optional(),
-    // How people are let in. Absent: the fast QR mode where this server can sign
-    // door codes, else the Xaman signature flow, so an event never defaults into
-    // a door mode its own server cannot run.
+    // How people are let in. Absent: the Xaman signature door, always. The code
+    // door is faster but proves less (a session, not a wallet key), so an
+    // organizer opts into it knowingly; it is never what an event drifts into.
     doorMode: z.enum(['QR', 'SIGNATURE']).optional(),
     // 10000 = 100% of face value, so 12000 = 120%.
     resaleCapBps: z.coerce.number().int().positive().optional(),
@@ -288,7 +288,7 @@ organizersRouter.post('/events', requireAuth, requireOrganizer, async (req, res)
     select: { nftTaxon: true },
   })
 
-  const doorMode = data.doorMode ?? (doorTokenMode === 'live' ? 'QR' : 'SIGNATURE')
+  const doorMode = data.doorMode ?? 'SIGNATURE'
   const event = await prisma.event.create({
     data: {
       slug,

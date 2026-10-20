@@ -142,7 +142,7 @@ function CreateEventForm({ policy, onCreated }: { policy: Policy | null; onCreat
   const [resaleCapPct, setResaleCapPct] = useState('120')
   const [resaleCapXrp, setResaleCapXrp] = useState('')
   // Offered only where this server can run the code door; otherwise the server's own default (Xaman) applies.
-  const [doorMode, setDoorMode] = useState<DoorMode>('QR')
+  const [doorMode, setDoorMode] = useState<DoorMode>('SIGNATURE')
   const offerDoorMode = policy?.doorCodes === true
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -305,13 +305,12 @@ function CreateEventForm({ policy, onCreated }: { policy: Policy | null; onCreat
             aria-label="how guests get in"
             className="border-input bg-background focus-visible:border-ring focus-visible:ring-ring/50 rounded-lg border px-3 py-2 text-sm transition-colors focus-visible:ring-[3px] focus-visible:outline-none"
           >
-            <option value="QR">Door: guests show a code (fast)</option>
-            <option value="SIGNATURE">Door: guests approve in Xaman (strictest)</option>
+            <option value="SIGNATURE">Door: guests approve in Xaman (recommended)</option>
+            <option value="QR">Door: guests show a code (faster, proves less)</option>
           </select>
           <p className="text-muted-foreground text-xs">
-            A code takes a couple of seconds per guest and changes every few seconds. Approving in
-            Xaman takes longer, but proves the guest's own wallet is there. You can change this
-            later.
+            Approving in Xaman proves the guest's own wallet is at the door. A code is faster, but
+            only proves a logged-in HubWorld session. You can change this later.
           </p>
         </div>
       )}

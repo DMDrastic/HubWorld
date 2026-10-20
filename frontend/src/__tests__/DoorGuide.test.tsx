@@ -79,9 +79,12 @@ describe('DoorGuide', () => {
 
     const steps = (await screen.findAllByRole('listitem')).map((li) => li.textContent)
     expect(steps).toHaveLength(3)
-    expect(steps[0]).toMatch(/open xaman now/i)
-    expect(steps[1]).toMatch(/tap scan/i)
-    expect(steps[2]).toMatch(/door staff's screen/i)
+    // The phone's own camera is the first thing to try (it opens Xaman at the
+    // request); Xaman's Scan is the fallback.
+    expect(steps[0]).toMatch(/camera at the door staff's screen/i)
+    expect(steps[0]).toMatch(/open xaman and tap scan/i)
+    expect(steps[1]).toMatch(/approve it/i)
+    expect(steps[2]).toMatch(/door staff's screen confirms you/i)
   })
 
   it('says which ticket this is: event, time, place and admission', async () => {
@@ -190,7 +193,7 @@ describe('DoorGuide at an event that lets people in by code', () => {
     expect(await screen.findByRole('img', { name: /your entry code/i })).toBeTruthy()
     expect(screen.getByText(/hold this up to the door staff/i)).toBeTruthy()
     expect(screen.queryByRole('listitem')).toBeNull()
-    expect(screen.queryByText(/open xaman now/i)).toBeNull()
+    expect(screen.queryByText(/camera at the door staff's screen/i)).toBeNull()
   })
 
   it('shows no code for a ticket that has been used', async () => {

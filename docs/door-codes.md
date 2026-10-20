@@ -19,10 +19,12 @@ Xaman flow, the code routes answer 503, and the create-event form does not offer
 
 2. Set `DOOR_TOKEN_SECRET` on the service (it is declared `sync: false` in `render.yaml`).
 3. Confirm: `GET /api/policy` now says `"doorCodes": true`, and the organizer's create
-   form offers "Door: guests show a code (fast)".
+   form offers "Door: guests show a code (faster, proves less)" beside the default.
 
-Existing events stay on `SIGNATURE`. An organizer switches one from the Door page ("How
-guests get in"), or `POST /api/events/:slug/door-mode`.
+**Every event stays on `SIGNATURE` (Xaman) unless its organizer chooses the code door**,
+at creation or later from the Door page ("How guests get in"), or
+`POST /api/events/:slug/door-mode`. Turning the secret on changes nothing for anyone who
+does not choose it.
 
 ## Rotating or turning it off
 

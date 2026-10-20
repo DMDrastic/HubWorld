@@ -369,13 +369,20 @@ describe('POST /events chooses the door mode', () => {
   const create = (org: Actor, extra: Record<string, unknown> = {}) =>
     request(app).post('/api/events').set('Authorization', as(org)).send(body(extra))
 
-  it('defaults to the QR door where the server can sign codes, and to Xaman where it cannot', async () => {
+  it('defaults to the Xaman signature door, whether or not the server can sign codes', async () => {
+    // The code door is faster but proves less, so an organizer opts into it; an
+    // event never drifts into it just because the server happens to support it.
     const org = await mkUser('org', 'ORGANIZER')
-    expect((await create(org)).body.doorMode).toBe('QR')
+    expect((await create(org)).body.doorMode).toBe('SIGNATURE')
 
     await prisma.event.deleteMany({ where: { slug: `${STAG}create-${uniq}` } })
     state.mode = 'disabled'
     expect((await create(org)).body.doorMode).toBe('SIGNATURE')
+  })
+
+  it('gives the code door to an organizer who asks for it (positive control for the default)', async () => {
+    const org = await mkUser('org', 'ORGANIZER')
+    expect((await create(org, { doorMode: 'QR' })).body.doorMode).toBe('QR')
   })
 
   it('honours an explicit choice, but not a QR door the server cannot run', async () => {
