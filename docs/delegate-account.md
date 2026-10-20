@@ -164,8 +164,9 @@ Unset `DELEGATE_SEED` (or leave it unset). Effects, all safe:
 - The "Minting for you" / "Selling for you" panels and the bulk-mint panel disappear.
 - The bulk-mint sweep stops. Runs in progress stay `QUEUED`; nothing is lost, and
   they resume when a key is configured again.
-- Checkout answers "not on sale" for every event (it needs the offers grant to be
-  usable by a key that exists).
+- Checkout answers "Sales are not available on this server" (a 503) for every event,
+  because there is no key to create the offers; the box-office Buy control still
+  shows on priced events, so unset the key only briefly, or unset prices too.
 - Holds already open are still released by the sweep, which runs on the broker.
 - **Grants already on the ledger stay there.** Unsetting the key does not revoke
   them; only each organizer can. If the key is compromised, telling organizers to
