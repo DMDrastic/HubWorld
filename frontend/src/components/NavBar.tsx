@@ -188,8 +188,11 @@ export function NavBar({
   const link = useLinkHandler()
   const items = destinations(me, hasDoor)
 
+  // `backdrop-blur` on a sticky bar makes Safari re-blur everything scrolling under it
+  // on every frame, a leading cause of scroll jank on iPhones. Phones and tablets get a
+  // nearly solid bar instead; the frosted look stays where it is cheap.
   return (
-    <header className="bg-background/70 sticky top-0 z-40 border-b backdrop-blur-xl">
+    <header className="bg-background lg:bg-background/70 sticky top-0 z-40 border-b lg:backdrop-blur-xl">
       <div className="mx-auto flex h-16 max-w-6xl items-center gap-6 px-4">
         <a
           href="/"

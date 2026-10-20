@@ -57,18 +57,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { CheckCircle2 } from 'lucide-react'
 import iphoneFrame from '@/assets/iphone-17-pro-cosmic-orange-portrait.png'
-
-function demoHue(slug: string): number {
-  let h = 5381
-  for (let i = 0; i < slug.length; i++) h = ((h << 5) + h + slug.charCodeAt(i)) | 0
-  // Mapped into a 140°-wide teal-through-violet band rather than the full
-  // wheel. The unconstrained `% 360` is what let this land on rust/brown for
-  // 'skyline-sessions' — the one warm hue on an otherwise cool-toned page,
-  // reading as an unstyled accident rather than a choice. Still procedural
-  // per slug (not a single hardcoded value), just fenced to hues that are
-  // actually brand-adjacent.
-  return 160 + (Math.abs(h) * 137.508) % 140
-}
+import { chooseActiveStep } from '@/lib/active-step'
 
 type ScreenId = 'ticket' | 'gift' | 'auction' | 'cap' | 'door'
 
@@ -114,86 +103,124 @@ const STEPS: { title: string; body: string; screen: ScreenId }[] = [
 ]
 
 /**
- * A rooftop skyline at dusk, standing in for an uploaded event photo —
- * illustrated rather than a stock photo, matching the restrained, abstract
- * treatment `EventPoster`'s own fallback already uses for events with no
- * artwork, rather than introducing the first photographic asset in the app.
- * Pure SVG shapes computed from the slug's hue, so it never needs a network
- * request and stays perfectly crisp at any phone-frame size.
+ * The event picture on the ticket screen: a vaporwave sunset, standing in for an
+ * uploaded event photo. Illustrated rather than a stock photo, so it never needs
+ * a network request and stays crisp at any phone-frame size.
+ *
+ * It FILLS the screen. The first version drew a skyline with `meet` scaling,
+ * anchored to the bottom, so any height the picture area had beyond the scene's
+ * own aspect ratio showed the gradient behind it as a band across the top, which
+ * read as the page's colour and not as part of the picture. `slice` scales the
+ * scene to cover the box and crops the overflow instead, so there is never a gap;
+ * the composition is centred, with the sun and horizon placed so a crop of either
+ * axis loses only sky or floor, never the subject.
+ *
+ * The magenta, cyan and violet here are the point of the style, and the project's
+ * own design notes ban purple-and-pink gradients for UI. They are kept to this one
+ * illustration inside a phone, at the owner's request, and nothing on the page
+ * itself uses them.
  */
-function SkylineArt({ hue }: { hue: number }) {
-  const silhouette = `oklch(0.16 0.04 ${(hue + 20) % 360})`
-  const buildings = [
-    { x: 0, w: 16, h: 22 },
-    { x: 15, w: 11, h: 34 },
-    { x: 25, w: 14, h: 26 },
-    { x: 38, w: 10, h: 40 },
-    { x: 47, w: 16, h: 30 },
-    { x: 62, w: 12, h: 38 },
-    { x: 73, w: 15, h: 24 },
-    { x: 87, w: 13, h: 32 },
+function VaporwaveArt() {
+  // Perspective grid: horizontal lines bunch up toward the horizon (y = 92) the way
+  // a receding floor does, and the verticals all run to one vanishing point.
+  const horizon = 92
+  const rows = [0.15, 0.28, 0.4, 0.55, 0.7, 0.85, 1].map((t) => horizon + 58 * t * t)
+  const spokes = Array.from({ length: 15 }, (_, i) => -125 + i * 25)
+  const stars: Array<[number, number, number]> = [
+    [8, 10, 0.7], [22, 22, 0.5], [35, 8, 0.8], [47, 17, 0.5], [60, 6, 0.7], [72, 20, 0.5],
+    [85, 9, 0.8], [93, 24, 0.5], [14, 34, 0.45], [64, 33, 0.45], [90, 40, 0.4], [30, 40, 0.4],
   ]
   return (
-    // `meet`, not `slice`: the ticket art area's real height varies with
-    // the phone frame's own rendered size, so "cover" cropping zoomed into
-    // a single building at some sizes. `meet` scales the WHOLE scene to fit
-    // and anchors it to the bottom — any extra space lands above the
-    // skyline as more sky, which the gradient already fills, so there is
-    // never a visible crop or letterbox bar.
     <svg
-      viewBox="0 0 100 100"
-      preserveAspectRatio="xMidYMax meet"
+      viewBox="0 0 100 150"
+      preserveAspectRatio="xMidYMid slice"
       className="absolute inset-0 size-full"
       aria-hidden
     >
-      <circle cx="78" cy="20" r="7" fill="white" fillOpacity="0.2" />
-      {[
-        [10, 14],
-        [25, 8],
-        [42, 18],
-        [60, 10],
-        [92, 16],
-        [18, 28],
-        [52, 6],
-        [70, 30],
-      ].map(([cx, cy], i) => (
-        <circle key={i} cx={cx} cy={cy} r="0.8" fill="white" fillOpacity="0.5" />
+      <defs>
+        <linearGradient id="vw-sky" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor="#120a30" />
+          <stop offset="0.38" stopColor="#3a1273" />
+          <stop offset="0.68" stopColor="#b1288f" />
+          <stop offset="0.86" stopColor="#ff5e9c" />
+          <stop offset="1" stopColor="#ffb36b" />
+        </linearGradient>
+        <linearGradient id="vw-sun" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor="#fff176" />
+          <stop offset="0.5" stopColor="#ff6fb5" />
+          <stop offset="1" stopColor="#c61aa6" />
+        </linearGradient>
+        <linearGradient id="vw-floor" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor="#2c0b52" />
+          <stop offset="1" stopColor="#0c0524" />
+        </linearGradient>
+        {/* The sun is cut by bars that thicken toward the horizon, the genre's signature. */}
+        <mask id="vw-sunmask">
+          <rect width="100" height="150" fill="white" />
+          <rect x="0" y="66" width="100" height="1" fill="black" />
+          <rect x="0" y="71" width="100" height="1.6" fill="black" />
+          <rect x="0" y="76.5" width="100" height="2.2" fill="black" />
+          <rect x="0" y="82.5" width="100" height="2.8" fill="black" />
+          <rect x="0" y="88.5" width="100" height="3.4" fill="black" />
+        </mask>
+      </defs>
+
+      <rect width="100" height={horizon} fill="url(#vw-sky)" />
+      {stars.map(([x, y, o], i) => (
+        <circle key={i} cx={x} cy={y} r="0.5" fill={i % 3 === 0 ? '#7df9ff' : '#ffffff'} fillOpacity={o} />
       ))}
-      {buildings.map((b, i) => (
-        <rect key={i} x={b.x} y={100 - b.h} width={b.w} height={b.h} fill={silhouette} />
-      ))}
-      {/* The observatory dome the venue name promises, on the tallest
-          building, with a thin telescope line angled up from it. */}
-      <circle cx="43" cy="62" r="6" fill={silhouette} />
-      <line x1="43" y1="62" x2="52" y2="50" stroke={silhouette} strokeWidth="1.6" strokeLinecap="round" />
-      {/* A string of warm rooftop lights — the one warm accent against the
-          cool dusk gradient and the dark silhouettes. */}
-      {[8, 20, 32, 44, 56, 68, 80, 92].map((x, i) => (
-        <circle key={i} cx={x} cy="97" r="1.1" fill="oklch(0.78 0.14 70)" fillOpacity="0.85" />
-      ))}
+
+      {/* The sun, with a soft halo behind it. */}
+      <circle cx="50" cy="68" r="38" fill="#ff5e9c" fillOpacity="0.14" />
+      <circle cx="50" cy="68" r="31" fill="#ff8fd0" fillOpacity="0.16" />
+      <circle cx="50" cy="68" r="26" fill="url(#vw-sun)" mask="url(#vw-sunmask)" />
+
+      {/* Floor and grid. */}
+      <rect y={horizon} width="100" height={150 - horizon} fill="url(#vw-floor)" />
+      <g stroke="#2de2e6" strokeWidth="0.35" strokeOpacity="0.85">
+        {rows.map((y, i) => (
+          <line key={i} x1="0" x2="100" y1={y} y2={y} />
+        ))}
+        {spokes.map((xb, i) => (
+          <line key={i} x1="50" y1={horizon} x2={xb} y2="150" />
+        ))}
+      </g>
+      <rect y={horizon - 0.4} width="100" height="0.8" fill="#7df9ff" fillOpacity="0.9" />
+
+      {/* Palms, in silhouette either side of the sun. */}
+      <g stroke="#0a031c" strokeLinecap="round" fill="none">
+        <path d="M12 94 C13 82 11 72 14 59" strokeWidth="1.7" />
+        <g strokeWidth="1.2">
+          <path d="M14 59 Q7 54 2 59" />
+          <path d="M14 59 Q9 51 4 50" />
+          <path d="M14 59 Q14 50 12 46" />
+          <path d="M14 59 Q20 52 26 53" />
+          <path d="M14 59 Q21 57 27 62" />
+        </g>
+        <path d="M88 94 C87 84 90 73 86 61" strokeWidth="1.7" />
+        <g strokeWidth="1.2">
+          <path d="M86 61 Q93 56 98 61" />
+          <path d="M86 61 Q91 53 96 52" />
+          <path d="M86 61 Q86 52 88 48" />
+          <path d="M86 61 Q80 54 74 55" />
+          <path d="M86 61 Q79 59 73 64" />
+        </g>
+      </g>
     </svg>
   )
 }
 
 function TicketScreen() {
-  const slug = 'skyline-sessions'
-  const hue = demoHue(slug)
   return (
     <div className="flex h-full flex-col">
-      <div
-        className="relative flex flex-1 flex-col justify-end overflow-hidden p-4"
-        style={{
-          background: `linear-gradient(160deg,
-            oklch(0.40 0.105 ${hue}) 0%,
-            oklch(0.24 0.075 ${(hue + 25) % 360}) 58%,
-            oklch(0.16 0.045 ${(hue + 45) % 360}) 100%)`,
-        }}
-      >
-        <SkylineArt hue={hue} />
+      {/* The base colour is the scene's own deep violet, not a theme colour, so
+          even before the artwork paints nothing of the page shows through. */}
+      <div className="relative flex flex-1 flex-col justify-end overflow-hidden bg-[#120a30] p-4">
+        <VaporwaveArt />
         {/* Same technique `EventPoster` uses over a real photo: a scrim so
             the title stays legible regardless of what the art behind it
             looks like, rather than tuning the art to dodge the text. */}
-        <div className="absolute inset-x-0 bottom-0 h-2/3 bg-gradient-to-t from-black/75 to-transparent" />
+        <div className="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-black/70 to-transparent" />
         <div className="relative font-heading text-lg leading-tight font-semibold tracking-[-0.02em] text-white">
           Skyline Sessions
         </div>
@@ -382,10 +409,18 @@ function PhoneFrame({ screen }: { screen: ScreenId }) {
   const Screen = SCREENS[screen]
   return (
     <div className="mx-auto w-full max-w-[300px]">
-      {/* No `elevate` here: box-shadow follows the rectangular box, so a
-          light-mode shadow showed a hard-edged rectangle behind the rounded
-          device. `drop-shadow` on the frame <img> follows its alpha. */}
+      {/* The device's shadow is a static, rounded box-shadow BEHIND the frame, not a
+          CSS `drop-shadow` filter on the frame image. A filter on a large image inside
+          a sticky element is re-rendered by Safari as the element moves, which is the
+          phone visibly jittering on iPhones. A box-shadow is painted once. The corner
+          radius is the device's (about 17% of its width), written as an ellipse so it
+          stays circular at this aspect ratio, which is what stops it showing the
+          hard-edged rectangle a plain box-shadow gave on its own. */}
       <div className="relative aspect-[1318/2717]">
+        <div
+          aria-hidden
+          className="absolute inset-0 z-0 rounded-[17%/8.25%] shadow-[0_18px_22px_hsl(var(--shadow-color)/0.28)]"
+        />
         <div
           /* `bg-card`, not `bg-background` — the screen sits inside a frame
              on a page whose own body is `bg-background`, so matching that
@@ -432,7 +467,7 @@ function PhoneFrame({ screen }: { screen: ScreenId }) {
           alt=""
           aria-hidden
           draggable={false}
-          className="pointer-events-none relative z-10 size-full select-none drop-shadow-[0_18px_22px_hsl(var(--shadow-color)/0.28)]"
+          className="pointer-events-none relative z-10 size-full select-none"
         />
       </div>
     </div>
@@ -457,18 +492,13 @@ export function LandingPhoneShowcase() {
     // regardless of which entries fired or in what order.
     const pickActive = () => {
       const mid = window.innerHeight / 2
-      let bestIdx = -1
-      let bestDist = Infinity
-      refs.current.forEach((el, i) => {
-        if (!el) return
+      const centers = refs.current.map((el) => {
+        if (!el) return Infinity
         const rect = el.getBoundingClientRect()
-        const dist = Math.abs(rect.top + rect.height / 2 - mid)
-        if (dist < bestDist) {
-          bestDist = dist
-          bestIdx = i
-        }
+        return rect.top + rect.height / 2
       })
-      if (bestIdx !== -1) setActive(bestIdx)
+      // With a margin, not a bare "nearest wins": see `chooseActiveStep`.
+      setActive((current) => chooseActiveStep(centers, mid, current))
     }
 
     const observer = new IntersectionObserver(pickActive, {
@@ -485,7 +515,9 @@ export function LandingPhoneShowcase() {
           (64px) parked the phone's top 46px UNDER it — island and status area
           cropped, measured with Playwright. 7.25rem clears it; `sm:` returns to
           the single-row header. */}
-      <div className="sticky top-[7.25rem] sm:top-20 lg:top-24">
+      {/* `transform-gpu`: the sticky phone gets its own compositor layer, the
+          standard fix for sticky elements shimmering on iOS Safari. */}
+      <div className="sticky top-[7.25rem] transform-gpu sm:top-20 lg:top-24">
         <PhoneFrame screen={STEPS[active]!.screen} />
       </div>
 
