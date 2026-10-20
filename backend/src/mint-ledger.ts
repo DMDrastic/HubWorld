@@ -14,6 +14,7 @@ import { xamanMode } from './env.js'
 import { delegateWallet, ledger } from './ledger.js'
 import { MINT_PERMISSION, readPermissionOnLedger } from './delegation.js'
 import * as stubLedger from './stub-ledger.js'
+import { isTxNotFound, withBackoff } from './xrpl-errors.js'
 import type { FeeQuote } from './bulk-mint-policy.js'
 
 /** A mint with everything the ledger needs to place it. */
@@ -74,19 +75,19 @@ export function realMintLedger(): MintLedger {
       const c = await ledger()
       // `current`, not `validated`: validated lags by several closes and would
       // add dead time to every wave, or make a healthy wave look stalled.
-      const r = await c.request({ command: 'account_info', account: organizerAddress, ledger_index: 'current' })
+      const r = await withBackoff(() => c.request({ command: 'account_info', account: organizerAddress, ledger_index: 'current' }))
       return r.result.account_data.Sequence
     },
 
     async validatedLedgerIndex() {
       const c = await ledger()
-      const r = await c.request({ command: 'ledger', ledger_index: 'validated' })
+      const r = await withBackoff(() => c.request({ command: 'ledger', ledger_index: 'validated' }))
       return Number(r.result.ledger_index)
     },
 
     async feeQuote() {
       const c = await ledger()
-      const r = await c.request({ command: 'fee' })
+      const r = await withBackoff(() => c.request({ command: 'fee' }))
       const drops = r.result.drops
       return {
         minimumFee: Number(drops.minimum_fee),
@@ -119,7 +120,7 @@ export function realMintLedger(): MintLedger {
     async lookup(hash) {
       const c = await ledger()
       try {
-        const r = await c.request({ command: 'tx', transaction: hash })
+        const r = await withBackoff(() => c.request({ command: 'tx', transaction: hash }))
         if (!r.result.validated) return { state: 'pending' }
         const meta = r.result.meta
         if (!meta || typeof meta === 'string') return { state: 'validated', result: 'unknown', nfTokenId: null }
@@ -129,8 +130,7 @@ export function realMintLedger(): MintLedger {
           nfTokenId: meta.TransactionResult === 'tesSUCCESS' ? (getNFTokenID(meta) ?? null) : null,
         }
       } catch (err) {
-        const message = err instanceof Error ? err.message : String(err)
-        if (/txnNotFound/i.test(message)) return { state: 'unknown' }
+        if (isTxNotFound(err)) return { state: 'unknown' }
         throw err
       }
     },

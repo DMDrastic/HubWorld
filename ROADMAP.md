@@ -745,6 +745,25 @@ So the three barriers, ranked by how much they hurt:
 2. **Reserves** — ~1 XRP base plus 0.2 per object before anything can be held.
    The pending `Sponsor` amendment targets exactly this, so like delegation the
    fix may arrive from the protocol rather than from us. **Watch it.**
+
+   **The intended use is attendee activation, not organizer reserve** (decided
+   2026-10-20). HubWorld would sponsor a new buyer's base reserve and the 0.2 XRP
+   object reserves for their bid and held ticket, so a first-time attendee needs
+   only the ticket price. Read from the draft spec, so verify before building.
+   Open questions to answer first:
+   - **Abuse:** free wallets invite farming. Tie sponsorship to a completed
+     purchase or a verified sign-in, never to a bare request.
+   - **Recovery:** can the sponsored reserve be reclaimed, and can the attendee
+     walk away with it? This decides whether the cost is a loan or a gift.
+   - **Cost:** ~1.4 XRP locked per new attendee, so ~1,400 XRP for a
+     1,000-person event unless recoverable or priced into the ticket.
+   - **Not for organizers:** the organizer's ~9.4 XRP page reserve for 1,000
+     tickets stays their own cost (shown up front by `reserveNeededDrops`);
+     sponsoring it would make HubWorld carry a large locked balance per organizer.
+
+   Not enabled on mainnet (last checked 2026-10-19), so nothing to build yet. The
+   interim alternative is a small direct XRP payment to new buyers out of the
+   ticket price: works today, but is not reclaimable.
 3. **Volatility and unfamiliarity of paying in XRP** — the one stablecoins
    genuinely solve, and the smallest of the three.
 
