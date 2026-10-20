@@ -39,6 +39,12 @@
  * see the royalty survive delegation. Needs --buyers 2 or more; adds about one
  * price of funding to the second buyer.
  *
+ * --delegate-from-env uses the REAL delegate (the funded production account whose
+ * seed is already in DELEGATE_SEED) instead of a generated throwaway: nothing is
+ * funded for it, it is never swept, and one base reserve is not locked away. Its
+ * seed reaches the child through the environment only, as in mainnet-1000-check.
+ * The broker stays a throwaway: the real broker's seed does not belong in a script.
+ *
  * --rehearse runs the identical flow on devnet/testnet, funding from the
  * faucet, so the process handling and every check can be seen to work for free
  * before any real XRP is involved.
@@ -60,6 +66,7 @@ const REHEARSE = flag('rehearse')
 const YES = flag('yes')
 const RETURN_TO = value('return-to')
 const RESALE = flag('resale')
+const DELEGATE_FROM_ENV = flag('delegate-from-env')
 
 const BUYERS = Math.min(4, Math.max(1, Number(value('buyers') ?? 2)))
 const PRICE_DROPS = BigInt(Math.round(Number(value('price-xrp') ?? 1) * 1_000_000))
@@ -129,20 +136,27 @@ async function parent() {
     const feeDrops = (PRICE_DROPS * BigInt(env.PLATFORM_FEE_BPS)) / 10_000n
     const owed = PRICE_DROPS + feeDrops
     const n = needs(res, owed)
-    const total = n.organizer + n.delegate + n.broker + n.buyer * BigInt(BUYERS) + (RESALE ? owed + 100_000n : 0n)
+    if (DELEGATE_FROM_ENV && !process.env.DELEGATE_SEED) {
+      console.error('--delegate-from-env needs DELEGATE_SEED in the environment.')
+      process.exit(1)
+    }
+    // On a rehearsal this is a devnet account you funded yourself; on mainnet, the real one.
+    const realDelegate = DELEGATE_FROM_ENV ? Wallet.fromSeed(process.env.DELEGATE_SEED!) : null
+    const delegateFunding = realDelegate ? 0n : n.delegate
+    const total = n.organizer + delegateFunding + n.broker + n.buyer * BigInt(BUYERS) + (RESALE ? owed + 100_000n : 0n)
 
     head('Plan')
     console.log(`  network            : ${env.XRPL_NETWORK}${REHEARSE ? '  (REHEARSAL: faucet-funded)' : '  (REAL XRP)'}`)
     console.log(`  reserves           : base ${xrp(res.baseDrops)} XRP, per object ${xrp(res.incDrops)} XRP`)
     console.log(`  tickets / buyers   : ${TICKETS} minted, ${BUYERS} buy; price ${xrp(PRICE_DROPS)} XRP + ${xrp(feeDrops)} platform fee`)
     console.log(`  organizer needs    : ${xrp(n.organizer)} XRP`)
-    console.log(`  delegate needs     : ${xrp(n.delegate)} XRP`)
+    console.log(realDelegate ? `  delegate           : the real one, ${realDelegate.classicAddress} (nothing sent, never swept)` : `  delegate needs     : ${xrp(n.delegate)} XRP`)
     console.log(`  broker needs       : ${xrp(n.broker)} XRP`)
     console.log(`  each buyer needs   : ${xrp(n.buyer)} XRP   (x ${BUYERS})`)
     if (RESALE) console.log(`  + resale           : buyer 2 also needs ${xrp(owed + 100_000n)} XRP to buy the ticket back from buyer 1`)
     console.log(`  TOTAL to send      : ${xrp(total)} XRP`)
     if (!REHEARSE) {
-      const stranded = BigInt(3 + BUYERS) * res.baseDrops + (1n + BigInt(BUYERS)) * res.incDrops
+      const stranded = BigInt((realDelegate ? 2 : 3) + BUYERS) * res.baseDrops + (1n + BigInt(BUYERS)) * res.incDrops
       console.log(`  swept back to      : ${RETURN_TO}`)
       console.log(`  stays locked       : about ${xrp(stranded)} XRP (base reserves + NFT pages; the NFTs block account deletion)`)
       console.log('  the NFTs          : permanent; their URIs point at hubworld.app for a throwaway event slug')
@@ -156,6 +170,16 @@ async function parent() {
       return
     }
 
+    if (realDelegate) {
+      const bal = await balanceOf(client, realDelegate.classicAddress)
+      const spendable = bal === null ? 0n : bal - res.baseDrops
+      console.log(`  real delegate holds ${bal === null ? 'NOTHING' : `${xrp(bal)} XRP (spendable ${xrp(spendable)})`}`)
+      if (spendable < 100_000n) {
+        console.error('  The real delegate cannot pay the fees. Refusing to continue.')
+        return
+      }
+    }
+
     if (!YES && !REHEARSE) {
       console.log('\nDry run: nothing generated or sent. Re-run with --yes to fund and execute.')
       return
@@ -163,7 +187,7 @@ async function parent() {
 
     const wallets = {
       organizer: Wallet.generate(),
-      delegate: Wallet.generate(),
+      delegate: realDelegate ?? Wallet.generate(),
       broker: Wallet.generate(),
       buyers: Array.from({ length: BUYERS }, () => Wallet.generate()),
     }
@@ -171,7 +195,7 @@ async function parent() {
     const resaleExtra = RESALE ? owed + 100_000n : 0n
     const targets: Array<{ label: string; wallet: Wallet; drops: bigint }> = [
       { label: 'organizer', wallet: wallets.organizer, drops: n.organizer },
-      { label: 'delegate ', wallet: wallets.delegate, drops: n.delegate },
+      ...(realDelegate ? [] : [{ label: 'delegate ', wallet: wallets.delegate, drops: n.delegate }]),
       { label: 'broker   ', wallet: wallets.broker, drops: n.broker },
       ...wallets.buyers.map((w, i) => ({ label: `buyer ${i + 1} `, wallet: w, drops: n.buyer + (i === 1 ? resaleExtra : 0n) })),
     ]
@@ -228,7 +252,7 @@ async function parent() {
       return
     }
     head('Sweeping leftovers back')
-    for (const t of [...wallets.buyers.map((w, i) => ({ label: `buyer ${i + 1}`, w })), { label: 'organizer', w: wallets.organizer }, { label: 'broker', w: wallets.broker }, { label: 'delegate', w: wallets.delegate }]) {
+    for (const t of [...wallets.buyers.map((w, i) => ({ label: `buyer ${i + 1}`, w })), { label: 'organizer', w: wallets.organizer }, { label: 'broker', w: wallets.broker }, ...(realDelegate ? [] : [{ label: 'delegate', w: wallets.delegate }])]) {
       try {
         const bal = await balanceOf(client, t.w.classicAddress)
         if (bal === null) continue
