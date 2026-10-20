@@ -33,6 +33,8 @@ const fake = vi.hoisted(() => ({
   awaitResult: (): { ok: true } | { ok: false; code: string } => ({ ok: true }),
   created: [] as Created[],
   cancelled: [] as string[][],
+  /** How many times the leased submit was attempted. */
+  starts: 0,
   n: 0,
 }))
 
@@ -50,6 +52,7 @@ vi.mock('../src/primary-sale-ledger.js', () => {
       return fake.funding
     },
     async startSellOffer(tx: Created) {
+      fake.starts += 1
       if (fake.offerDelayMs) await new Promise((r) => setTimeout(r, fake.offerDelayMs))
       const r = fake.result()
       if (!r.ok) return r
@@ -192,6 +195,7 @@ beforeEach(async () => {
     awaitResult: () => ({ ok: true }),
     created: [],
     cancelled: [],
+    starts: 0,
     n: 0,
   })
   let c = 0
@@ -736,6 +740,66 @@ describe('when the offer cannot be made', () => {
     expect(await ticketStatuses(event.id)).toEqual(['MINTED'])
     // The offer exists on the ledger by now, so it is taken off.
     expect(fake.cancelled).toEqual([['OFFER1'.padEnd(64, '0')]])
+  })
+})
+
+describe('a stale sequence read', () => {
+  it('is retried, not reported as a failed sale', async () => {
+    // The first real mainnet run lost one of two simultaneous buyers to this: the
+    // second offer read the organizer's sequence from a view that had not yet seen
+    // the first, and came back tefPAST_SEQ with nothing submitted.
+    const org = await mkUser('org', 'ORGANIZER')
+    const buyer = await mkUser('buyer')
+    const event = await mkEvent(org)
+    await mkTickets(event, org, 1)
+    let calls = 0
+    fake.result = () => (++calls < 3 ? { ok: false, code: 'tefPAST_SEQ' } : { ok: true })
+
+    const res = await checkout(buyer, event.slug)
+
+    expect(res.status).toBe(201)
+    expect(fake.starts).toBe(3)
+    expect(await ticketStatuses(event.id)).toEqual(['LISTED'])
+  })
+
+  it('treats terPRE_SEQ the same way', async () => {
+    const org = await mkUser('org', 'ORGANIZER')
+    const buyer = await mkUser('buyer')
+    const event = await mkEvent(org)
+    await mkTickets(event, org, 1)
+    let calls = 0
+    fake.result = () => (++calls < 2 ? { ok: false, code: 'terPRE_SEQ' } : { ok: true })
+
+    expect((await checkout(buyer, event.slug)).status).toBe(201)
+  })
+
+  it('gives up after a few attempts, releasing the ticket and charging nothing', async () => {
+    const org = await mkUser('org', 'ORGANIZER')
+    const buyer = await mkUser('buyer')
+    const event = await mkEvent(org)
+    await mkTickets(event, org, 1)
+    fake.result = () => ({ ok: false, code: 'tefPAST_SEQ' })
+
+    const res = await checkout(buyer, event.slug)
+
+    expect(res.status).toBe(502)
+    expect(fake.starts).toBe(4)
+    expect(await ticketStatuses(event.id)).toEqual(['MINTED'])
+    expect(createPayload).not.toHaveBeenCalled()
+  })
+
+  it('does NOT retry a real verdict', async () => {
+    const org = await mkUser('org', 'ORGANIZER')
+    const buyer = await mkUser('buyer')
+    const event = await mkEvent(org)
+    await mkTickets(event, org, 1)
+    fake.result = () => ({ ok: false, code: 'terNO_DELEGATE_PERMISSION' })
+
+    const res = await checkout(buyer, event.slug)
+
+    // A revoked grant will not un-revoke itself; retrying would only burn time.
+    expect(res.status).toBe(409)
+    expect(fake.starts).toBe(1)
   })
 })
 

@@ -62,6 +62,31 @@ export interface PrimarySaleLedger {
 const VALIDATE_TIMEOUT_MS = 30_000
 const POLL_MS = 1_000
 
+/** How long the organizer's account is held for its new sequence to become visible. */
+const SEQUENCE_VISIBLE_TIMEOUT_MS = 6_000
+const SEQUENCE_POLL_MS = 150
+
+/**
+ * Wait until the organizer's `current` sequence is past `used`.
+ *
+ * Gives up quietly at the timeout rather than failing: the offer HAS been
+ * submitted, so reporting an error would invite a retry that creates a second one.
+ * A caller that races the stale view anyway meets the retry on `tefPAST_SEQ`.
+ */
+async function waitForSequenceToAdvance(c: Awaited<ReturnType<typeof ledger>>, account: string, used: number): Promise<void> {
+  if (!(used > 0)) return
+  const begun = Date.now()
+  while (Date.now() - begun < SEQUENCE_VISIBLE_TIMEOUT_MS) {
+    try {
+      const r = await c.request({ command: 'account_info', account, ledger_index: 'current' })
+      if (r.result.account_data.Sequence > used) return
+    } catch {
+      // A failed read says nothing; keep looking until the timeout.
+    }
+    await new Promise((resolve) => setTimeout(resolve, SEQUENCE_POLL_MS))
+  }
+}
+
 export function realPrimarySaleLedger(): PrimarySaleLedger {
   return {
     readPermission(organizerAddress, delegateAddress) {
@@ -91,6 +116,15 @@ export function realPrimarySaleLedger(): PrimarySaleLedger {
         const prelim = String(submitted.result.engine_result)
         // Only these can still become a validated success.
         if (prelim !== 'tesSUCCESS' && prelim !== 'terQUEUED') return { ok: false, code: prelim }
+
+        // Do not hand the account to the next checkout until THIS offer's sequence
+        // is visible to it. The next one reads the organizer's sequence the moment
+        // the lease is released, and on mainnet that read can be served from a view
+        // that has not yet seen this submission: it then reuses the same number and
+        // comes back `tefPAST_SEQ`. Devnet is one node and never showed it; the
+        // first real mainnet run lost one of two simultaneous buyers to it.
+        await waitForSequenceToAdvance(c, tx.Account, Number((prepared as { Sequence?: number }).Sequence ?? 0))
+
         return {
           ok: true,
           hash: signed.hash,
