@@ -36,6 +36,11 @@ import { HOLD_MS, checkSellOffer, checkoutRoom, holdReclaimable } from './primar
 /** Statuses in which a checkout's listing still holds a ticket. */
 const OPEN = ['PENDING_OFFER', 'ACTIVE', 'BUYER_PENDING', 'SETTLING'] as const
 
+/** Result codes that mean "your sequence was stale", where nothing was submitted. */
+const SEQUENCE_RACE = new Set(['tefPAST_SEQ', 'terPRE_SEQ'])
+const SEQUENCE_RETRIES = 4
+const SEQUENCE_RETRY_MS = 300
+
 /** Attempts to find a ticket the organizer really still holds, before giving up. */
 const CLAIM_ATTEMPTS = 3
 
@@ -304,7 +309,20 @@ export async function startCheckout(input: {
   // Only the SUBMIT is one-at-a-time: it is where the organizer's sequence is read
   // and spent. The wait for validation is not, so a crowd's offers go out
   // back-to-back and validate together instead of queueing one ledger close each.
-  const submitted = await withOrganizerLease(event.organizer.xrplAddress, () => ledger.startSellOffer(tx))
+  //
+  // A sequence collision (`tefPAST_SEQ`, `terPRE_SEQ`) is a race with a stale read,
+  // not a verdict on the sale: nothing was submitted, so trying again with a fresh
+  // read is safe. The first real mainnet run lost one of two simultaneous buyers
+  // to it; a few quick attempts make that a non-event.
+  let submitted = await withOrganizerLease(event.organizer.xrplAddress, () => ledger.startSellOffer(tx))
+  for (
+    let attempt = 1;
+    attempt < SEQUENCE_RETRIES && !submitted.busy && !submitted.value.ok && SEQUENCE_RACE.has(submitted.value.code);
+    attempt++
+  ) {
+    await new Promise((resolve) => setTimeout(resolve, SEQUENCE_RETRY_MS))
+    submitted = await withOrganizerLease(event.organizer.xrplAddress, () => ledger.startSellOffer(tx))
+  }
   if (submitted.busy) {
     await releaseHold(claim.listingId, ledger, 'Organizer account was busy')
     return refuse(503, 'Lots of people are buying right now. Try again in a moment.', 'BUSY')

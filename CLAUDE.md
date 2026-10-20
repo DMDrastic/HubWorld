@@ -1383,6 +1383,21 @@ reason the script's own bugs were found for free. They write rows into whatever
 database you point them at: use a clean local one, because they refuse a database
 holding another ledger's rows (the same guard the server applies at boot).
 
+**The first real mainnet run (2026-10-20) found what devnet could not.** 11 of 14
+checks passed: grant, 3 of 3 mints at 12 drops each, a complete sale (the organizer
+received exactly the price, the broker exactly its fee), no offers left open, revoking
+SELLING while keeping minting, and sales closing afterwards. One of two simultaneous
+buyers was refused with `tefPAST_SEQ` — safely, nothing charged — and the other two
+failing checks followed from it. The cause: the organizer's account was released the
+moment an offer was SUBMITTED, and the next checkout read the organizer's sequence
+from a view that had not yet seen it, so it reused the number. Devnet is a single node
+and never showed it; mainnet's public cluster does. Fixed two ways: `startSellOffer`
+holds the account until the new sequence is visible (`waitForSequenceToAdvance`),
+and a stale-sequence code (`tefPAST_SEQ`, `terPRE_SEQ`) is retried a few times
+because nothing was submitted. **Lesson: a concurrency fix verified on a one-node
+ledger is only verified for one node. Read-after-write is not a given on mainnet.**
+Transactions: grant `16750ADF…AF2C`, sale match `B256F917…91EA`, revoke `F4B997C7…CCCB`.
+
 **Batch transactions do not rescue this, on two counts.** The `Batch` amendment
 (XLS-56) would let one signature carry several inner mints, but a signature-
 validation flaw found on 19 Feb 2026 led to rippled 3.1.1 marking both `Batch`
