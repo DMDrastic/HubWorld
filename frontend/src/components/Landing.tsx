@@ -102,8 +102,6 @@ import { LandingPhoneShowcase } from '@/components/LandingPhoneShowcase'
 import { Button } from '@/components/ui/button'
 import type { AuthUser, Health } from '@/lib/api'
 
-const REPO = 'https://github.com/DMDrastic/HubWorld'
-
 /**
  * What the quiet closing line claims, given what we actually know. True on
  * every network as written; the qualifier is added ONLY when the server has
@@ -640,10 +638,7 @@ export function Landing({
       {/* ------------------------------------------------------------- 6.
           Final CTA. Organizer-focused and deliberately calm — one button,
           not a competing pair, and the proof line folded in underneath
-          rather than given its own section. "See how it works" points at
-          the real GitHub source (the same link the Footer already uses)
-          rather than a technical page that doesn't exist — Footer.tsx
-          explains why an honest destination matters more than a tidy one. */}
+          rather than given its own section. */}
       <section>
         <div className="mx-auto max-w-4xl px-4">
           <Reveal>
@@ -674,15 +669,7 @@ export function Landing({
                 </Button>
               </div>
               <p className="mx-auto mt-6 max-w-sm text-sm leading-relaxed text-white/75">
-                Built and tested through a full mainnet rehearsal — real tickets, real settlement.{' '}
-                <a
-                  href={REPO}
-                  target="_blank"
-                  rel="noreferrer noopener"
-                  className="underline underline-offset-2 text-white"
-                >
-                  See how it works
-                </a>
+                Built and tested through a full mainnet rehearsal — real tickets, real settlement.
               </p>
             </div>
           </Reveal>
