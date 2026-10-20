@@ -100,18 +100,18 @@ describe('DelegationPanel', () => {
     mockApi([ME('not_granted')])
     renderPanel()
 
-    expect(await screen.findByText(/mint and nothing else/i)).toBeTruthy()
-    expect(screen.getByText(/take the permission back here at any time/i)).toBeTruthy()
-    expect(screen.getByRole('button', { name: /let hubworld mint for me/i })).toBeTruthy()
+    expect(await screen.findByText(/can only create tickets/i)).toBeTruthy()
+    expect(screen.getByText(/turn it off here at any time/i)).toBeTruthy()
+    expect(screen.getByRole('button', { name: /allow hubworld to create tickets/i })).toBeTruthy()
   })
 
   it('offers revoking as prominently as granting once granted', async () => {
     mockApi([ME('granted')])
     renderPanel()
 
-    expect(await screen.findByText(/can mint tickets for you/i)).toBeTruthy()
-    expect(screen.getByRole('button', { name: /revoke minting access/i })).toBeTruthy()
-    expect(screen.queryByRole('button', { name: /let hubworld mint for me/i })).toBeNull()
+    expect(await screen.findByText(/can create tickets for you/i)).toBeTruthy()
+    expect(screen.getByRole('button', { name: /turn off ticket creation/i })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: /allow hubworld to create tickets/i })).toBeNull()
   })
 
   it('never words an unreadable ledger as a revocation', async () => {
@@ -120,7 +120,7 @@ describe('DelegationPanel', () => {
 
     expect(await screen.findByText(/couldn't read your account/i)).toBeTruthy()
     expect(screen.getByText(/hasn't changed/i)).toBeTruthy()
-    expect(screen.queryByText(/cannot mint for you/i)).toBeNull()
+    expect(screen.queryByText(/can't create tickets for you/i)).toBeNull()
     expect(screen.getByRole('button', { name: /check again/i })).toBeTruthy()
   })
 
@@ -131,7 +131,7 @@ describe('DelegationPanel', () => {
     )
     renderPanel()
 
-    ;(await screen.findByRole('button', { name: /let hubworld mint for me/i })).click()
+    ;(await screen.findByRole('button', { name: /allow hubworld to create tickets/i })).click()
     await screen.findByAltText(/approval qr/i)
     expect(calls.posts).toEqual(['grant'])
     expect(await screen.findByText(/scan in xaman to approve/i)).toBeTruthy()
@@ -141,25 +141,25 @@ describe('DelegationPanel', () => {
     expect(await screen.findByText(/waiting for the ledger/i)).toBeTruthy()
 
     await vi.advanceTimersByTimeAsync(3000)
-    expect(await screen.findByText(/can mint tickets for you/i)).toBeTruthy()
+    expect(await screen.findByText(/can create tickets for you/i)).toBeTruthy()
   })
 
   it('revokes through its own endpoint and ends not-granted', async () => {
     const calls = mockApi([ME('granted'), ME('granted'), ME('not_granted')], [{ state: 'revoked' }])
     renderPanel()
 
-    ;(await screen.findByRole('button', { name: /revoke minting access/i })).click()
+    ;(await screen.findByRole('button', { name: /turn off ticket creation/i })).click()
     await screen.findByAltText(/revoke qr/i)
     expect(calls.posts).toEqual(['revoke'])
 
-    expect(await screen.findByText(/cannot mint for you yet/i)).toBeTruthy()
+    expect(await screen.findByText(/can't create tickets for you yet/i)).toBeTruthy()
   })
 
   it('polls at the pace it claims, not on every response', async () => {
     const calls = mockApi([ME('not_granted')], [{ state: 'pending' }])
     renderPanel()
 
-    ;(await screen.findByRole('button', { name: /let hubworld mint for me/i })).click()
+    ;(await screen.findByRole('button', { name: /allow hubworld to create tickets/i })).click()
     await screen.findByAltText(/approval qr/i)
 
     // 10s at a 2.5s cadence: the first immediate poll plus about four more. A
@@ -173,7 +173,7 @@ describe('DelegationPanel', () => {
     const calls = mockApi([ME('not_granted')], [{ state: 'failed', reason: 'ledger said no' }])
     renderPanel()
 
-    ;(await screen.findByRole('button', { name: /let hubworld mint for me/i })).click()
+    ;(await screen.findByRole('button', { name: /allow hubworld to create tickets/i })).click()
     expect(await screen.findByText(/ledger said no/i)).toBeTruthy()
 
     const after = calls.polls
@@ -185,7 +185,7 @@ describe('DelegationPanel', () => {
     const calls = mockApi([ME('not_granted')], [{ state: 'rejected' }])
     renderPanel()
 
-    ;(await screen.findByRole('button', { name: /let hubworld mint for me/i })).click()
+    ;(await screen.findByRole('button', { name: /allow hubworld to create tickets/i })).click()
     expect(await screen.findByText(/declined in xaman/i)).toBeTruthy()
 
     const after = calls.polls
@@ -197,7 +197,7 @@ describe('DelegationPanel', () => {
     mockApi([ME('not_granted', { staleGrant: true })])
     renderPanel()
 
-    expect(await screen.findByText(/has since been replaced/i)).toBeTruthy()
+    expect(await screen.findByText(/has since replaced/i)).toBeTruthy()
   })
 })
 
@@ -243,37 +243,37 @@ describe('DelegationPanel: minting and selling are separate', () => {
     mockTwo([ME2('granted', 'not_granted')])
     renderPanel()
 
-    expect(await screen.findByText(/can mint tickets for you/i)).toBeTruthy()
-    expect(screen.getByText(/cannot list tickets for you yet/i)).toBeTruthy()
+    expect(await screen.findByText(/can create tickets for you/i)).toBeTruthy()
+    expect(screen.getByText(/can't sell tickets for you yet/i)).toBeTruthy()
     // The larger trust says so in words: it can list ANY ticket in the account.
     expect(screen.getByText(/can list any ticket in your account/i)).toBeTruthy()
-    expect(screen.getByRole('button', { name: /let hubworld sell for me/i })).toBeTruthy()
-    expect(screen.getByRole('button', { name: /revoke minting access/i })).toBeTruthy()
+    expect(screen.getByRole('button', { name: /allow hubworld to sell tickets/i })).toBeTruthy()
+    expect(screen.getByRole('button', { name: /turn off ticket creation/i })).toBeTruthy()
   })
 
   it('asks for selling WITHOUT touching minting', async () => {
     const bodies = mockTwo([ME2('granted', 'not_granted'), ME2('granted', 'not_granted'), ME2('granted', 'granted')], [{ state: 'granted' }])
     renderPanel()
 
-    ;(await screen.findByRole('button', { name: /let hubworld sell for me/i })).click()
+    ;(await screen.findByRole('button', { name: /allow hubworld to sell tickets/i })).click()
     await screen.findByAltText(/selling approval qr/i)
 
     expect(bodies).toEqual([{ path: 'grant', body: { permission: 'offers' } }])
-    expect(await screen.findByText(/can list your tickets for sale/i)).toBeTruthy()
+    expect(await screen.findByText(/can sell tickets for you/i)).toBeTruthy()
     // Minting is untouched by it.
-    expect(screen.getByText(/can mint tickets for you/i)).toBeTruthy()
+    expect(screen.getByText(/can create tickets for you/i)).toBeTruthy()
   })
 
   it('revokes minting only, naming the permission so selling stays', async () => {
     const bodies = mockTwo([ME2('granted', 'granted'), ME2('granted', 'granted'), ME2('not_granted', 'granted')], [{ state: 'revoked' }])
     renderPanel()
 
-    ;(await screen.findByRole('button', { name: /revoke minting access/i })).click()
+    ;(await screen.findByRole('button', { name: /turn off ticket creation/i })).click()
     await screen.findByAltText(/revoke qr/i)
 
     expect(bodies).toEqual([{ path: 'revoke', body: { permission: 'mint' } }])
-    expect(await screen.findByText(/cannot mint for you yet/i)).toBeTruthy()
-    expect(screen.getByText(/can list your tickets for sale/i)).toBeTruthy()
+    expect(await screen.findByText(/can't create tickets for you yet/i)).toBeTruthy()
+    expect(screen.getByText(/can sell tickets for you/i)).toBeTruthy()
   })
 
   it('shows only minting against a server that predates the second permission', async () => {
@@ -282,8 +282,8 @@ describe('DelegationPanel: minting and selling are separate', () => {
     ])
     renderPanel()
 
-    expect(await screen.findByText(/can mint tickets for you/i)).toBeTruthy()
-    expect(screen.queryByText(/selling for you/i)).toBeNull()
+    expect(await screen.findByText(/can create tickets for you/i)).toBeTruthy()
+    expect(screen.queryByText(/allow ticket selling/i)).toBeNull()
   })
 
   it('does not word an unreadable ledger as a revocation on either card', async () => {
@@ -291,7 +291,7 @@ describe('DelegationPanel: minting and selling are separate', () => {
     renderPanel()
 
     expect((await screen.findAllByText(/couldn't read your account/i)).length).toBe(2)
-    expect(screen.queryByText(/cannot mint for you/i)).toBeNull()
-    expect(screen.queryByText(/cannot list tickets/i)).toBeNull()
+    expect(screen.queryByText(/can't create tickets for you/i)).toBeNull()
+    expect(screen.queryByText(/can't sell tickets/i)).toBeNull()
   })
 })

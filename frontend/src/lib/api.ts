@@ -384,6 +384,8 @@ export const MintJobSchema = z.object({
   eventSlug: z.string().optional(),
   status: MintJobStatusSchema,
   statusReason: z.string().nullable(),
+  /** Why a QUEUED run is waiting. Absent from a server that predates it. */
+  waiting: z.enum(['fees', 'network', 'account']).nullish(),
   total: z.number(),
   minted: z.number(),
   failedTxs: z.number(),
@@ -406,6 +408,22 @@ export function startBulkMint(slug: string, count: number): Promise<MintJob> {
     method: 'POST',
     body: { count },
   })
+}
+
+export const MintEstimateSchema = z.object({
+  count: z.number(),
+  /** Reserve this run locks on the organizer's account, in drops. */
+  reserveDrops: z.string(),
+  /** Null when the ledger could not be read: "unknown" is not "nothing". */
+  spendableDrops: z.string().nullable(),
+  enough: z.boolean().nullable(),
+  seconds: z.number(),
+})
+
+export type MintEstimate = z.infer<typeof MintEstimateSchema>
+
+export function fetchMintEstimate(slug: string, count: number): Promise<MintEstimate> {
+  return request(`/events/${encodeURIComponent(slug)}/mint/estimate?count=${count}`, MintEstimateSchema)
 }
 
 export function fetchMintJobs(slug: string): Promise<MintJob[]> {

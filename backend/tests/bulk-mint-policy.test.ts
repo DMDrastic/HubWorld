@@ -11,11 +11,14 @@ import {
   MEASURED_PAGES,
   NFTS_PER_PAGE,
   WAVE_SIZE,
+  WAIT_REASONS,
   decideFee,
+  estimateMintSeconds,
   judgeWave,
   nextWaveSize,
   planBulkMint,
   reserveNeededDrops,
+  waitKind,
   waveOutcome,
 } from '../src/bulk-mint-policy.js'
 
@@ -183,5 +186,40 @@ describe('waveOutcome', () => {
 
   it('treats the unvalidated as dead only PAST LastLedgerSequence, not at it', () => {
     expect(waveOutcome({ hashes, validated: new Set(['a']), currentLedger: 101, lastLedgerSequence: 100 })).toBe('settled')
+  })
+})
+
+describe('estimateMintSeconds', () => {
+  it('is never quicker than the measured mainnet runs', () => {
+    // 1,000 tickets took 736s on mainnet, with five fee waits in it.
+    expect(estimateMintSeconds(1000)).toBeGreaterThanOrEqual(736 * 0.9)
+    expect(estimateMintSeconds(1000)).toBeLessThanOrEqual(736 * 1.2)
+  })
+
+  it('rounds up and scales with the count', () => {
+    expect(estimateMintSeconds(1)).toBe(1)
+    expect(estimateMintSeconds(2600)).toBe(2 * estimateMintSeconds(1300))
+  })
+})
+
+describe('waitKind', () => {
+  it('recognises the reason decideFee ACTUALLY gives, not a copy of it', () => {
+    const spiked = decideFee({ minimumFee: 5000, openLedgerFee: 10 }, DEFAULT_MAX_FEE_DROPS)
+    expect(spiked.ok).toBe(false)
+    if (!spiked.ok) expect(waitKind('QUEUED', spiked.reason)).toBe('fees')
+  })
+
+  it('classifies every reason the worker queues a retry with', () => {
+    expect(waitKind('QUEUED', WAIT_REASONS.nodeBusy)).toBe('network')
+    expect(waitKind('QUEUED', WAIT_REASONS.ledgerUnreadable)).toBe('network')
+    expect(waitKind('QUEUED', WAIT_REASONS.accountBusy)).toBe('account')
+  })
+
+  it('is not a wait unless the run is queued (positive control for the above)', () => {
+    for (const status of ['RUNNING', 'PAUSED', 'FAILED', 'DONE', 'CANCELLED']) {
+      expect(waitKind(status, WAIT_REASONS.nodeBusy)).toBeNull()
+    }
+    expect(waitKind('QUEUED', null)).toBeNull()
+    expect(waitKind('QUEUED', 'Hit an unexpected error; retrying shortly')).toBeNull()
   })
 })

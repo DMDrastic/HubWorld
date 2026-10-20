@@ -822,6 +822,7 @@ Hubworld out of the funds-custody path. Changing this changes who mints.
 | `POST /api/delegation/revoke` | organizer-only; the inverse, naming the delegate the grant named |
 | `GET /api/delegation/:uuid` | poll → `pending` / `granted` / `revoked` / `rejected` / `expired` / `failed` |
 | `GET /api/delegation/me` | organizer-only; ledger-read state: `granted` / `not_granted` / `unknown` / `unavailable` |
+| `GET /api/events/:slug/mint/estimate?count=` | organizer-only; what a run of N asks of the organizer BEFORE it starts: reserve, their spendable XRP (null if unreadable), `enough`, and seconds |
 | `POST /api/events/:slug/mint/bulk` | organizer-only; start an unattended run of N delegated mints (no signature) |
 | `GET /api/events/:slug/mint/jobs` | organizer-only; recent runs for the event |
 | `GET /api/mint/jobs/:id` | a run's progress: status, reason, minted of total |
