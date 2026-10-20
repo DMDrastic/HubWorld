@@ -57,6 +57,9 @@ const renderScan = (onAdmitted = vi.fn(), onDone = vi.fn()) =>
     </StrictMode>,
   )
 const see = async (code: string) => {
+  // The scanner is lazy-loaded, so "the screen says ready" does not mean it has
+  // mounted yet. Under load a code could be shown to a camera that is not there.
+  await screen.findByTestId('scanner')
   await act(async () => {
     seen.props!.onCode(code)
   })
