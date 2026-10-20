@@ -333,5 +333,8 @@ organizersRouter.get('/policy', (_req, res) => {
   res.json({
     platformBps: env.PLATFORM_FEE_BPS,
     maxRoyaltyBps: env.MAX_ROYALTY_BPS,
+    // Whether this server can sign door codes, so the form offers the choice only
+    // where it will work.
+    doorCodes: doorTokenMode === 'live',
   })
 })

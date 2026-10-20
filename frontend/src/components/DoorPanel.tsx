@@ -19,14 +19,17 @@ import {
   ApiError,
   fetchDoor,
   fetchDoorEvents,
+  fetchPolicy,
   fetchStaff,
   removeStaff,
+  setDoorMode,
   pollCheckIn,
   startCheckIn,
   type CheckInCreated,
   type CheckInState,
   type Door,
   type DoorEvent,
+  type DoorMode,
 } from '@/lib/api'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -61,6 +64,15 @@ export function DoorPanel() {
   // the section stays hidden.
   const [staff, setStaff] = useState<Array<{ username: string }> | null>(null)
   const [newStaff, setNewStaff] = useState('')
+  // Whether this server can run the code door, so the organizer is only offered it where it will work.
+  const [doorCodes, setDoorCodes] = useState(false)
+
+  useEffect(() => {
+    fetchPolicy().then(
+      (p) => setDoorCodes(p.doorCodes === true),
+      () => undefined,
+    )
+  }, [])
 
   useEffect(() => {
     void fetchDoorEvents()
@@ -130,6 +142,18 @@ export function DoorPanel() {
       window.clearTimeout(timer)
     }
   }, [activeUuid, loadDoor])
+
+  async function changeMode(mode: DoorMode) {
+    setBusy(true)
+    try {
+      const done = await setDoorMode(slug, mode)
+      setEvents((list) => list.map((e) => (e.slug === done.slug ? { ...e, doorMode: done.doorMode } : e)))
+    } catch (err) {
+      setPhase({ kind: 'failed', reason: err instanceof ApiError ? err.message : 'Could not change the door' })
+    } finally {
+      setBusy(false)
+    }
+  }
 
   async function scan() {
     setBusy(true)
@@ -203,6 +227,27 @@ export function DoorPanel() {
               <Button onClick={() => void scan()} disabled={busy || !slug} className="w-full">
                 {busy ? 'Preparing…' : 'Check someone in'}
               </Button>
+            )}
+
+            {/* The organizer's choice, not door staff's: `staff` only loads for the organizer. */}
+            {staff !== null && (doorCodes || byCode) && (
+              <div className="space-y-1 border-t pt-3">
+                <label htmlFor="door-mode" className="text-muted-foreground text-xs">
+                  How guests get in
+                </label>
+                <select
+                  id="door-mode"
+                  value={byCode ? 'QR' : 'SIGNATURE'}
+                  disabled={busy}
+                  onChange={(e) => void changeMode(e.target.value as DoorMode)}
+                  className="border-input bg-background focus-visible:border-ring focus-visible:ring-ring/50 w-full rounded-lg border px-3 py-2 text-sm transition-colors focus-visible:ring-[3px] focus-visible:outline-none"
+                >
+                  <option value="QR" disabled={!doorCodes}>
+                    Guests show a code (fast)
+                  </option>
+                  <option value="SIGNATURE">Guests approve in Xaman (strictest)</option>
+                </select>
+              </div>
             )}
 
             {staff !== null && (

@@ -389,3 +389,12 @@ describe('POST /events chooses the door mode', () => {
     expect(res.body.code).toBe('DOOR_CODES_OFF')
   })
 })
+
+describe('GET /policy says whether door codes exist', () => {
+  it('is true where this server can sign codes and false where it cannot, so the form offers only what works', async () => {
+    expect((await request(app).get('/api/policy')).body.doorCodes).toBe(true)
+
+    state.mode = 'disabled'
+    expect((await request(app).get('/api/policy')).body.doorCodes).toBe(false)
+  })
+})

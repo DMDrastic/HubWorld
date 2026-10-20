@@ -96,6 +96,17 @@ ticket sold since mint-and-list became one signature, plus ~2 per attendee. An
 exhausted application stops sign-in for EVERYONE, not just the event that
 exhausted it.
 
+**The door was one of the two per-attendee payloads, and no longer has to be**
+(2026-10-20). An event can now let people in by a short-lived code the attendee
+displays and staff scan (`Event.doorMode = QR`, see `CLAUDE.md` "Check-in at the
+door"), which creates no Xaman payload and takes a couple of seconds a guest instead
+of an estimated 10-20. The signature door remains, per event, for the cases that need
+a wallet key at the door. That removes one payload per attendee from the quota and
+one Xaman dependency from the busiest minute of an event, but it is built, not
+proven: **still to do** is a real-device pass (iPhone Safari as the staff scanner, a
+phone in a queue in bad light), a measured per-guest time at a real door, and a
+decision on whether to keep the HubWorld session the code relies on short-lived.
+
 **The concentration risk is worse than the quota, and "free" makes it worse
 still.** Auth, minting, resale, bidding and the door all route through one
 vendor. There are no paid tiers, so there is no contract, no SLA, and no

@@ -8,12 +8,16 @@
  */
 import { StrictMode } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { DoorPanel } from '@/components/DoorPanel'
 
 vi.mock('@/components/DoorScanner', () => ({ default: () => <div data-testid="camera" /> }))
 
-function mockApi(doorMode: 'QR' | 'SIGNATURE' | undefined) {
+function mockApi(
+  doorMode: 'QR' | 'SIGNATURE' | undefined,
+  opts: { organizer?: boolean; doorCodes?: boolean } = {},
+) {
+  const { organizer = true, doorCodes = true } = opts
   const posts: string[] = []
   vi.stubGlobal(
     'fetch',
@@ -21,9 +25,15 @@ function mockApi(doorMode: 'QR' | 'SIGNATURE' | undefined) {
       const url = typeof input === 'string' ? input : input.toString()
       const method = init?.method ?? 'GET'
       const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
-      if (url.endsWith('/door/events')) return json({ events: [{ slug: 'neon', title: 'Neon Night', via: 'organizer', ...(doorMode ? { doorMode } : {}) }] })
+      if (url.endsWith('/door/events')) return json({ events: [{ slug: 'neon', title: 'Neon Night', via: organizer ? 'organizer' : 'staff', ...(doorMode ? { doorMode } : {}) }] })
       if (url.endsWith('/events/neon/door')) return json({ event: { slug: 'neon', title: 'Neon Night' }, admitted: 3, issued: 10, recent: [] })
-      if (url.endsWith('/events/neon/staff')) return json({ staff: [] })
+      if (url.endsWith('/events/neon/staff')) return organizer ? json({ staff: [] }) : json({ error: 'Only the organizer' }, 403)
+      if (url.endsWith('/policy')) return json({ platformBps: 250, maxRoyaltyBps: 2000, doorCodes })
+      if (url.endsWith('/events/neon/door-mode') && method === 'POST') {
+        const mode = JSON.parse(String(init?.body)).mode
+        posts.push(`door-mode:${mode}`)
+        return json({ slug: 'neon', doorMode: mode })
+      }
       if (method === 'POST') {
         posts.push(url)
         return json({ checkInId: 'c', uuid: 'u', next: 'n', qrPng: 'data:image/png;base64,AA', expiresAt: new Date().toISOString(), mode: 'stub', event: { slug: 'neon', title: 'Neon Night' } }, 201)
@@ -92,5 +102,44 @@ describe('DoorPanel by door mode', () => {
     renderPanel()
 
     expect(await screen.findByText('3/10 in')).toBeTruthy()
+  })
+
+  describe('the organizer\'s switch', () => {
+    it('lets the organizer change how guests get in, and the door follows at once', async () => {
+      const posts = mockApi('QR')
+      renderPanel()
+      const select = (await screen.findByLabelText(/how guests get in/i)) as HTMLSelectElement
+      expect(select.value).toBe('QR')
+      expect(await screen.findByRole('button', { name: /scan tickets/i })).toBeTruthy()
+
+      fireEvent.change(select, { target: { value: 'SIGNATURE' } })
+
+      expect(await screen.findByRole('button', { name: /check someone in/i })).toBeTruthy()
+      expect(posts).toContain('door-mode:SIGNATURE')
+      expect(screen.queryByRole('button', { name: /scan tickets/i })).toBeNull()
+    })
+
+    it('is not shown to door staff, who may check people in and nothing else', async () => {
+      mockApi('QR', { organizer: false })
+      renderPanel()
+
+      await screen.findByRole('button', { name: /scan tickets/i })
+      expect(screen.queryByLabelText(/how guests get in/i)).toBeNull()
+    })
+
+    it('does not offer a code door the server cannot run, but still shows an event that has one', async () => {
+      mockApi('SIGNATURE', { doorCodes: false })
+      const { unmount } = renderPanel()
+      await screen.findByRole('button', { name: /check someone in/i })
+      // Nothing useful to switch to, so no switch.
+      expect(screen.queryByLabelText(/how guests get in/i)).toBeNull()
+      unmount()
+
+      mockApi('QR', { doorCodes: false })
+      renderPanel()
+      const select = await screen.findByLabelText(/how guests get in/i)
+      const qr = select.querySelector('option[value="QR"]') as HTMLOptionElement
+      expect(qr.disabled).toBe(true)
+    })
   })
 })

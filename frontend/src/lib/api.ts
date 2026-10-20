@@ -934,6 +934,15 @@ export function scanCode(slug: string, token: string): Promise<CheckInState> {
   })
 }
 
+/** Switch how an event lets people in. The organizer's. */
+export function setDoorMode(slug: string, mode: DoorMode): Promise<{ slug: string; doorMode: DoorMode }> {
+  return request(
+    `/events/${encodeURIComponent(slug)}/door-mode`,
+    z.object({ slug: z.string(), doorMode: DoorModeSchema }),
+    { method: 'POST', body: { mode } },
+  )
+}
+
 export function pollCheckIn(uuid: string): Promise<CheckInState> {
   return request(`/checkin/${encodeURIComponent(uuid)}`, CheckInStateSchema)
 }
@@ -990,6 +999,8 @@ export function fetchDoor(slug: string): Promise<Door> {
 export const PolicySchema = z.object({
   platformBps: z.number(),
   maxRoyaltyBps: z.number(),
+  /** Whether this server can run the code door. Absent from a server that predates it. */
+  doorCodes: z.boolean().optional(),
 })
 
 export const OrganizerStatusSchema = z.object({
@@ -1094,6 +1105,8 @@ export function createEvent(body: {
   resaleCapDrops?: string
   /** Box-office price in drops. Omit for an event with no checkout. */
   primaryPriceDrops?: string
+  /** How guests are let in. Omit to take the server's default. */
+  doorMode?: DoorMode
 }): Promise<z.infer<typeof CreatedEventSchema>> {
   return request('/events', CreatedEventSchema, { method: 'POST', body })
 }
