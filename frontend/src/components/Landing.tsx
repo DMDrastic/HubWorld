@@ -79,20 +79,22 @@
  * before; only the background (color + gradient) now paints to the true
  * screen edge behind it.
  *
- * `overflow-x-clip`, NOT `overflow-x-hidden` — this is load-bearing, found
- * by testing rather than reasoning about it in the abstract.
- * `position: sticky` in `LandingPhoneShowcase` genuinely broke under
- * `hidden`: a Playwright check scrolling through the five steps showed the
- * phone's Y position drifting hundreds of pixels instead of holding
- * steady, because an ancestor with `overflow-x: hidden` computes
- * `overflow-y: auto` (CSS2.1's "the other axis becomes auto" rule), which
- * is enough to make that ancestor the nearest scrolling container sticky
- * resolves against — even though nothing about this wrapper actually
- * scrolls independently of the page. `overflow-x: clip` solves the same
- * 100vw-scrollbar problem `hidden` was added for, WITHOUT establishing a
- * scroll container at all (clip deliberately does not, per spec), so
- * sticky keeps resolving against the real page. Re-tested after the swap:
- * the phone's Y position holds within a few px across all five steps.
+ * **No overflow rule on this wrapper at all, and that is load-bearing.** It used to
+ * carry `overflow-x-clip` to absorb the 100vw-vs-scrollbar difference, and that
+ * had already cost one fix: `overflow-x-hidden` made it a scroll container
+ * (CSS2.1 turns the other axis `auto`), so the sticky phone in
+ * `LandingPhoneShowcase` resolved against it and drifted hundreds of pixels.
+ * `clip` fixed Chromium, but WebKit still tracks a sticky element inside ANY
+ * clipping ancestor against that ancestor rather than the page, so on iPhones the
+ * phone was repositioned a frame behind the pinned header: right at rest, visibly
+ * bumping the navbar while a finger was moving. Headless engines cannot show it.
+ *
+ * On a phone 100vw is the screen (overlay scrollbars), so nothing overflows and
+ * nothing needs clipping; `index.css` clips on `body` from `sm:` up, where a
+ * classic scrollbar makes 100vw wider than the page. A `body` rule propagates to
+ * the viewport, which is the scroller itself, so no element is left clipping the
+ * ancestors of anything sticky. `Landing.test.tsx` pins that this wrapper has no
+ * overflow class.
  */
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Link2, SlidersHorizontal, TrendingUp } from 'lucide-react'
@@ -252,7 +254,7 @@ export function Landing({
 }) {
   return (
     <div
-      className="relative isolate w-screen space-y-20 overflow-x-clip bg-[linear-gradient(to_bottom,var(--canvas)_calc(100%-12rem),var(--background))] pb-16
+      className="relative isolate w-screen space-y-20 bg-[linear-gradient(to_bottom,var(--canvas)_calc(100%-12rem),var(--background))] pb-16
         [--canvas:#e3e8ef] [--panel:#d5dce7] [--lift:60%] [--muted-foreground:#4f5565] [--live:#116a30]
         [--accent:#007da2] [--wash-tint:3.5%] [--wash-1:12%] [--wash-2:9.5%] [--wash-3:8%] [--wash-4:9.5%] [--wash-5:9.5%] [--wash-6:11%] [--wash-glow:0%] [--wash-dot:20%]
         mx-[calc(50%-50vw)] sm:space-y-24

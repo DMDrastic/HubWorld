@@ -10,6 +10,8 @@
  * The rule: never name a network we have not been told about. "Live on the XRP
  * Ledger" is true everywhere, so it is the answer whenever we are not certain.
  */
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { Landing } from '@/components/Landing'
@@ -43,5 +45,25 @@ describe('the landing page ledger badge', () => {
     landing(undefined)
     expect(screen.queryByText(/testnet/i)).toBeNull()
     expect(screen.queryByText(/Live on the XRP Ledger/i)).not.toBeNull()
+  })
+})
+
+describe('the sticky phone on the landing page', () => {
+  it('has no clipping ancestor, which WebKit tracks a frame behind the pinned header', () => {
+    // WebKit follows a sticky element inside ANY overflow rule (clip included) against that
+    // ancestor instead of the page, so on an iPhone the phone lagged the header and bumped it.
+    // Headless engines cannot show it, so the structure is what is pinned: nothing above the
+    // sticky element may carry an overflow class. Horizontal overflow is handled on `body`.
+    const { container } = landing('testnet')
+    const phone = container.querySelector('.sticky')
+    expect(phone, 'the sticky phone is rendered').not.toBeNull()
+    for (let el = phone!.parentElement; el && el !== container.parentElement; el = el.parentElement) {
+      expect(el.className, `${el.tagName}.${el.className}`).not.toMatch(/overflow/)
+    }
+  })
+
+  it('leaves the horizontal clipping to body, from sm up only', () => {
+    const css = readFileSync(resolve(process.cwd(), 'src/index.css'), 'utf8')
+    expect(css).toMatch(/@media \(min-width: 640px\)\s*\{\s*body\s*\{\s*overflow-x: clip;/)
   })
 })
