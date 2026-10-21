@@ -183,6 +183,15 @@
     @apply bg-background text-foreground;
     -webkit-font-smoothing: antialiased;
     }
+  /* The landing page spans 100vw, which a classic desktop scrollbar makes wider than
+     the page. Clipped HERE (propagated to the viewport) and not on the wrapper, so no
+     element above the sticky phone is a clipping ancestor, which WebKit tracks badly.
+     Phones have overlay scrollbars and need nothing. See Landing.tsx. */
+  @media (min-width: 640px) {
+    body {
+      overflow-x: clip;
+    }
+  }
   html {
     @apply font-sans;
     /* The footer "Running events?" CTA jumps back up to the hero's

@@ -58,6 +58,7 @@ import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import { CheckCircle2 } from 'lucide-react'
 import iphoneFrame from '@/assets/iphone-17-pro-cosmic-orange-portrait.png'
 import { chooseActiveStep } from '@/lib/active-step'
+import { SCREEN } from '@/lib/phone-frame'
 
 type ScreenId = 'ticket' | 'gift' | 'auction' | 'cap' | 'door'
 
@@ -433,68 +434,18 @@ const SCREENS: Record<ScreenId, () => React.JSX.Element> = {
 }
 
 /**
- * The real bezel: Apple's own "iPhone 17 Pro — Cosmic Orange — Portrait"
- * product-bezel asset (developer.apple.com/design/resources — Product
- * Bezels, free to use when showcasing an app), replacing the earlier
- * hand-drawn titanium/body div stack.
+ * The real bezel: Apple's own "iPhone 17 Pro, Cosmic Orange, Portrait" product-bezel
+ * asset (developer.apple.com/design/resources, Product Bezels, free to use when
+ * showcasing an app), cropped to the device's exact opaque bounding box so the
+ * `<img>`'s own edges coincide with the visible silhouette and there is no dead
+ * margin for a hairline to attach to.
  *
- * Apple's source canvas (1350×2760) carries a transparent margin AROUND the
- * device silhouette (it doesn't touch the canvas edges) — harmless in
- * Apple's own tooling, but a visible hairline artifact here: the frame
- * `<img>` is scaled down for display, and that scaling left a faint but real
- * fringe exactly at the image's own rectangular bounding box, outside the
- * device's rounded silhouette — not inside the PNG's pixels (its alpha is
- * verified 0 at every edge pixel) but introduced by the browser compositing
- * a scaled image with transparent padding against the page behind it. The
- * fix is to remove the thing the artifact has to attach to: the asset is
- * cropped to the device's exact opaque bounding box (measured via the alpha
- * channel's `getbbox()`, not eyeballed) before being saved, so the `<img>`'s
- * own box edges coincide with the visible silhouette and there is no dead
- * margin left for anything to fringe.
- *
- * `SCREEN` below is the transparent "screen cutout" rectangle, re-measured
- * after a second pass on the asset (2026-10): Apple's own bezel render
- * includes a genuine, OPAQUE black bezel ring between the metal rail and
- * the display glass — real black pixels (alpha 255), not transparent —
- * about 15-20px wide at this resolution, present on all four edges
- * (verified by sampling raw RGBA values across each edge). That ring is an
- * authentic part of the photographed device, but since the content layer
- * renders BELOW the frame image, no CSS change can cover pixels the PNG
- * itself draws opaque — enlarging the content div's box doesn't erase
- * pixels painted on top of it. The ring made the content visibly inset
- * from the metal edge ("black borders on the side"), which reads as
- * unfilled dead space rather than a deliberate bezel.
- *
- * Fixed at the asset level: a bounded flood-erosion (see the one-off script
- * that produced this file) scans inward from each edge, per row/column,
- * and converts the first contiguous run of near-black opaque pixels that
- * leads directly into the existing transparent hole into transparent
- * pixels too — extending the hole out to the ring's outer edge, flush
- * against the metal. The scan stops the instant it hits a transparent
- * pixel, so it only ever touches the ONE ring immediately bordering the
- * hole and never reaches the Dynamic Island (which sits isolated inside
- * the hole, with transparent pixels on every side long before any scan
- * from an outer edge could reach it) — confirmed by inspecting the eroded
- * result; the island's shape is untouched.
- *
- * Re-measured post-erosion, as a percentage of the 880×1814 canvas (same
- * crop as before — only the hole grew, the outer crop didn't change):
- *   - left 2.386%, right 2.386%, top 3.252%, bottom 3.252% (now
- *     near-symmetric, vs. the old 4.25/4.33/7.32/1.77 — the top ring was
- *     noticeably thicker than the others before erosion).
- *   - corner radius: measured ~115px on the new ~838×1696px screen rect.
- *     Still the `x% / y%` elliptical form, not a single percentage, for
- *     the same reason as before — a single percentage radius resolves
- *     independently against width and height and reproduces the
- *     elongated-corner bug this file hit once already: 115/838 ≈ 13.72%
- *     horizontal, 115/1696 ≈ 6.78% vertical.
- * The content layer renders BELOW the frame image (z-0 vs. the image's
- * implicit stacking as the next sibling); the frame's own Dynamic-Island
- * and camera cutouts are baked into the PNG, so they composite over the
- * content for free instead of being redrawn by hand.
+ * The screen content is drawn BEHIND the frame and shows through the image's
+ * transparent hole; the Dynamic Island and camera are baked into the PNG, so they
+ * composite over the content for free. Where the hole is, and how far the content
+ * reaches into it, is `SCREEN` in `lib/phone-frame.ts`, measured from the image
+ * and checked by a test against the real file.
  */
-const SCREEN = { left: 2.386, right: 2.386, top: 3.252, bottom: 3.252, radius: '13.72% / 6.78%' }
-
 function PhoneFrame({ screen }: { screen: ScreenId }) {
   return (
     <div className="mx-auto w-full max-w-[300px]">
