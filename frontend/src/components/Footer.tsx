@@ -25,7 +25,6 @@
 import type { Health } from '@/lib/api'
 import { useLinkHandler } from '@/lib/router'
 
-const REPO = 'https://github.com/DMDrastic/HubWorld'
 const XRPL = 'https://xrpl.org'
 
 export function Footer({ health }: { health: Health | null }) {
@@ -79,14 +78,6 @@ export function Footer({ health }: { health: Health | null }) {
               Project
             </div>
             {/* External, so a real anchor with the usual safety attributes. */}
-            <a
-              href={REPO}
-              target="_blank"
-              rel="noreferrer noopener"
-              className="hover:text-foreground block"
-            >
-              Source on GitHub
-            </a>
             <a
               href={XRPL}
               target="_blank"

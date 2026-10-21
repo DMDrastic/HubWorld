@@ -64,9 +64,12 @@ describe('the rest of the footer', () => {
   it('links out safely, and only to pages that exist', () => {
     render(<Footer health={on('testnet')} />)
 
-    const source = screen.getByRole('link', { name: /source on github/i })
-    expect(source.getAttribute('rel')).toContain('noopener')
-    expect(source.getAttribute('target')).toBe('_blank')
+    const ledger = screen.getByRole('link', { name: /xrp ledger/i })
+    expect(ledger.getAttribute('rel')).toContain('noopener')
+    expect(ledger.getAttribute('target')).toBe('_blank')
+
+    // The repository is deliberately not advertised from the product.
+    expect(screen.queryByRole('link', { name: /github/i })).toBeNull()
 
     // `router.ts` falls unknown paths back to the Hub rather than 404ing, so a
     // Terms or Privacy link would render the Hub and look like it worked. They
