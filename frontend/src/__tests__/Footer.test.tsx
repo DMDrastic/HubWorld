@@ -1,16 +1,10 @@
 /**
  * What the footer is allowed to claim.
  *
- * The test-network notice is the part that matters. It tells someone arriving
- * from a link that nothing here is real — so getting it wrong in the mainnet
- * direction would tell a person holding a real ticket that their money is play
- * money, and getting it wrong the other way would be a sandbox pretending to be
- * a product.
- *
- * The landing page shipped exactly that bug: "Live on XRPL testnet" as a
- * hardcoded string, true on the day it was written and a lie the moment
- * XRPL_NETWORK changed. So this asserts the notice tracks the server, never a
- * literal, and claims NOTHING when the server has not said.
+ * It carries no network notice. A "Running on the XRPL testnet" box used to lead
+ * it and was removed on request; the nav badge and the landing page's ledger line
+ * still say which network this is, derived from /api/health. This pins the
+ * absence so the notice cannot drift back in, on any network or none.
  */
 import { describe, expect, it } from 'vitest'
 import { render, screen } from '@testing-library/react'
@@ -20,31 +14,18 @@ import type { Health } from '@/lib/api'
 const BASE: Health = { status: 'ok', db: 'connected', uptime: 1, timestamp: '' }
 const on = (network: Health['network']): Health => ({ ...BASE, network })
 
-describe('the test-network notice', () => {
-  it.each(['testnet', 'devnet'] as const)('warns plainly on %s', (network) => {
+describe('the footer makes no network claim', () => {
+  it.each(['testnet', 'devnet', 'mainnet', undefined] as const)('on %s', (network) => {
     render(<Footer health={on(network)} />)
-
-    expect(screen.getByText(new RegExp(`Running on the XRPL ${network}`, 'i'))).not.toBeNull()
-    expect(screen.getByText(/no real money is involved/i)).not.toBeNull()
-  })
-
-  it('says nothing of the sort on mainnet', () => {
-    // Mainnet is simply the product. A "this is not real" notice in front of a
-    // paying customer would be developer chrome, and false.
-    render(<Footer health={on('mainnet')} />)
 
     expect(screen.queryByText(/Running on the XRPL/i)).toBeNull()
     expect(screen.queryByText(/no real money is involved/i)).toBeNull()
+    expect(screen.queryByText(/testnet|devnet|mainnet/i)).toBeNull()
   })
 
-  it('claims nothing before the server has said', () => {
-    // Undefined on first paint and on an API too old to carry the field.
-    // Defaulting either way is how the landing-page bug happened.
+  it('on a health that has not loaded', () => {
     render(<Footer health={null} />)
-
     expect(screen.queryByText(/Running on the XRPL/i)).toBeNull()
-    expect(screen.queryByText(/testnet/i)).toBeNull()
-    expect(screen.queryByText(/mainnet/i)).toBeNull()
   })
 })
 
@@ -64,9 +45,12 @@ describe('the rest of the footer', () => {
   it('links out safely, and only to pages that exist', () => {
     render(<Footer health={on('testnet')} />)
 
-    const source = screen.getByRole('link', { name: /source on github/i })
-    expect(source.getAttribute('rel')).toContain('noopener')
-    expect(source.getAttribute('target')).toBe('_blank')
+    const ledger = screen.getByRole('link', { name: /xrp ledger/i })
+    expect(ledger.getAttribute('rel')).toContain('noopener')
+    expect(ledger.getAttribute('target')).toBe('_blank')
+
+    // The repository is deliberately not advertised from the product.
+    expect(screen.queryByRole('link', { name: /github/i })).toBeNull()
 
     // `router.ts` falls unknown paths back to the Hub rather than 404ing, so a
     // Terms or Privacy link would render the Hub and look like it worked. They
