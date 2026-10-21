@@ -1,20 +1,18 @@
 /**
  * Site footer.
  *
- * Three jobs, in order of how much they matter:
+ * Two jobs, in order of how much they matter:
  *
- * 1. SAY WHICH LEDGER THIS IS. On anything but mainnet the tickets are not real
- *    and the money is not real, and someone arriving from a link deserves to be
- *    told without having to notice a small chip in the nav. Like every other
- *    network claim in the app it is DERIVED from /api/health — the landing page
- *    once hardcoded "Live on XRPL testnet", which was true the day it was
- *    written and would have become a lie the moment XRPL_NETWORK changed.
- *
- * 2. State the custody position, because it is the product's central claim and
+ * 1. State the custody position, because it is the product's central claim and
  *    it is verifiable rather than marketing: HubWorld holds no user keys and
  *    sale funds never rest with it.
  *
- * 3. Copyright and provenance.
+ * 2. Copyright and provenance.
+ *
+ * NOT HERE: a test-network notice. It used to lead the footer ("Running on the
+ * XRPL testnet ... no real money is involved") and was removed on request. The
+ * nav's network badge and the landing page's ledger line still say which network
+ * this is, both derived from /api/health, so nothing here claims one.
  *
  * DELIBERATELY ABSENT: Terms, Privacy, and any company registration details.
  * Those pages do not exist, and `router.ts` falls unknown paths back to the Hub
@@ -31,24 +29,10 @@ export function Footer({ health }: { health: Health | null }) {
   const link = useLinkHandler()
   // Computed, not hardcoded — a literal year silently rots every January.
   const year = new Date().getFullYear()
-  const network = health?.network
 
   return (
     <footer className="border-t">
       <div className="text-muted-foreground mx-auto max-w-6xl px-4 py-10 text-sm">
-        {/* The caveat leads, and only when there is one to make. On mainnet this
-            is absent: it is simply the product, and a notice there would be
-            developer chrome in front of a paying customer. */}
-        {(network === 'testnet' || network === 'devnet') && (
-          <p className="bg-muted/50 mb-8 rounded-xl border px-4 py-3 leading-relaxed">
-            <span className="text-foreground font-medium">
-              Running on the XRPL {network}.
-            </span>{' '}
-            Tickets, payments and balances here are test data on a public test
-            network. Nothing has real-world value, and no real money is involved.
-          </p>
-        )}
-
         <div className="grid gap-8 sm:grid-cols-[1.5fr_1fr_1fr]">
           <div className="space-y-3">
             <div className="text-foreground text-[0.95rem] font-semibold tracking-tight">
