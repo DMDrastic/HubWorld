@@ -62,7 +62,7 @@ function Row({
   }
 
   return (
-    <li className="bg-muted/40 flex items-center gap-3 rounded-xl p-3">
+    <li className="flex items-center gap-3 rounded-xl border border-[var(--surface-border)] p-3">
       <div className="bg-muted size-14 shrink-0 overflow-hidden rounded-lg ring-1 ring-current/10">
         {event.imageUrl ? (
           // A 56px thumbnail has even less use for the full file than a card does.

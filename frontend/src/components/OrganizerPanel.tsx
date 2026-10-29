@@ -44,7 +44,7 @@ import { prepareImage } from '@/lib/image-prep'
 import { tintFromFile, type Rgb } from '@/lib/poster-tint'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+import { Input, fieldClass } from '@/components/ui/input'
 import {
   Card,
   CardContent,
@@ -129,7 +129,7 @@ function ApplyForm({ policy, status, onApplied }: {
         placeholder="What kind of events do you run?"
         aria-label="what you run"
         rows={3}
-        className="border-input bg-background focus-visible:border-ring focus-visible:ring-ring/50 w-full rounded-lg border px-3 py-2 text-sm transition-colors focus-visible:ring-[3px] focus-visible:outline-none"
+        className={`${fieldClass} py-2.5 leading-relaxed`}
       />
 
       {policy && (
@@ -647,7 +647,8 @@ function CreateEventForm({ policy, onCreated }: { policy: Policy | null; onCreat
         <Button
           type="submit"
           disabled={busy || !title.trim() || !startsAt}
-          className="mt-2 h-12 w-full rounded-xl text-base"
+          size="lg"
+          className="mt-2 w-full"
         >
           {busy ? 'Creating…' : 'Create event'}
         </Button>
