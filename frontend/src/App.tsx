@@ -359,7 +359,12 @@ export default function App() {
                 title="Marketplace"
                 description="Resales settle on-ledger. The organizer earns a royalty on every one."
               />
-              <SellPanel onChanged={handleMinted} />
+              <SellPanel
+                onChanged={handleMinted}
+                events={events}
+                auctions={auctions}
+                onOpenAuction={openAuctionBySlug}
+              />
             </section>
           ) : (
             <SignInRequired
