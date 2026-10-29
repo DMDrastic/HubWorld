@@ -181,18 +181,6 @@ const ORGANIZER_VALUE = [
   },
 ] as const
 
-/**
- * One resale, measured on mainnet (13 Aug 2026): a 1 XRP winning bid on a
- * ticket neither the seller nor the buyer issued. Figures are XRP as paid, to
- * six places, so the three add up to the bid less the network fee. The shares
- * are the same numbers as a percentage, for the bar.
- */
-const SPLIT = [
-  { who: 'Seller', xrp: '0.926250', pct: 92.6, tone: 'bg-foreground' },
-  { who: 'Organizer, royalty', xrp: '0.048750', pct: 4.9, tone: 'bg-brand' },
-  { who: 'Platform, after the network fee', xrp: '0.024988', pct: 2.5, tone: 'bg-muted-foreground' },
-] as const
-
 /** One verdict a door can give, shown quietly under the live one. */
 function QuietVerdict({ title, hint }: { title: string; hint: string }) {
   return (
@@ -310,7 +298,7 @@ export function Landing({
               >
                 <SignIn
                   onAuthenticated={onAuthenticated}
-                  primaryButtonLabel="Sign in to apply"
+                  primaryButtonLabel="Explore the HubWorld"
                   primaryButtonClassName="h-11 rounded-full bg-primary px-6 text-[0.95rem] text-primary-foreground transition-opacity hover:bg-primary hover:opacity-90"
                 />
               </div>
@@ -351,7 +339,7 @@ export function Landing({
               "Admitted". */}
           <div
             role="img"
-            aria-label="Example of a door check-in: admitted, guest @majula, Neon Rooftop Session, general admission, checked against the ledger."
+            aria-label="Example of a door check-in: admitted, guest @jordan_k, Neon Rooftop Session, general admission, checked against the ledger."
             className="relative isolate flex flex-col justify-between gap-10 overflow-hidden rounded-3xl p-6 text-white sm:p-10 lg:min-h-[26rem] lg:p-14"
           >
             <img
@@ -364,7 +352,7 @@ export function Landing({
             <div aria-hidden className="absolute inset-0 -z-10 bg-black/50" />
             <p aria-hidden className="flex items-center gap-2.5 font-mono text-sm text-white/85">
               <span className="bg-live size-2.5 rounded-full" />
-              Door · staff phone · example
+              Door check-in
             </p>
             <div aria-hidden className="grid gap-8 lg:grid-cols-[1fr_20rem] lg:items-end">
               <p className="text-[clamp(3.25rem,10vw,6rem)] leading-[0.95] font-semibold tracking-[-0.04em]">
@@ -373,7 +361,7 @@ export function Landing({
               <div>
                 <p className="flex items-center gap-2.5 text-3xl font-semibold tracking-[-0.03em] sm:text-4xl">
                   <CircleCheck className="text-live size-7 shrink-0 sm:size-8" strokeWidth={2.25} />
-                  @majula
+                  @jordan_k
                 </p>
                 <p className="mt-1.5 text-lg text-white/85">
                   Neon Rooftop Session
@@ -444,11 +432,9 @@ export function Landing({
       </section>
 
       {/* ------------------------------------------------------------- 3.
-          Organizer value, beside its proof. The three claims are a short list,
-          not three boxes, and the measured split sits next to the first claim it
-          proves instead of two scrolls away. */}
+          Organizer value. The three claims are a short list, not three boxes. */}
       <section id="organizers" className="scroll-mt-20">
-        <div className="mx-auto grid max-w-6xl gap-12 px-4 lg:grid-cols-[1fr_30rem] lg:gap-16">
+        <div className="mx-auto max-w-6xl px-4">
           <Reveal>
             <h2 className="max-w-xl text-3xl leading-snug font-semibold tracking-[-0.025em] text-balance sm:text-4xl">
               Built for organizers who want a say in what happens next.
@@ -476,39 +462,6 @@ export function Landing({
                 </li>
               ))}
             </ul>
-          </Reveal>
-
-          <Reveal step={1} className="lg:pt-2">
-            <div className="surface p-6 sm:p-7">
-              <div className="text-muted-foreground flex justify-between text-sm">
-                <span>One resale by auction, 1 XRP</span>
-                <span>mainnet</span>
-              </div>
-              <h3 className="mt-1.5 mb-5 text-xl font-semibold tracking-[-0.02em]">
-                Where the money went
-              </h3>
-              <div className="flex h-3.5 gap-[3px] overflow-hidden rounded-full" aria-hidden>
-                {SPLIT.map((s) => (
-                  <span key={s.who} className={`block ${s.tone}`} style={{ width: `${s.pct}%` }} />
-                ))}
-              </div>
-              <dl className="mt-5">
-                {SPLIT.map((s) => (
-                  <div key={s.who} className="flex items-baseline justify-between gap-4 border-t py-3.5">
-                    <dt className="flex items-center gap-2.5 text-[0.95rem]">
-                      <span aria-hidden className={`size-2.5 rounded-full ${s.tone}`} />
-                      {s.who}
-                    </dt>
-                    <dd className="font-mono text-base font-medium tabular-nums">{s.xrp}</dd>
-                  </div>
-                ))}
-              </dl>
-              <p className="text-muted-foreground mt-2 text-xs leading-relaxed">
-                One measured sale on 13 August 2026 with a 5% royalty. The royalty is calculated
-                after the platform fee, so the organizer received 4.875%. Your figures depend on your
-                fee and royalty settings.
-              </p>
-            </div>
           </Reveal>
         </div>
       </section>
