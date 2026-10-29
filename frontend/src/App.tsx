@@ -35,6 +35,7 @@ import { EventList } from '@/components/EventList'
 import { EventImagePanel } from '@/components/EventImagePanel'
 import { useRoute } from '@/lib/router'
 import { OrganizerPanel } from '@/components/OrganizerPanel'
+import { PageHeader } from '@/components/PageHeader'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -306,32 +307,24 @@ export default function App() {
           ))}
 
         {route === '/events' && (
-          <section className="space-y-4 py-8">
-            <div>
-              <h1 className="text-3xl font-semibold tracking-[-0.02em]">Events</h1>
-              <p className="text-muted-foreground mt-1.5 text-sm leading-relaxed">
-                Sold-out nights open for bidding are marked live.
-                {!me && ' Anyone can watch an auction; bidding needs a wallet.'}
-              </p>
-            </div>
+          <section>
             <EventList
               events={events}
               auctionSlugs={auctionSlugs}
               onOpenAuction={setAuctionEvent}
               onBuy={setBuyEvent}
+              note={me ? undefined : 'Anyone can watch an auction; bidding needs a wallet.'}
             />
           </section>
         )}
 
         {route === '/tickets' &&
           (me ? (
-            <section className="space-y-4 py-8">
-              <div>
-                <h1 className="text-3xl font-semibold tracking-[-0.02em]">Your tickets</h1>
-                <p className="text-muted-foreground mt-1.5 text-sm leading-relaxed">
-                  These live in your own wallet, so they're yours even if HubWorld disappears.
-                </p>
-              </div>
+            <section className="space-y-4 pb-8">
+              <PageHeader
+                title="Your tickets"
+                description="These live in your own wallet, so they're yours even if HubWorld disappears."
+              />
               <TicketWallet version={walletVersion} onGift={chooseGift} />
               <GiftPanel onChanged={handleGiftChanged} selectedId={giftTarget} />
               <HandleLookup />
@@ -346,13 +339,11 @@ export default function App() {
 
         {route === '/market' &&
           (me ? (
-            <section className="space-y-4 py-8">
-              <div>
-                <h1 className="text-3xl font-semibold tracking-[-0.02em]">Marketplace</h1>
-                <p className="text-muted-foreground mt-1.5 text-sm leading-relaxed">
-                  Resales settle on-ledger. The organizer earns a royalty on every one.
-                </p>
-              </div>
+            <section className="space-y-4 pb-8">
+              <PageHeader
+                title="Marketplace"
+                description="Resales settle on-ledger. The organizer earns a royalty on every one."
+              />
               <SellPanel onChanged={handleMinted} />
             </section>
           ) : (
@@ -365,13 +356,11 @@ export default function App() {
 
         {route === '/door' &&
           (me ? (
-            <section className="space-y-4 py-8">
-              <div>
-                <h1 className="text-3xl font-semibold tracking-[-0.02em]">Door</h1>
-                <p className="text-muted-foreground mt-1.5 text-sm leading-relaxed">
-                  Check guests in. The verdict shows here, on your device, never on theirs.
-                </p>
-              </div>
+            <section className="space-y-4 pb-8">
+              <PageHeader
+                title="Door"
+                description="Check guests in. The verdict shows here, on your device, never on theirs."
+              />
               <DoorPanel />
             </section>
           ) : (
@@ -391,13 +380,11 @@ export default function App() {
         )}
 
         {route === '/organize' && me && isOrganizer(me.role) && (
-          <section className="space-y-4 py-8">
-            <div>
-              <h1 className="text-3xl font-semibold tracking-[-0.02em]">Organize</h1>
-              <p className="text-muted-foreground mt-1.5 text-sm leading-relaxed">
-                Create events and tickets. You earn a cut of every resale.
-              </p>
-            </div>
+          <section className="space-y-4 pb-8">
+            <PageHeader
+              title="Organize"
+              description="Create events and tickets. You earn a cut of every resale."
+            />
             <OrganizerPanel role={me.role} onChanged={handleMinted} />
             <EventImagePanel events={organizing} onChanged={handleMinted} />
             <DelegationPanel />
@@ -409,8 +396,8 @@ export default function App() {
         {/* A regular user who types /organize gets the application form
             rather than a blank page or a 403. */}
         {route === '/organize' && me && !isOrganizer(me.role) && (
-          <section className="space-y-4 py-8">
-            <h1 className="text-2xl font-semibold tracking-tight">Run your own events</h1>
+          <section className="space-y-4 pb-8">
+            <PageHeader title="Run your own events" />
             <OrganizerPanel role={me.role} onChanged={handleMinted} />
           </section>
         )}

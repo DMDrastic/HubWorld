@@ -119,6 +119,11 @@
     /* Tinted shadow. Neutral black reads as dirt on a coloured surface. */
     --shadow-color: 265deg 40% 30%;
 
+    /* Light has no translucency to borrow from: a white card on the tinted page. */
+    --surface: #ffffff;
+    --surface-border: oklch(0.16 0.01 285 / 9%);
+    --surface-border-hover: oklch(0.16 0.01 285 / 24%);
+
     --sidebar: #ffffff;
     --sidebar-foreground: #101014;
     --sidebar-primary: #6d4aff;
@@ -133,11 +138,11 @@
 .dark {
     color-scheme: dark;
 
-    --background: #09090d;
+    --background: #0e0e12;
     --foreground: #f2f2f5;
-    --card: #131318;
+    --card: #15151b;
     --card-foreground: #f2f2f5;
-    --popover: #17171e;
+    --popover: #181820;
     --popover-foreground: #f2f2f5;
 
     --primary: #8b7cff;
@@ -165,7 +170,13 @@
 
     --shadow-color: 265deg 60% 3%;
 
-    --sidebar: #131318;
+    /* Translucent so the surface takes a little of whatever sits behind it,
+       and so the same rule reads on the page and inside a dialog. */
+    --surface: oklch(1 0 0 / 4%);
+    --surface-border: oklch(1 0 0 / 8%);
+    --surface-border-hover: oklch(1 0 0 / 18%);
+
+    --sidebar: #15151b;
     --sidebar-foreground: #f2f2f5;
     --sidebar-primary: #8b7cff;
     --sidebar-primary-foreground: #0b0b0f;
@@ -192,6 +203,15 @@
       overflow-x: clip;
     }
   }
+  /* The browser's own surfaces carry the palette too: the scrollbar and the
+     caret are the parts nobody draws and everybody sees. */
+  html {
+    scrollbar-color: color-mix(in oklch, var(--foreground) 24%, transparent) transparent;
+    }
+  input,
+  textarea {
+    caret-color: var(--primary);
+    }
   html {
     @apply font-sans;
     /* The footer "Running events?" CTA jumps back up to the hero's
@@ -222,6 +242,33 @@
     box-shadow:
       0 0 0 1px color-mix(in oklch, var(--live) 25%, transparent),
       0 0 20px -6px color-mix(in oklch, var(--live) 50%, transparent);
+    }
+
+  /**
+   * The app's one container: a translucent plate with a hairline edge.
+   *
+   * Depth comes from the edge brightening on hover, not from shadow — a page of
+   * shadowed cards is a page where nothing is lifted. `surface-hover` is opt-in
+   * because most plates (forms, readouts) are not links, and a plate that
+   * answers a hover it cannot act on is lying about what it does.
+   */
+  .surface {
+    background: var(--surface);
+    border: 1px solid var(--surface-border);
+    border-radius: 1rem;
+    }
+  .surface-hover {
+    transition: border-color 0.2s var(--ease-out, cubic-bezier(0.22, 1, 0.36, 1));
+    }
+  .surface-hover:hover {
+    border-color: var(--surface-border-hover);
+    }
+
+  /* A live auction is the one plate allowed to say so with its edge. Declared
+     after `.surface-hover` so its border wins on hover too. */
+  .surface-live,
+  .surface-live:hover {
+    border-color: color-mix(in oklch, var(--live) 42%, transparent);
     }
 
   /* Layered elevation. One shadow is a drop; three is depth. */

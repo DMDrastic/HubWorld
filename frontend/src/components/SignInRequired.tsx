@@ -11,6 +11,7 @@
  * while these pages are about *you* — what you hold, what you are selling, what
  * you may admit — and there is no honest way to render them for nobody.
  */
+import { PageHeader } from '@/components/PageHeader'
 import { SignIn } from '@/components/SignIn'
 import type { AuthUser } from '@/lib/api'
 
@@ -25,11 +26,8 @@ export function SignInRequired({
   onAuthenticated: (u: AuthUser) => void
 }) {
   return (
-    <section className="space-y-6 py-8">
-      <div>
-        <h1 className="text-3xl font-semibold tracking-[-0.02em]">{title}</h1>
-        <p className="text-muted-foreground mt-1.5 text-sm leading-relaxed">{blurb}</p>
-      </div>
+    <section className="space-y-2 pb-8">
+      <PageHeader title={title} description={blurb} />
 
       <div className="max-w-sm">
         <SignIn onAuthenticated={onAuthenticated} />
