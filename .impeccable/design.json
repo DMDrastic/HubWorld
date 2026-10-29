@@ -1,0 +1,91 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-28T00:00:00.000Z",
+  "title": "Design System: HubWorld",
+  "extensions": {
+    "colorMeta": {
+      "night-ground": { "role": "neutral", "displayName": "Night Ground", "canonical": "#0e0e12" },
+      "night-plate": { "role": "neutral", "displayName": "Night Plate", "canonical": "#15151b" },
+      "action-violet-night": { "role": "primary", "displayName": "Action Violet", "canonical": "#8b7cff" },
+      "action-violet-day": { "role": "primary", "displayName": "Action Violet (day)", "canonical": "#6d4aff" },
+      "live-green-night": { "role": "secondary", "displayName": "Live Green", "canonical": "#3fb463" },
+      "live-green-day": { "role": "secondary", "displayName": "Live Green (day)", "canonical": "#15803d" }
+    },
+    "typographyMeta": {
+      "page-title": { "displayName": "Page title", "purpose": "The single h1 on each page." },
+      "row-title": { "displayName": "Row title", "purpose": "An event's name on the timeline." },
+      "data": { "displayName": "Data", "purpose": "Addresses, amounts and build hashes in Geist Mono." }
+    },
+    "shadows": [
+      {
+        "name": "none-at-rest",
+        "value": "none",
+        "purpose": "Plates are flat; depth is a hairline edge that brightens on hover."
+      }
+    ],
+    "motion": [
+      {
+        "name": "ease-out-expo",
+        "value": "cubic-bezier(0.22, 1, 0.36, 1)",
+        "purpose": "Edge brightening on plates and the mark's orbit."
+      }
+    ],
+    "breakpoints": [
+      { "name": "sm", "value": "640px" },
+      { "name": "lg", "value": "1024px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Action Button",
+      "kind": "button",
+      "refersTo": "button-action",
+      "description": "The one thing a person can press on a row: buy, or watch the bidding.",
+      "html": "<button class=\"ds-btn\">Buy · 25 XRP</button>",
+      "css": ".ds-btn { background: #8b7cff; color: #0b0b0f; height: 40px; padding: 0 16px; border: 0; border-radius: 9999px; font: 500 14px/1 system-ui, sans-serif; cursor: pointer; transition: opacity .2s; } .ds-btn:hover { opacity: .9; } .ds-btn:focus-visible { outline: 2px solid #8b7cff; outline-offset: 2px; }"
+    },
+    {
+      "name": "Event Plate",
+      "kind": "card",
+      "refersTo": "surface",
+      "description": "A translucent plate with a hairline edge that brightens on hover.",
+      "html": "<div class=\"ds-plate\"><p class=\"ds-time\">7:00 PM</p><h3>Neon Rooftop Session</h3></div>",
+      "css": ".ds-plate { background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.08); border-radius: 16px; padding: 20px; color: #f2f2f5; font-family: system-ui, sans-serif; transition: border-color .2s; } .ds-plate:hover { border-color: rgba(255,255,255,.18); } .ds-time { margin: 0; font-size: 14px; color: #9b9aa7; } .ds-plate h3 { margin: 4px 0 0; font-size: 20px; font-weight: 600; letter-spacing: -.02em; }"
+    },
+    {
+      "name": "Tab Switch",
+      "kind": "custom",
+      "refersTo": "surface",
+      "description": "Two views of one list, built as tabs.",
+      "html": "<div class=\"ds-tabs\" role=\"tablist\"><button role=\"tab\" aria-selected=\"true\">Upcoming</button><button role=\"tab\" aria-selected=\"false\">Past</button></div>",
+      "css": ".ds-tabs { display: inline-flex; gap: 2px; padding: 2px; background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.08); border-radius: 12px; } .ds-tabs button { border: 0; background: transparent; color: #9b9aa7; padding: 10px 16px; border-radius: 10px; font: 500 14px system-ui, sans-serif; cursor: pointer; } .ds-tabs button[aria-selected=true] { background: rgba(255,255,255,.10); color: #f2f2f5; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Departures Board",
+    "overview": "HubWorld reads as a timetable: dates run down a left-hand rail, each event is a plate hung off that rail, and a small node on the rail says in one glance what state the night is in. Nothing is decorative that is not also information.",
+    "keyCharacteristics": [
+      "Near-black ground, translucent 4% plates, hairline edges that brighten on hover. No resting shadows.",
+      "One action colour (violet) and one state colour (green), never swapped.",
+      "Titles in tight 600-weight Geist; addresses, prices and times in Geist Mono or tabular figures.",
+      "State is always written down as well as coloured."
+    ],
+    "rules": [
+      { "name": "The One Meaning Rule", "body": "Violet means \"you can act\", green means \"live\". A thumbnail, a chip or a chart that happens to land in either hue is moved out of it.", "section": "colors" },
+      { "name": "The Words Too Rule", "body": "State is never carried by hue alone. A node is backed by a chip; a chip is backed by its label.", "section": "colors" },
+      { "name": "The No Eyebrow Rule", "body": "No small tracked-capital label above a heading. The heading carries its own weight.", "section": "typography" }
+    ],
+    "dos": [
+      "Do keep violet for what can be pressed and green for what is live.",
+      "Do write state as a word as well as a colour.",
+      "Do let an edge brighten on hover instead of adding a shadow.",
+      "Do keep controls that cannot work absent, not disabled."
+    ],
+    "donts": [
+      "Don't add a gradient to a surface, a headline word or a button on the app screens.",
+      "Don't put a decorative glow on anything but a live auction.",
+      "Don't put a kicker or tracked-capital label above a heading.",
+      "Don't let a fallback thumbnail or chip land in the greens."
+    ]
+  }
+}
