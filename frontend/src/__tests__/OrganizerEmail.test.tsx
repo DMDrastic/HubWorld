@@ -105,11 +105,33 @@ describe('waiting for review', () => {
     expect(screen.getByRole('button', { name: /send the link again/i })).toBeTruthy()
   })
 
-  it('says the email is confirmed, with no resend, once it is', async () => {
+  it('shows a confirmed badge with a green check, and no resend, once it is', async () => {
     mockApi({ application: pending({ emailVerified: true }) })
-    renderPanel()
-    expect(await screen.findByText(/email confirmed/i)).toBeTruthy()
+    const { container } = renderPanel()
+    const badge = (await screen.findByText('Email confirmed')).closest('[data-slot="badge"]') as HTMLElement
+    expect(badge).not.toBeNull()
+    // The check carries the colour; the words carry the meaning and stay foreground.
+    expect(badge.querySelector('svg')?.getAttribute('class')).toMatch(/text-live/)
+    expect(badge.querySelector('svg')?.getAttribute('aria-hidden')).toBe('true')
+    // The badge sits beside "under review", and the sentence no longer repeats it.
+    expect(screen.getByText('under review')).toBeTruthy()
+    expect(container.textContent!.match(/email confirmed/gi)).toHaveLength(1)
     expect(screen.queryByRole('button', { name: /send the link again/i })).toBeNull()
+  })
+
+  it('shows no confirmed badge while the address is unconfirmed', async () => {
+    mockApi({ application: pending({ emailVerified: false }) })
+    renderPanel()
+    await screen.findByRole('button', { name: /send the link again/i })
+    expect(screen.queryByText('Email confirmed')).toBeNull()
+  })
+
+  it('shows no confirmed badge for an application with no email at all', async () => {
+    // A confirmation of nothing would be a lie.
+    mockApi({ application: pending({ email: null, emailVerified: true }) })
+    renderPanel()
+    await screen.findByText(/is with the hubworld team/i)
+    expect(screen.queryByText('Email confirmed')).toBeNull()
   })
 
   it('shows the server\'s wait when a resend is too soon, instead of failing silently', async () => {

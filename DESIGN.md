@@ -92,7 +92,7 @@ A neutral ground with a violet cast, neutral action pills, a violet brand accent
 - **Action Ink** (#f2f2f5 on night, #101014 on day): the fill of every primary action. The strongest contrast either theme has, and indifferent to the colour a poster washes the page in.
 
 ### Secondary
-- **Live Green** (#3fb463 night, #15803d day): a live auction, or a ticket admitted at the door, and nothing else, always paired with a label ("auction live", "Admitted") or an icon. It is also the rail node's filled, pulsing state.
+- **Live Green** (#3fb463 night, #15803d day): a live auction, a ticket admitted at the door, or a confirmed email on an organizer application (the check beside "Email confirmed", an owner-requested addition 2026-10-29), and nothing else, always paired with a label ("auction live", "Admitted") or an icon. It is also the rail node's filled, pulsing state.
 
 ### Neutral
 - **Night Ground** (#0e0e12): the page. **Night Plate** (#15151b): solid surfaces such as dialogs. **Night Ink** (#f2f2f5) and **Night Ink Muted** (#9b9aa7): text.
@@ -100,7 +100,7 @@ A neutral ground with a violet cast, neutral action pills, a violet brand accent
 - **Fault Red** (#f0575c night, #d03b3b day): errors and a cancelled event only.
 
 ### Named Rules
-**The One Meaning Rule.** A neutral pill means "you can act", violet means "you are here, or this is focused", green means "live". A thumbnail, a chip or a chart that happens to land in either hue is moved out of it (see `offGreen` in `EventRow`).
+**The One Meaning Rule.** A neutral pill means "you can act", violet means "you are here, or this is focused", green means "live" (and, as one owner-approved exception, a confirmed email). A thumbnail, a chip or a chart that happens to land in either hue is moved out of it (see `offGreen` in `EventRow`).
 **The Words Too Rule.** State is never carried by hue alone. A node is backed by a chip; a chip is backed by its label.
 
 ## Typography
