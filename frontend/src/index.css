@@ -276,38 +276,29 @@
     }
 
   /**
-   * One phrase of a headline, in a warm raspberry-to-amber blend.
+   * A slow drift, for things that should read as resting in the air rather than
+   * pinned to the page (the poster cloud on the landing page).
    *
-   * This is gradient text, which this system otherwise refuses, and it is here
-   * because the owner asked for it by name after seeing Luma's. What keeps it a
-   * decision and not a default: it is used ONCE, on the landing page's headline and
-   * nowhere else; it runs between two warm hues and never through purple (the
-   * blend this project's rules single out); and the stops are chosen per theme so
-   * the thinnest part of a letter still clears 3:1, the bar for large text, which
-   * the light theme needs darker stops to do. Where background-clip is not
-   * supported, or the user forces their own colours, the text is plain foreground.
+   * It moves only on the vertical axis and only a few pixels, and it is applied to
+   * a wrapper INSIDE the element that carries each poster's tilt, so the tilt, the
+   * position and the hover lift are all untouched. Each poster sets its own
+   * `--float-distance`, `--float-duration` and a negative `animation-delay`, so no
+   * two rise together and none starts from rest on first paint.
+   *
+   * It ends where it begins, so the global reduced-motion rule (which collapses an
+   * animation to one 0.01ms pass) leaves every poster exactly at its resting place.
    */
-  .warm-text {
-    --warm-a: #c01046;
-    --warm-b: #b85500;
-    color: var(--foreground);
+  .float-y {
+    animation: float-y var(--float-duration, 7s) ease-in-out infinite;
+    will-change: transform;
     }
-  .dark .warm-text {
-    --warm-a: #ff3d73;
-    --warm-b: #ffb21a;
-    }
-  @supports ((background-clip: text) or (-webkit-background-clip: text)) {
-    .warm-text {
-      background-image: linear-gradient(95deg, var(--warm-a), var(--warm-b));
-      -webkit-background-clip: text;
-      background-clip: text;
-      color: transparent;
+  @keyframes float-y {
+    0%,
+    100% {
+      transform: translateY(0);
       }
-    }
-  @media (forced-colors: active) {
-    .warm-text {
-      background-image: none;
-      color: CanvasText;
+    50% {
+      transform: translateY(calc(var(--float-distance, 9px) * -1));
       }
     }
 

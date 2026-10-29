@@ -277,25 +277,22 @@ export function Landing({
 
       {/* ------------------------------------------------------------- 1.
           The offer, and the events it is for. Headline first, as a stranger reads
-          it: what this does for them, in plain words, with ONE phrase picked out
-          in warm colour. That phrase is the page's only gradient text and is a
-          deliberate exception (see `.warm-text` in index.css).
-
-          Around it float the real events that are on HubWorld right now, with the
-          artwork their organizers uploaded. With none, there is no cloud. `animate-in`
-          plays once on mount: the page's one orchestrated moment, and reduced motion
-          is handled by index.css's global rule. */}
+          it, in the owner's own words. Around it float posters: the real events on
+          HubWorld right now come first, then decorative artwork fills the remaining
+          places (see LandingPosterCloud). `animate-in` plays once on mount: the
+          page's one orchestrated moment, and reduced motion is handled by
+          index.css's global rule. */}
       <section className="!mt-0 pt-8 sm:pt-12">
         <div className="relative mx-auto max-w-[1280px] px-4">
           <LandingPosterCloud events={events} />
 
-          <div className="animate-in fade-in slide-in-from-bottom-3 relative mx-auto max-w-2xl text-center duration-700 ease-out lg:py-24">
+          <div className="animate-in fade-in slide-in-from-bottom-3 relative mx-auto max-w-2xl text-center duration-700 ease-out xl:py-24">
             <h1 className="text-4xl leading-[1.04] font-semibold tracking-[-0.035em] text-balance sm:text-5xl lg:text-6xl">
-              Your event <span className="warm-text">keeps paying</span> after the first sale.
+              Every ticket you hold, in one hub.
             </h1>
             <p className="text-muted-foreground mx-auto mt-5 max-w-xl text-lg leading-relaxed text-pretty">
-              HubWorld is ticketing where every ticket is checked against a ledger at the door, and
-              every resale pays the organizer.
+              Buy, gift, resell and check in — all from one place, while organizers stay connected to
+              what happens after the first sale.
             </p>
 
             <div className="mt-8 flex flex-wrap items-center justify-center gap-x-6 gap-y-3">

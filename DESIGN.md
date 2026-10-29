@@ -75,7 +75,7 @@ HubWorld reads as a timetable: dates run down a left-hand rail, each event is a 
 
 The system was translated from Luma's app UI (date rail, translucent plates, a pill switch) rather than copied from it. What is HubWorld's own: the rail node encodes real state, the live-auction edge is the single place the interface is allowed to glow, and the thumbnail is a poster, not a square avatar.
 
-The signed-out Landing page is a deliberate exception: a marketing surface that keeps a teal accent, tonal washes and a navy closing panel from its earlier design, a photograph behind its door verdict, real event posters floating around its headline, and one phrase of warm gradient text (raspberry to amber, `.warm-text`, used once and never through purple). The rules below govern the app screens.
+The signed-out Landing page is a deliberate exception: a marketing surface that keeps a teal accent, tonal washes and a navy closing panel from its earlier design, a photograph behind its door verdict, and a cloud of posters floating around its headline: real events first, then decorative artwork, each drifting a few pixels on its own slow cycle (`.float-y`). The rules below govern the app screens.
 
 **Key Characteristics:**
 - Near-black ground, translucent 4% plates, hairline edges that brighten on hover. No resting shadows.
@@ -168,7 +168,7 @@ Soft but not round. Plates are 16px, thumbnails 12px, the tab switch's inner pil
 - **Do** keep controls that cannot work absent, not disabled.
 
 ### Don't:
-- **Don't** add a gradient to a surface, a headline word or a button on the app screens. The poster wash on the create page and the landing headline's one warm phrase are the only allowed exceptions, both by the owner's request.
+- **Don't** add a gradient to a surface, a headline word or a button on the app screens. The poster wash on the create page is the one allowed exception, by the owner's request. (Gradient headline text was tried on the landing page and removed at the owner's request.)
 - **Don't** put a decorative glow on anything but a live auction.
 - **Don't** put a kicker or tracked-capital label above a heading.
 - **Don't** let a fallback thumbnail or chip land in the greens.

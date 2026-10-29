@@ -6,6 +6,8 @@
  * from the poster the visitor picks, through the same code the real create page
  * uses, and it is labelled as an example because it is one.
  */
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { Landing } from '@/components/Landing'
@@ -66,19 +68,57 @@ describe('which events float around the headline', () => {
 })
 
 describe('the poster cloud', () => {
-  it('renders nothing at all when there are no events, rather than padding with invented ones', () => {
-    const { container } = render(<LandingPosterCloud events={[]} />)
-    expect(container.firstChild).toBeNull()
+  /** Every poster in the wide layout, which is the one that carries all eight. */
+  const wide = (container: HTMLElement) => container.querySelectorAll('ul')[0]!.querySelectorAll('li')
+
+  it('always has eight places, real events first and decorative artwork after', () => {
+    const { container } = render(
+      <LandingPosterCloud events={[event('a', { title: 'Late Set' }), event('b', { title: 'Block Party' })]} />,
+    )
+    const items = wide(container)
+    expect(items).toHaveLength(8)
+    // The first two are the real events, in links; the other six are not.
+    expect(items[0]!.querySelector('a')).not.toBeNull()
+    expect(items[1]!.querySelector('a')).not.toBeNull()
+    for (let i = 2; i < 8; i++) expect(items[i]!.querySelector('a')).toBeNull()
   })
 
-  it('renders nothing when every event is a draft or cancelled', () => {
+  it('fills every place with decorative artwork when there are no events at all', () => {
+    const { container } = render(<LandingPosterCloud events={[]} />)
+    expect(wide(container)).toHaveLength(8)
+    expect(container.querySelectorAll('a')).toHaveLength(0)
+  })
+
+  it('treats drafts and cancelled events as no events, so they never appear', () => {
     const { container } = render(
       <LandingPosterCloud events={[event('d', { status: 'DRAFT' }), event('c', { status: 'CANCELLED' })]} />,
     )
-    expect(container.firstChild).toBeNull()
+    expect(container.querySelectorAll('a')).toHaveLength(0)
+    expect(screen.queryByLabelText('Draft')).toBeNull()
   })
 
-  it('names each poster by its event, as a link to the Events page', () => {
+  it('hides decoration from assistive technology and announces only real events', () => {
+    const { container } = render(<LandingPosterCloud events={[event('a', { title: 'Late Set' })]} />)
+    const items = wide(container)
+    for (let i = 1; i < 8; i++) expect(items[i]!.getAttribute('aria-hidden')).toBe('true')
+    expect(items[0]!.getAttribute('aria-hidden')).toBeNull()
+    expect(container.querySelectorAll('ul')[0]!.getAttribute('aria-label')).toBe('Events on HubWorld')
+  })
+
+  it('announces nothing at all when the whole cloud is decoration', () => {
+    // A list labelled "Events on HubWorld" with no event in it would be a lie.
+    const { container } = render(<LandingPosterCloud events={[]} />)
+    const list = container.querySelectorAll('ul')[0]!
+    expect(list.getAttribute('aria-hidden')).toBe('true')
+    expect(list.getAttribute('aria-label')).toBeNull()
+  })
+
+  it('gives the decorative posters no title, date or text of any kind', () => {
+    const { container } = render(<LandingPosterCloud events={[]} />)
+    expect(container.textContent).toBe('')
+  })
+
+  it('names each real poster by its event, as a link to the Events page', () => {
     render(<LandingPosterCloud events={[event('a', { title: 'Neon Rooftop' })]} />)
     // Both the wide and the narrow layouts render, so the link appears in each.
     const links = screen.getAllByRole('link', { name: 'Neon Rooftop' })
@@ -86,31 +126,85 @@ describe('the poster cloud', () => {
     for (const link of links) expect(link.getAttribute('href')).toBe('/events')
   })
 
-  it('shows a real poster image where the event has one, and none where it does not', () => {
+  it('shows the real poster image where the event has one, and a date tile where it does not', () => {
     const { container, rerender } = render(<LandingPosterCloud events={[event('a')]} />)
-    expect(container.querySelector('img')).toBeNull()
+    const first = () => wide(container)[0]!.querySelector('a')!
+    expect(first().querySelector('img')).toBeNull()
+    expect(first().querySelector('[data-fallback]')).not.toBeNull()
     rerender(<LandingPosterCloud events={[event('a', { imageUrl: 'https://example.test/p.jpg' })]} />)
-    expect(container.querySelector('img')?.getAttribute('src')).toBe('https://example.test/p.jpg')
+    expect(first().querySelector('img')?.getAttribute('src')).toBe('https://example.test/p.jpg')
+  })
+})
+
+describe('the poster float', () => {
+  it('keeps each poster tilt on the outer element and puts the drift on a wrapper inside it', () => {
+    // If the drift shared the tilted element it would overwrite the tilt, and every
+    // poster would snap upright. They are separate on purpose.
+    const { container } = render(<LandingPosterCloud events={[]} />)
+    for (const li of container.querySelectorAll('ul')[0]!.querySelectorAll('li')) {
+      expect((li as HTMLElement).style.transform).toMatch(/rotate\(-?\d+deg\)/)
+      const drift = li.querySelector('.float-y') as HTMLElement
+      expect(drift).not.toBeNull()
+      expect(drift.style.transform).toBe('')
+    }
+  })
+
+  it('gives the posters different rhythms, so none rises with another', () => {
+    const { container } = render(<LandingPosterCloud events={[]} />)
+    const timings = [...container.querySelectorAll('ul')[0]!.querySelectorAll('.float-y')].map(
+      (el) => `${(el as HTMLElement).style.getPropertyValue('--float-duration')}|${(el as HTMLElement).style.animationDelay}`,
+    )
+    expect(new Set(timings).size).toBe(timings.length)
+  })
+
+  it('returns to rest at the end of every cycle, so reduced motion leaves them in place', () => {
+    // Reduced motion collapses an animation to a single near-instant pass, which lands
+    // on the LAST keyframe. That must be the resting position, not mid-drift.
+    const css = readFileSync(resolve(process.cwd(), 'src/index.css'), 'utf8')
+    const block = /@keyframes float-y\s*\{([\s\S]*?)\n\s{4}\}\n/.exec(css)![1]!
+    expect(block).toMatch(/0%,\s*100%\s*\{\s*transform: translateY\(0\)/)
+  })
+
+  it('moves vertically only, never touching the tilt, position or size', () => {
+    const css = readFileSync(resolve(process.cwd(), 'src/index.css'), 'utf8')
+    const block = /@keyframes float-y\s*\{([\s\S]*?)\n\s{4}\}\n/.exec(css)![1]!
+    expect(block).not.toMatch(/rotate|scale|translateX|left|right/)
   })
 })
 
 describe('the landing headline', () => {
-  it('is one h1, and the picked-out phrase is still part of its text', () => {
-    render(<Landing onAuthenticated={vi.fn()} events={[]} />)
+  it('is one h1, in the owner\'s own words, with no colour picked out', () => {
+    const { container } = render(<Landing onAuthenticated={vi.fn()} events={[]} />)
     const h1 = screen.getAllByRole('heading', { level: 1 })
     expect(h1).toHaveLength(1)
-    // The gradient is paint; the words must read as one sentence to a screen reader.
-    expect(h1[0]!.textContent).toBe('Your event keeps paying after the first sale.')
+    expect(h1[0]!.textContent).toBe('Every ticket you hold, in one hub.')
+    expect(h1[0]!.querySelector('span')).toBeNull()
+    expect(container.querySelector('.warm-text')).toBeNull()
   })
 
-  it('has no poster cloud, and no error, when no events were passed', () => {
-    render(<Landing onAuthenticated={vi.fn()} />)
-    expect(screen.queryByLabelText('Events on HubWorld')).toBeNull()
+  it('keeps the owner\'s supporting line', () => {
+    render(<Landing onAuthenticated={vi.fn()} events={[]} />)
+    expect(
+      screen.getByText(
+        'Buy, gift, resell and check in — all from one place, while organizers stay connected to what happens after the first sale.',
+      ),
+    ).toBeTruthy()
+  })
+
+  it('has no gradient text anywhere in the stylesheet', () => {
+    // It was tried and removed at the owner's request; its class must not linger.
+    const css = readFileSync(resolve(process.cwd(), 'src/index.css'), 'utf8')
+    expect(css).not.toMatch(/warm-text/)
   })
 
   it('shows the real events it was given', () => {
     render(<Landing onAuthenticated={vi.fn()} events={[event('a', { title: 'Late Set' })]} />)
     expect(screen.getAllByRole('link', { name: 'Late Set' }).length).toBeGreaterThan(0)
+  })
+
+  it('renders without error, and with decoration only, when no events were passed', () => {
+    render(<Landing onAuthenticated={vi.fn()} />)
+    expect(screen.queryByLabelText('Events on HubWorld')).toBeNull()
   })
 })
 
