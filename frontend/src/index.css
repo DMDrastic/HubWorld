@@ -276,6 +276,42 @@
     }
 
   /**
+   * The closing phrase of the landing page's headline, in a warm raspberry-to-amber blend.
+   *
+   * This is gradient text, which this system otherwise refuses, and it is here because the
+   * owner asked for it by name (twice: once after seeing Luma's, and again after it was
+   * taken out). What keeps it a decision and not a default: it is used ONCE, on the landing
+   * page's headline and nowhere else; it runs between two warm hues and never through
+   * purple, the blend this project's rules single out; and the stops are chosen per theme so
+   * the thinnest part of a letter still clears 3:1, the bar for large text, which the light
+   * theme needs darker stops to do. Where background-clip is not supported, or the user
+   * forces their own colours, the text is plain foreground.
+   */
+  .warm-text {
+    --warm-a: #c01046;
+    --warm-b: #b85500;
+    color: var(--foreground);
+    }
+  .dark .warm-text {
+    --warm-a: #ff3d73;
+    --warm-b: #ffb21a;
+    }
+  @supports ((background-clip: text) or (-webkit-background-clip: text)) {
+    .warm-text {
+      background-image: linear-gradient(95deg, var(--warm-a), var(--warm-b));
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+      }
+    }
+  @media (forced-colors: active) {
+    .warm-text {
+      background-image: none;
+      color: CanvasText;
+      }
+    }
+
+  /**
    * A slow drift, for things that should read as resting in the air rather than
    * pinned to the page (the poster cloud on the landing page).
    *

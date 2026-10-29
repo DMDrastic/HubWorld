@@ -277,9 +277,11 @@ export function Landing({
 
       {/* ------------------------------------------------------------- 1.
           The offer, and the events it is for. Headline first, as a stranger reads
-          it, in the owner's own words. Around it float posters: the real events on
-          HubWorld right now come first, then decorative artwork fills the remaining
-          places (see LandingPosterCloud). `animate-in` plays once on mount: the
+          it, in the owner's own words, with the closing phrase in warm gradient text
+          (a deliberate exception; see `.warm-text` in index.css) and the royalty, the
+          commercial hook, named in the supporting line. Around it float posters: the
+          real events with artwork come first, then decorative artwork fills the
+          remaining places (see LandingPosterCloud). `animate-in` plays once on mount: the
           page's one orchestrated moment, and reduced motion is handled by
           index.css's global rule. */}
       <section className="!mt-0 pt-8 sm:pt-12">
@@ -288,11 +290,12 @@ export function Landing({
 
           <div className="animate-in fade-in slide-in-from-bottom-3 relative mx-auto max-w-2xl text-center duration-700 ease-out xl:py-24">
             <h1 className="text-4xl leading-[1.04] font-semibold tracking-[-0.035em] text-balance sm:text-5xl lg:text-6xl">
-              Every ticket you hold, in one hub.
+              Every ticket you hold, <span className="warm-text">in one hub.</span>
             </h1>
             <p className="text-muted-foreground mx-auto mt-5 max-w-xl text-lg leading-relaxed text-pretty">
               Buy, gift, resell and check in — all from one place, while organizers stay connected to
-              what happens after the first sale.
+              what happens after the first sale, and{' '}
+              <span className="text-foreground font-medium">earn a royalty on every resale</span>.
             </p>
 
             <div className="mt-8 flex flex-wrap items-center justify-center gap-x-6 gap-y-3">

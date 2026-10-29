@@ -2,9 +2,11 @@
  * Posters, floated around the landing page's headline.
  *
  * A page that says "events" with no poster on it asks a stranger to take that on
- * trust, so the hero carries eight of them. The REAL events on HubWorld come first,
- * with the artwork their organizers uploaded, and each links to the Events page.
- * Where there are fewer than eight, the remaining places hold decorative artwork.
+ * trust, so the hero carries eight of them. The REAL events on HubWorld that have a
+ * poster come first, with the artwork their organizers uploaded, and each links to the
+ * Events page. An event with no poster is not shown here (a flat date tile among real
+ * artwork read as a broken image). Where there are fewer than eight, the remaining
+ * places hold decorative artwork.
  *
  * That filler is the one place this page shows something that is not an event, so it
  * is kept from ever reading as one: it is pure graphic art with no title, no date and
@@ -29,7 +31,6 @@ import dusk from '@/assets/filler-poster-dusk.jpg'
 import halftone from '@/assets/filler-poster-halftone.jpg'
 import rings from '@/assets/filler-poster-rings.jpg'
 import sunrise from '@/assets/filler-poster-sunrise.jpg'
-import { FallbackThumb } from '@/components/EventRow'
 import type { EventSummary } from '@/lib/api'
 import { pickCloudEvents } from '@/lib/landing-events'
 import { posterSrcSet, posterUrl } from '@/lib/poster'
@@ -93,18 +94,14 @@ function EventPoster({ event }: { event: EventSummary }) {
       aria-label={event.title}
       className={`${FRAME} focus-visible:ring-ring transition-transform duration-300 hover:-translate-y-1 hover:scale-[1.05] focus-visible:ring-2 focus-visible:outline-none`}
     >
-      {event.imageUrl ? (
-        <img
-          src={posterUrl(event.imageUrl, 320)}
-          srcSet={posterSrcSet(event.imageUrl, 320)}
-          alt=""
-          loading="lazy"
-          decoding="async"
-          className="absolute inset-0 size-full object-cover"
-        />
-      ) : (
-        <FallbackThumb event={event} />
-      )}
+      <img
+        src={posterUrl(event.imageUrl, 320)}
+        srcSet={posterSrcSet(event.imageUrl, 320)}
+        alt=""
+        loading="lazy"
+        decoding="async"
+        className="absolute inset-0 size-full object-cover"
+      />
     </a>
   )
 }

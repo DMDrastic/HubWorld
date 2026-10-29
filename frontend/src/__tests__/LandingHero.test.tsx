@@ -32,37 +32,38 @@ function event(slug: string, over: Partial<EventSummary> = {}): EventSummary {
   }
 }
 
+/** An event with a poster: the only kind the cloud shows. */
+const withArt = (slug: string, over: Partial<EventSummary> = {}) =>
+  event(slug, { imageUrl: `https://example.test/${slug}.jpg`, ...over })
+
 describe('which events float around the headline', () => {
-  it('shows only published and sold-out events, never a draft or a cancelled one', () => {
+  it('shows only published and sold-out events, never a draft, a cancelled or a finished one', () => {
     const picked = pickCloudEvents([
-      event('ok'),
-      event('sold', { status: 'SOLD_OUT' }),
-      event('draft', { status: 'DRAFT' }),
-      event('off', { status: 'CANCELLED' }),
-      event('done', { status: 'COMPLETED' }),
+      withArt('ok'),
+      withArt('sold', { status: 'SOLD_OUT' }),
+      withArt('draft', { status: 'DRAFT' }),
+      withArt('off', { status: 'CANCELLED' }),
+      withArt('done', { status: 'COMPLETED' }),
     ])
     expect(picked.map((e) => e.slug).sort()).toEqual(['ok', 'sold'])
   })
 
-  it('puts events with artwork first, then the soonest', () => {
-    const picked = pickCloudEvents([
-      event('later', { startsAt: new Date(Date.now() + 9 * day).toISOString() }),
-      event('soon', { startsAt: new Date(Date.now() + 1 * day).toISOString() }),
-      event('art', { imageUrl: 'https://example.test/a.jpg', startsAt: new Date(Date.now() + 20 * day).toISOString() }),
-    ])
-    expect(picked.map((e) => e.slug)).toEqual(['art', 'soon', 'later'])
+  it('leaves out an event with no poster, which would only be a flat tile among real artwork', () => {
+    const picked = pickCloudEvents([event('bare'), withArt('art')])
+    expect(picked.map((e) => e.slug)).toEqual(['art'])
   })
 
-  it('shows upcoming events ahead of past ones with the same artwork status', () => {
+  it('puts upcoming events ahead of past ones, then the soonest', () => {
     const picked = pickCloudEvents([
-      event('past', { startsAt: new Date(Date.now() - 30 * day).toISOString() }),
-      event('next', { startsAt: new Date(Date.now() + 2 * day).toISOString() }),
+      withArt('later', { startsAt: new Date(Date.now() + 9 * day).toISOString() }),
+      withArt('past', { startsAt: new Date(Date.now() - 30 * day).toISOString() }),
+      withArt('soon', { startsAt: new Date(Date.now() + 1 * day).toISOString() }),
     ])
-    expect(picked.map((e) => e.slug)).toEqual(['next', 'past'])
+    expect(picked.map((e) => e.slug)).toEqual(['soon', 'later', 'past'])
   })
 
   it('never shows more than it has places for', () => {
-    const many = Array.from({ length: 20 }, (_, i) => event(`e${i}`))
+    const many = Array.from({ length: 20 }, (_, i) => withArt(`e${i}`))
     expect(pickCloudEvents(many)).toHaveLength(8)
   })
 })
@@ -73,7 +74,7 @@ describe('the poster cloud', () => {
 
   it('always has eight places, real events first and decorative artwork after', () => {
     const { container } = render(
-      <LandingPosterCloud events={[event('a', { title: 'Late Set' }), event('b', { title: 'Block Party' })]} />,
+      <LandingPosterCloud events={[withArt('a', { title: 'Late Set' }), withArt('b', { title: 'Block Party' })]} />,
     )
     const items = wide(container)
     expect(items).toHaveLength(8)
@@ -81,6 +82,20 @@ describe('the poster cloud', () => {
     expect(items[0]!.querySelector('a')).not.toBeNull()
     expect(items[1]!.querySelector('a')).not.toBeNull()
     for (let i = 2; i < 8; i++) expect(items[i]!.querySelector('a')).toBeNull()
+  })
+
+  it('shows artwork in every place, never a flat colour tile', () => {
+    // The bug this pins: events with no poster used to take the first places as plain
+    // date tiles, so a page with no uploaded posters looked like a row of broken images.
+    const { container } = render(
+      <LandingPosterCloud events={[event('no-art-1'), event('no-art-2'), withArt('real')]} />,
+    )
+    for (const li of wide(container)) {
+      expect(li.querySelector('img')).not.toBeNull()
+      expect(li.querySelector('[data-fallback]')).toBeNull()
+    }
+    // Only the one event that has a poster is linked.
+    expect(container.querySelectorAll('ul')[0]!.querySelectorAll('a')).toHaveLength(1)
   })
 
   it('fills every place with decorative artwork when there are no events at all', () => {
@@ -91,14 +106,13 @@ describe('the poster cloud', () => {
 
   it('treats drafts and cancelled events as no events, so they never appear', () => {
     const { container } = render(
-      <LandingPosterCloud events={[event('d', { status: 'DRAFT' }), event('c', { status: 'CANCELLED' })]} />,
+      <LandingPosterCloud events={[withArt('d', { status: 'DRAFT' }), withArt('c', { status: 'CANCELLED' })]} />,
     )
     expect(container.querySelectorAll('a')).toHaveLength(0)
-    expect(screen.queryByLabelText('Draft')).toBeNull()
   })
 
   it('hides decoration from assistive technology and announces only real events', () => {
-    const { container } = render(<LandingPosterCloud events={[event('a', { title: 'Late Set' })]} />)
+    const { container } = render(<LandingPosterCloud events={[withArt('a', { title: 'Late Set' })]} />)
     const items = wide(container)
     for (let i = 1; i < 8; i++) expect(items[i]!.getAttribute('aria-hidden')).toBe('true')
     expect(items[0]!.getAttribute('aria-hidden')).toBeNull()
@@ -106,8 +120,9 @@ describe('the poster cloud', () => {
   })
 
   it('announces nothing at all when the whole cloud is decoration', () => {
-    // A list labelled "Events on HubWorld" with no event in it would be a lie.
-    const { container } = render(<LandingPosterCloud events={[]} />)
+    // A list labelled "Events on HubWorld" with no event in it would be a lie, and
+    // that includes a cloud whose only events had no poster to show.
+    const { container } = render(<LandingPosterCloud events={[event('bare')]} />)
     const list = container.querySelectorAll('ul')[0]!
     expect(list.getAttribute('aria-hidden')).toBe('true')
     expect(list.getAttribute('aria-label')).toBeNull()
@@ -119,20 +134,18 @@ describe('the poster cloud', () => {
   })
 
   it('names each real poster by its event, as a link to the Events page', () => {
-    render(<LandingPosterCloud events={[event('a', { title: 'Neon Rooftop' })]} />)
+    render(<LandingPosterCloud events={[withArt('a', { title: 'Neon Rooftop' })]} />)
     // Both the wide and the narrow layouts render, so the link appears in each.
     const links = screen.getAllByRole('link', { name: 'Neon Rooftop' })
     expect(links.length).toBeGreaterThan(0)
     for (const link of links) expect(link.getAttribute('href')).toBe('/events')
   })
 
-  it('shows the real poster image where the event has one, and a date tile where it does not', () => {
-    const { container, rerender } = render(<LandingPosterCloud events={[event('a')]} />)
-    const first = () => wide(container)[0]!.querySelector('a')!
-    expect(first().querySelector('img')).toBeNull()
-    expect(first().querySelector('[data-fallback]')).not.toBeNull()
-    rerender(<LandingPosterCloud events={[event('a', { imageUrl: 'https://example.test/p.jpg' })]} />)
-    expect(first().querySelector('img')?.getAttribute('src')).toBe('https://example.test/p.jpg')
+  it('shows the event\'s own poster image', () => {
+    const { container } = render(
+      <LandingPosterCloud events={[withArt('a', { imageUrl: 'https://example.test/p.jpg' })]} />,
+    )
+    expect(wide(container)[0]!.querySelector('a img')?.getAttribute('src')).toBe('https://example.test/p.jpg')
   })
 })
 
@@ -173,38 +186,88 @@ describe('the poster float', () => {
 })
 
 describe('the landing headline', () => {
-  it('is one h1, in the owner\'s own words, with no colour picked out', () => {
+  it('is one h1, in the owner\'s own words, with only the closing phrase picked out', () => {
     const { container } = render(<Landing onAuthenticated={vi.fn()} events={[]} />)
     const h1 = screen.getAllByRole('heading', { level: 1 })
     expect(h1).toHaveLength(1)
+    // The gradient is paint; the words must read as one sentence to a screen reader.
     expect(h1[0]!.textContent).toBe('Every ticket you hold, in one hub.')
-    expect(h1[0]!.querySelector('span')).toBeNull()
-    expect(container.querySelector('.warm-text')).toBeNull()
+    const picked = h1[0]!.querySelector('.warm-text')
+    expect(picked?.textContent).toBe('in one hub.')
+    // Used once on the whole page, never as a recurring device.
+    expect(container.querySelectorAll('.warm-text')).toHaveLength(1)
   })
 
-  it('keeps the owner\'s supporting line', () => {
+  it('keeps the owner\'s supporting line and adds the royalty hook to it', () => {
     render(<Landing onAuthenticated={vi.fn()} events={[]} />)
-    expect(
-      screen.getByText(
-        'Buy, gift, resell and check in — all from one place, while organizers stay connected to what happens after the first sale.',
-      ),
-    ).toBeTruthy()
+    const line = screen.getByText(/Buy, gift, resell and check in/)
+    expect(line.textContent).toBe(
+      'Buy, gift, resell and check in — all from one place, while organizers stay connected to what happens after the first sale, and earn a royalty on every resale.',
+    )
+    expect(screen.getByText('earn a royalty on every resale')).toBeTruthy()
   })
 
-  it('has no gradient text anywhere in the stylesheet', () => {
-    // It was tried and removed at the owner's request; its class must not linger.
-    const css = readFileSync(resolve(process.cwd(), 'src/index.css'), 'utf8')
-    expect(css).not.toMatch(/warm-text/)
-  })
-
-  it('shows the real events it was given', () => {
-    render(<Landing onAuthenticated={vi.fn()} events={[event('a', { title: 'Late Set' })]} />)
+  it('shows the real events it was given, where they have a poster', () => {
+    render(<Landing onAuthenticated={vi.fn()} events={[withArt('a', { title: 'Late Set' })]} />)
     expect(screen.getAllByRole('link', { name: 'Late Set' }).length).toBeGreaterThan(0)
   })
 
   it('renders without error, and with decoration only, when no events were passed', () => {
     render(<Landing onAuthenticated={vi.fn()} />)
     expect(screen.queryByLabelText('Events on HubWorld')).toBeNull()
+  })
+})
+
+describe('the warm gradient', () => {
+  const css = readFileSync(resolve(process.cwd(), 'src/index.css'), 'utf8')
+  const stops = (scope: RegExp) => {
+    const block = scope.exec(css)![1]!
+    return [/--warm-a:\s*(#[0-9a-f]{6})/i.exec(block)![1]!, /--warm-b:\s*(#[0-9a-f]{6})/i.exec(block)![1]!]
+  }
+  const rgb = (hex: string) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16))
+  const luminance = (hex: string) => {
+    const [r, g, b] = rgb(hex).map((v) => {
+      const c = v / 255
+      return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4
+    })
+    return 0.2126 * r! + 0.7152 * g! + 0.0722 * b!
+  }
+  const contrast = (a: string, b: string) => {
+    const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x)
+    return (hi! + 0.05) / (lo! + 0.05)
+  }
+  // The light theme's stops are on the plain class; the dark ones are scoped under `.dark`.
+  const light = stops(/\n\s*(\.warm-text \{[^}]*\})/)
+  const dark = stops(/(\.dark \.warm-text \{[^}]*\})/)
+
+  const hue = (hex: string) => {
+    const [r, g, b] = rgb(hex).map((v) => v / 255) as [number, number, number]
+    const max = Math.max(r, g, b)
+    const d = max - Math.min(r, g, b)
+    const h = max === r ? ((g - b) / d) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4
+    return (h * 60 + 360) % 360
+  }
+
+  it('runs between warm hues only, never through purple', () => {
+    // The blend this project's rules single out is purple to pink or blue. Purple sits
+    // between about 250 and 310 degrees on the colour wheel, so no stop may be near it:
+    // raspberry (around 342) and amber (around 40) are both on the warm side, and the
+    // short way between them runs through red and orange.
+    for (const hex of [...light, ...dark]) {
+      const h = hue(hex)
+      expect(h < 60 || h > 330, `${hex} is at ${h.toFixed(0)} degrees`).toBe(true)
+    }
+  })
+
+  it('keeps the thin parts of the letters at 3:1 or better on the page, in both themes', () => {
+    // Large text needs 3:1. The backgrounds are the lightest and darkest the hero shows.
+    for (const hex of light) expect(contrast(hex, '#e3e8ef'), hex).toBeGreaterThanOrEqual(3)
+    for (const hex of dark) expect(contrast(hex, '#0e0e12'), hex).toBeGreaterThanOrEqual(3)
+  })
+
+  it('falls back to plain text where the gradient cannot be painted', () => {
+    expect(css).toMatch(/@supports \(\(background-clip: text\)/)
+    expect(css).toMatch(/@media \(forced-colors: active\)\s*\{\s*\.warm-text \{[^}]*color: CanvasText/)
   })
 })
 
