@@ -40,6 +40,7 @@ import {
   type ResalePolicyMode,
   type Role,
 } from '@/lib/api'
+import { tintFromFile, type Rgb } from '@/lib/poster-tint'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -286,7 +287,7 @@ function Option({
   children: React.ReactNode
 }) {
   return (
-    <div className="focus-within:bg-foreground/5 px-4 py-3 transition-colors first:rounded-t-2xl last:rounded-b-2xl">
+    <div className="focus-within:bg-foreground/[0.03] px-4 py-3 transition-colors first:rounded-t-2xl last:rounded-b-2xl">
       <div className="flex min-h-8 items-center gap-3">
         <Icon className="text-muted-foreground size-[1.125rem] shrink-0" aria-hidden />
         <span className="shrink-0">{label}</span>
@@ -333,7 +334,28 @@ function CreateEventForm({ policy, onCreated }: { policy: Policy | null; onCreat
   const [error, setError] = useState<string | null>(null)
   const [created, setCreated] = useState<string | null>(null)
   const [posterNote, setPosterNote] = useState<string | null>(null)
+  // The wash behind the page follows the chosen poster's colour. `tint` keeps the
+  // LAST colour found and `washOn` says whether to show it, so removing the
+  // poster fades the wash out instead of snapping it away mid-fade.
+  const [tint, setTint] = useState<Rgb | null>(null)
+  const [washOn, setWashOn] = useState(false)
   const id = useId()
+
+  useEffect(() => {
+    if (!poster) {
+      setWashOn(false)
+      return
+    }
+    let live = true
+    void tintFromFile(poster).then((found) => {
+      if (!live) return
+      if (found) setTint(found)
+      setWashOn(found !== null)
+    })
+    return () => {
+      live = false
+    }
+  }, [poster])
 
   const zone = zoneFor(startsAt)
 
@@ -410,6 +432,19 @@ function CreateEventForm({ policy, onCreated }: { policy: Policy | null; onCreat
       // option, which pushed this whole page past the edge of a phone.
       className="grid grid-cols-[minmax(0,1fr)] gap-8 lg:grid-cols-[19rem_minmax(0,1fr)] lg:gap-12"
     >
+      {/* Fixed and behind everything, so it paints under the nav and the footer as
+          well as the form. It only exists while this form is on screen. */}
+      <div
+        aria-hidden
+        data-poster-wash={washOn ? 'on' : 'off'}
+        className="poster-wash pointer-events-none fixed inset-0 -z-10 transition-opacity duration-700"
+        style={
+          {
+            opacity: washOn ? 1 : 0,
+            ...(tint ? { '--poster-tint': `rgb(${tint.join(' ')})` } : {}),
+          } as React.CSSProperties
+        }
+      />
       <div className="w-full max-w-[12rem] lg:max-w-[19rem]">
         <PosterPicker file={poster} onFile={setPoster} />
       </div>
@@ -452,7 +487,7 @@ function CreateEventForm({ policy, onCreated }: { policy: Policy | null; onCreat
           </div>
         </div>
 
-        <label className="surface focus-within:bg-foreground/5 flex items-start gap-3 px-4 py-3 transition-colors">
+        <label className="surface focus-within:bg-foreground/[0.03] flex items-start gap-3 px-4 py-3 transition-colors">
           <MapPin className="text-muted-foreground mt-0.5 size-[1.125rem] shrink-0" aria-hidden />
           <span className="min-w-0 flex-1">
             <input

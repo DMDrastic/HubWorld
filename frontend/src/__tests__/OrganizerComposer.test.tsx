@@ -162,6 +162,32 @@ describe('the poster on the create page', () => {
   })
 })
 
+describe('the wash behind the page', () => {
+  it('is off until a poster with colour in it has been read', async () => {
+    mockApi()
+    const { container } = renderPanel()
+    await screen.findByLabelText('event title')
+    expect(container.querySelector('[data-poster-wash]')?.getAttribute('data-poster-wash')).toBe('off')
+  })
+
+  it('stays off, and breaks nothing, where the browser cannot read the image', async () => {
+    // jsdom has no createImageBitmap, which is the "cannot read it" case. The wash
+    // must fail closed: a form being filled in never errors over decoration.
+    mockApi()
+    const { container } = renderPanel()
+    fireEvent.change(await screen.findByLabelText('poster image'), { target: { files: [png()] } })
+    await screen.findByAltText('Poster preview')
+    expect(container.querySelector('[data-poster-wash]')?.getAttribute('data-poster-wash')).toBe('off')
+  })
+
+  it('is hidden from assistive tech, because it carries no information', async () => {
+    mockApi()
+    const { container } = renderPanel()
+    await screen.findByLabelText('event title')
+    expect(container.querySelector('[data-poster-wash]')?.getAttribute('aria-hidden')).toBe('true')
+  })
+})
+
 describe('what the composer does not pretend to offer', () => {
   it.each(['description', 'end', 'calendar', 'visibility', 'approval', 'theme'])(
     'has no %s control, because nothing behind it exists',

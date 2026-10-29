@@ -148,6 +148,7 @@ Soft but not round. Plates are 16px, thumbnails 12px, the tab switch's inner pil
 - The create-event page: a 3:4 poster tile at left, and at right the event name as the largest thing on the page, a Starts plate beside a time-zone plate, a location plate, then one divided plate of options (price, tickets, royalty, resale, door) with each value right-aligned and its hint beneath. One full-width action closes it.
 - Only fields the server takes appear. Rows for things that do not exist (calendar, visibility, theme, end time, description, approval) are absent, not disabled.
 - A row lights up while its control has focus, so the target is the line, not a thin input inside it.
+- The page behind it takes a soft wash of the chosen poster's dominant colour (see `.poster-wash`), fading to nothing. It is the one gradient the app screens allow, because the owner asked for it by name, and it is held to one hue, only while a poster with colour in it is chosen, and to a strength measured against muted text: at least 5.0:1 in dark and 4.6:1 in light with deliberately harsh posters. A poster with no colour gives no wash.
 
 ### Tab switch
 - A pill track holding two or three tabs; the selected tab is a 10% foreground wash. Arrow keys move between tabs and only the selected one is in the tab order.
@@ -164,7 +165,7 @@ Soft but not round. Plates are 16px, thumbnails 12px, the tab switch's inner pil
 - **Do** keep controls that cannot work absent, not disabled.
 
 ### Don't:
-- **Don't** add a gradient to a surface, a headline word or a button on the app screens.
+- **Don't** add a gradient to a surface, a headline word or a button on the app screens. The poster wash on the create page is the one allowed exception.
 - **Don't** put a decorative glow on anything but a live auction.
 - **Don't** put a kicker or tracked-capital label above a heading.
 - **Don't** let a fallback thumbnail or chip land in the greens.

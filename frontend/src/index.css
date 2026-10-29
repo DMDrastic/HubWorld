@@ -264,6 +264,38 @@
     border-color: var(--surface-border-hover);
     }
 
+  /**
+   * The create page's backdrop: a soft wash of the poster's own colour, fading to
+   * nothing, so choosing a poster visibly changes the room it is in.
+   *
+   * This is a gradient, which this system otherwise refuses on the app screens,
+   * and it is here because the owner asked for it by name. What keeps it honest:
+   * it is ONE hue (the poster's) fading to transparent, never two hues run
+   * together; it exists only while a poster with colour in it is chosen; and it is
+   * held to a strength measured against the muted text that sits on it, which is
+   * the thing a stronger wash would quietly break. The tint is darkened before it
+   * is mixed in, in the dark theme, for the same reason.
+   *
+   * `--poster-tint` is set inline from the poster. Nothing sets it by default, so
+   * a layer without one paints nothing.
+   */
+  .poster-wash {
+    --poster-top: 16%;
+    --poster-bottom: 10%;
+    /* In the light theme the tint is lightened first: a saturated blue at any useful
+       strength drops muted text below 4.5:1, measured, and lightening costs the
+       wash its darkness, not its colour. */
+    --poster-colour: color-mix(in oklch, var(--poster-tint, transparent) 55%, white);
+    background-image:
+      radial-gradient(95vw 85vh at 10% 0%, color-mix(in oklch, var(--poster-colour) var(--poster-top), transparent), transparent 74%),
+      radial-gradient(80vw 70vh at 95% 100%, color-mix(in oklch, var(--poster-colour) var(--poster-bottom), transparent), transparent 74%);
+    }
+  .dark .poster-wash {
+    --poster-top: 44%;
+    --poster-bottom: 26%;
+    --poster-colour: color-mix(in oklch, var(--poster-tint, transparent) 72%, black);
+    }
+
   /* A live auction is the one plate allowed to say so with its edge. Declared
      after `.surface-hover` so its border wins on hover too. */
   .surface-live,
