@@ -1,4 +1,4 @@
-import { Suspense, lazy, useCallback, useEffect, useState } from 'react'
+import { Fragment, Suspense, lazy, useCallback, useEffect, useState } from 'react'
 import {
   ApiError,
   fetchAuctions,
@@ -28,6 +28,7 @@ import { SellPanel } from '@/components/SellPanel'
 import { DoorPanel } from '@/components/DoorPanel'
 import { NavBar } from '@/components/NavBar'
 import { Landing } from '@/components/Landing'
+import { PageBackdrop } from '@/components/PageBackdrop'
 import { SignInRequired } from '@/components/SignInRequired'
 import { Hub } from '@/components/Hub'
 import { Footer } from '@/components/Footer'
@@ -275,6 +276,11 @@ export default function App() {
     [events],
   )
 
+  // Every page carries the landing page's background. The signed-out landing page
+  // mounts it itself (it is full-bleed and sequences its own sections), so the shell
+  // must not add a second layer under it.
+  const Backdrop = route === '/' && !me ? Fragment : PageBackdrop
+
   const auctionSlugs = new Set(auctions.map((a) => a.eventSlug))
   const organizing = me ? events.filter((e) => e.organizer.username === me.username) : []
 
@@ -288,6 +294,7 @@ export default function App() {
         onSignOut={() => void handleSignOut()}
       />
 
+      <Backdrop>
       <main className="mx-auto max-w-6xl px-4 pb-24">
         {error && (
           <p className="text-destructive bg-destructive/8 mt-4 rounded-xl border border-current/20 p-3.5 text-sm">
@@ -402,6 +409,7 @@ export default function App() {
           </section>
         )}
       </main>
+      </Backdrop>
 
       <Footer health={health} />
 

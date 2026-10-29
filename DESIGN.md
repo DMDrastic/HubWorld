@@ -75,7 +75,7 @@ HubWorld reads as a timetable: dates run down a left-hand rail, each event is a 
 
 The system was translated from Luma's app UI (date rail, translucent plates, a pill switch) rather than copied from it. What is HubWorld's own: the rail node encodes real state, the live-auction edge is the single place the interface is allowed to glow, and the thumbnail is a poster, not a square avatar.
 
-The signed-out Landing page is a deliberate exception: a marketing surface that keeps a teal accent, tonal washes and a navy closing panel from its earlier design, a photograph behind its door verdict, a cloud of posters floating around its headline (real events that have a poster first, then decorative artwork, each drifting a few pixels on its own slow cycle, `.float-y`), and one phrase of warm gradient text on that headline (raspberry to amber, `.warm-text`, used once and never through purple). The rules below govern the app screens.
+Since 2026-10-28 every page shares the landing page's background (teal washes and a faint dot grid, one `PageBackdrop` component), at the owner's request. The signed-out Landing page is a further deliberate exception: a marketing surface that keeps a teal accent, tonal washes and a navy closing panel from its earlier design, a photograph behind its door verdict, a cloud of posters floating around its headline (real events that have a poster first, then decorative artwork, each drifting a few pixels on its own slow cycle, `.float-y`), and one phrase of warm gradient text on that headline (raspberry to amber, `.warm-text`, used once and never through purple). The rules below govern the app screens.
 
 **Key Characteristics:**
 - Near-black ground, translucent 4% plates, hairline edges that brighten on hover. No resting shadows.
