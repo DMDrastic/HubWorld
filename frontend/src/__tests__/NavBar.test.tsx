@@ -73,6 +73,26 @@ describe('NavBar destinations when signed in', () => {
     expect(screen.getAllByRole('link', { name: 'Organize' }).length).toBeGreaterThan(0)
   })
 
+  // The application lives on the same page, and without a way to FIND it becoming an
+  // organizer is reachable only by typing the URL. It is named for what it offers, not
+  // "Organize", which would promise a tool the user does not have yet.
+  it('offers a plain USER a way to the application, as Host events', () => {
+    nav(user('USER'))
+    const links = screen.getAllByRole('link', { name: 'Host events' })
+    expect(links.length).toBeGreaterThan(0)
+    for (const l of links) expect(l.getAttribute('href')).toBe('/organize')
+  })
+
+  it.each(['ORGANIZER', 'ADMIN'] as const)('does not offer Host events to an %s', (role) => {
+    nav(user(role))
+    expect(screen.queryByRole('link', { name: 'Host events' })).toBeNull()
+  })
+
+  it('never offers Host events to someone signed out', () => {
+    nav(null)
+    expect(screen.queryByRole('link', { name: 'Host events' })).toBeNull()
+  })
+
   // Door access is per event, so a volunteer is a plain USER — the role alone
   // cannot decide this, which is why `hasDoor` exists as a separate input.
   it('shows Door to a plain USER who has one', () => {
