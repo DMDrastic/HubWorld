@@ -12,6 +12,7 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import {
   CalendarDays,
+  CircleCheck,
   DoorOpen,
   Globe,
   ImagePlus,
@@ -88,15 +89,26 @@ function ApplyForm({ policy, status, onApplied }: {
   if (application?.state === 'pending') {
     return (
       <div className="space-y-2">
-        <Badge variant="secondary">under review</Badge>
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge variant="secondary">under review</Badge>
+          {/* A confirmation is a fact worth seeing at a glance, not the tail of a
+              sentence. The check carries the colour and the words carry the meaning,
+              and the label stays foreground: green text on its own tint is under 4.5:1
+              in light mode, which is why the live chip does the same. */}
+          {application.email && application.emailVerified && (
+            <Badge variant="outline">
+              <CircleCheck className="text-live" aria-hidden />
+              Email confirmed
+            </Badge>
+          )}
+        </div>
         <p className="text-sm">
           Your application for <strong>{application.orgName}</strong> is with the Hubworld team.
         </p>
         {application.email &&
           (application.emailVerified ? (
             <p className="text-sm">
-              We&rsquo;ll email <strong>{application.email}</strong> with the decision. Email
-              confirmed.
+              We&rsquo;ll email <strong>{application.email}</strong> with the decision.
             </p>
           ) : (
             <div className="space-y-1.5">
