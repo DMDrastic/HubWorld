@@ -1305,6 +1305,20 @@ worker: 1,000 of 1,000 tickets in 347s (2.9/s), database and ledger in agreement
 issuer the organizer, 0 failed transactions.** Then confirmed on real mainnet
 (2026-10-20): 3 of 3 at 12 drops each, all agreeing.
 
+**The organizer's grant goes through Xaman, and Xaman gates it per permission.** Found in
+production 2026-10-30: pressing "Allow HubWorld to mint" or "…to sell" answered "Internal
+server error". The log read `Xaman payload create failed: 401 … code 1217 … This application
+may not request DelegateSet permission NFTokenMint. Contact Xaman Support (in-app) to request
+access.` — and the same for `NFTokenCreateOffer`. Every delegation proof (devnet, mainnet) used
+scripts that sign with their own keys, which never touch this gate, so it was invisible until
+the first organizer used the real button. **Until XRPL Labs grants both permissions to our
+application, an organizer cannot grant delegation from the UI**, which means no bulk mint and
+no lazy primary sale in production: the one-signature-for-1,000-tickets claim is true on the
+ledger and not yet reachable from the product. This is another Xaman dependency of the kind
+`ROADMAP.md` names (alongside the payload quota), and not recoverable in code. The refusal is
+now classified (`createFailure`, `XamanPermissionNotGranted`) and answered as a 503 in plain
+words rather than an internal error. Ask via Xaman Support (in-app) for BOTH permissions.
+
 Decisions worth keeping in view:
 
 - **The delegate is a separate key (`DELEGATE_SEED`), not the broker's.** The

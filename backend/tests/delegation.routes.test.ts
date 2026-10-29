@@ -227,6 +227,36 @@ describe('POST /delegation/grant', () => {
     expect(await prisma.delegation.count({ where: { organizerId: org.id } })).toBe(0)
   })
 
+  // Found in production 2026-10-30: Xaman refuses to create the payload because this
+  // APPLICATION has not been granted the DelegateSet permission. It used to surface as
+  // "Internal server error", which sent the organizer hunting for something they had done.
+  describe.each(['mint', 'offers'] as const)('when Xaman has not approved the %s permission', (permission) => {
+    const xamanName = permission === 'mint' ? 'NFTokenMint' : 'NFTokenCreateOffer'
+
+    it('says so in words, as a 503, and records nothing', async () => {
+      const { XamanPermissionNotGranted } = await import('../src/xaman.js')
+      createPayload.mockRejectedValue(
+        new XamanPermissionNotGranted(
+          `{"error":{"code":1217,"message":"This application may not request DelegateSet permission ${xamanName}."}}`,
+        ),
+      )
+      vi.spyOn(console, 'error').mockImplementation(() => {})
+      const org = await mkUser('org')
+
+      const res = await request(app)
+        .post('/api/delegation/grant')
+        .set('Authorization', as(org))
+        .send({ permission })
+
+      expect(res.status).toBe(503)
+      expect(res.body.error).toMatch(/not yet approved HubWorld/i)
+      expect(res.body.error).toMatch(/not something you did wrong/i)
+      expect(res.body.error).not.toMatch(/internal/i)
+      // Nothing half-made: no row waiting on a signature that can never come.
+      expect(await prisma.delegation.count({ where: { organizerId: org.id } })).toBe(0)
+    })
+  })
+
   it('answers 503 when there is no usable delegate key', async () => {
     const org = await mkUser('org')
     delegateOverride = () => {

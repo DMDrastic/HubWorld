@@ -89,6 +89,46 @@ export class XamanPayloadLimit extends Error {
 }
 
 /**
+ * Xaman refused to create a payload because this APPLICATION is not allowed to ask for it.
+ *
+ * Xaman gates which `DelegateSet` permissions an app may request, and answers 401 with
+ * code 1217 ("This application may not request DelegateSet permission NFTokenMint.
+ * Contact Xaman Support (in-app) to request access."). Found in production on 2026-10-30:
+ * every delegation was proven on devnet and mainnet by scripts that sign with their own
+ * keys, which never touch this gate, so the first organizer to press "Allow HubWorld to
+ * mint" got "Internal server error".
+ *
+ * It is not recoverable in code and not the user's doing: it needs Xaman to grant the
+ * permission to our application. `permission` is what Xaman named, when it did.
+ */
+export class XamanPermissionNotGranted extends Error {
+  readonly permission: string | null
+  constructor(detail: string) {
+    super(`Xaman has not granted this application the permission: ${detail}`)
+    this.name = 'XamanPermissionNotGranted'
+    this.permission = /permission\s+([A-Za-z]+)/i.exec(detail)?.[1] ?? null
+  }
+}
+
+/**
+ * What a refused payload creation MEANS, as an error the app can answer properly.
+ *
+ * Xaman answers 400 or 401 with the real code nested in the body, so the HTTP status alone
+ * is misleading. "Max payloads" means the account is full of unresolved payloads, a capacity
+ * problem; code 1217 means this application is not permitted to request that transaction at
+ * all. Neither is a bug in HubWorld, and neither may read as an internal error.
+ */
+export function createFailure(status: number, text: string): Error {
+  if (/max payloads/i.test(text) || /"code":\s*429/.test(text)) {
+    return new XamanPayloadLimit(text)
+  }
+  if (/"code":\s*1217/.test(text) || /may not request DelegateSet permission/i.test(text)) {
+    return new XamanPermissionNotGranted(text)
+  }
+  return new Error(`Xaman payload create failed: ${status} ${text}`)
+}
+
+/**
  * Who and what a payload is being spent on.
  *
  * `flow` is REQUIRED, and that is the whole enforcement mechanism for payload
@@ -179,15 +219,7 @@ class LiveXamanClient implements XamanClient {
     })
 
     if (!res.ok) {
-      const text = await res.text()
-      // Xaman answers 400 with the real code nested in the body, so the HTTP
-      // status alone is misleading. "Max payloads exceeded" means the account is
-      // full of UNRESOLVED payloads — a capacity problem, not a bad request, and
-      // it must not read as an internal error.
-      if (/max payloads/i.test(text) || /"code":\s*429/.test(text)) {
-        throw new XamanPayloadLimit(text)
-      }
-      throw new Error(`Xaman payload create failed: ${res.status} ${text}`)
+      throw createFailure(res.status, await res.text())
     }
 
     const body = (await res.json()) as {

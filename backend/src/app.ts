@@ -183,6 +183,16 @@ export function createApp() {
       return
     }
 
+    // Xaman has not approved this application to request the permission. Not the
+    // user's doing and not a bug to retry: say so, so nobody wonders what they did.
+    if (err instanceof Error && err.name === 'XamanPermissionNotGranted') {
+      res.status(503).json({
+        error:
+          'Xaman has not yet approved HubWorld to ask for this permission, so we cannot start it. Nothing was changed and nothing was charged. This is not something you did wrong.',
+      })
+      return
+    }
+
     if (isTransientNetworkError(err)) {
       res.status(503).json({
         error: 'Could not reach the ledger or Xaman just now. Nothing was lost — try again.',
