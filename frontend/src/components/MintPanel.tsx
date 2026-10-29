@@ -10,7 +10,7 @@ import {
 } from '@/lib/api'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+import { Input, fieldClass } from '@/components/ui/input'
 import {
   Card,
   CardContent,
@@ -158,7 +158,7 @@ export function MintPanel({
                 id="mint-event"
                 value={slug}
                 onChange={(e) => setSlug(e.target.value)}
-                className="border-input bg-background focus-visible:border-ring focus-visible:ring-ring/50 w-full rounded-lg border px-3 py-2 text-sm transition-colors focus-visible:ring-[3px] focus-visible:outline-none"
+                className={`${fieldClass} h-11 sm:h-10`}
               >
                 {events.map((e) => (
                   <option key={e.slug} value={e.slug}>
@@ -183,7 +183,7 @@ export function MintPanel({
               />
             </div>
 
-            <Button onClick={() => void start()} disabled={busy || !slug} className="w-full">
+            <Button onClick={() => void start()} disabled={busy || !slug}>
               {busy ? 'Preparing…' : 'Add a ticket'}
             </Button>
           </div>

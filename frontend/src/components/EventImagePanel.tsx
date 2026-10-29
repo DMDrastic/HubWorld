@@ -13,8 +13,9 @@
  */
 import { useRef, useState } from 'react'
 import { ImagePlus, Loader2 } from 'lucide-react'
-import { ApiError, IMAGE_ACCEPT, MAX_IMAGE_BYTES, uploadEventImage } from '@/lib/api'
+import { IMAGE_ACCEPT, imageProblem, uploadEventImage } from '@/lib/api'
 import type { EventSummary } from '@/lib/api'
+import { prepareImage } from '@/lib/image-prep'
 import { posterUrl } from '@/lib/poster'
 import { Button } from '@/components/ui/button'
 import {
@@ -24,17 +25,6 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
-
-const ACCEPTED = new Set(IMAGE_ACCEPT.split(','))
-
-/** Fails fast on the two mistakes worth catching before a round trip. */
-function localProblem(file: File): string | null {
-  if (!ACCEPTED.has(file.type)) return 'Choose a JPEG, PNG or WEBP image'
-  if (file.size > MAX_IMAGE_BYTES) {
-    return `That image is ${(file.size / 1024 / 1024).toFixed(1)}MB — the limit is 2MB`
-  }
-  return null
-}
 
 function Row({
   event,
@@ -49,7 +39,7 @@ function Row({
 
   async function pick(file: File | undefined) {
     if (!file) return
-    const problem = localProblem(file)
+    const problem = imageProblem(file)
     if (problem) {
       setError(problem)
       return
@@ -57,10 +47,12 @@ function Row({
     setError(null)
     setBusy(true)
     try {
-      await uploadEventImage(event.slug, file)
+      // Over the server's limit, shrink on this device first (see image-prep.ts).
+      const { file: ready } = await prepareImage(file)
+      await uploadEventImage(event.slug, ready)
       onChanged()
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Upload failed')
+      setError(err instanceof Error ? err.message : 'Upload failed')
     } finally {
       setBusy(false)
       // Clear the input, or picking the SAME file again fires no change event
@@ -70,7 +62,7 @@ function Row({
   }
 
   return (
-    <li className="bg-muted/40 flex items-center gap-3 rounded-xl p-3">
+    <li className="flex items-center gap-3 rounded-xl border border-[var(--surface-border)] p-3">
       <div className="bg-muted size-14 shrink-0 overflow-hidden rounded-lg ring-1 ring-current/10">
         {event.imageUrl ? (
           // A 56px thumbnail has even less use for the full file than a card does.
@@ -139,7 +131,7 @@ export function EventImagePanel({
       <CardHeader>
         <CardTitle>Event posters</CardTitle>
         <CardDescription>
-          The image people see when browsing. JPEG, PNG or WEBP, up to 2MB.
+          The image people see when browsing. JPEG, PNG or WEBP, up to 25MB; larger files are shrunk to fit.
         </CardDescription>
       </CardHeader>
       <CardContent>

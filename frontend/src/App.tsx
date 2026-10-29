@@ -1,4 +1,4 @@
-import { Suspense, lazy, useCallback, useEffect, useState } from 'react'
+import { Fragment, Suspense, lazy, useCallback, useEffect, useState } from 'react'
 import {
   ApiError,
   fetchAuctions,
@@ -29,6 +29,7 @@ import { DoorPanel } from '@/components/DoorPanel'
 import { NavBar } from '@/components/NavBar'
 import { EmailVerifyNotice } from '@/components/EmailVerifyNotice'
 import { Landing } from '@/components/Landing'
+import { PageBackdrop } from '@/components/PageBackdrop'
 import { SignInRequired } from '@/components/SignInRequired'
 import { Hub } from '@/components/Hub'
 import { Footer } from '@/components/Footer'
@@ -36,6 +37,7 @@ import { EventList } from '@/components/EventList'
 import { EventImagePanel } from '@/components/EventImagePanel'
 import { useRoute } from '@/lib/router'
 import { OrganizerPanel } from '@/components/OrganizerPanel'
+import { PageHeader } from '@/components/PageHeader'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -277,6 +279,11 @@ export default function App() {
     [events],
   )
 
+  // Every page carries the landing page's background. The signed-out landing page
+  // mounts it itself (it is full-bleed and sequences its own sections), so the shell
+  // must not add a second layer under it.
+  const Backdrop = route === '/' && !me ? Fragment : PageBackdrop
+
   const auctionSlugs = new Set(auctions.map((a) => a.eventSlug))
   const organizing = me ? events.filter((e) => e.organizer.username === me.username) : []
 
@@ -290,6 +297,7 @@ export default function App() {
         onSignOut={() => void handleSignOut()}
       />
 
+      <Backdrop>
       <main className="mx-auto max-w-6xl px-4 pb-24">
         {error && (
           <p className="text-destructive bg-destructive/8 mt-4 rounded-xl border border-current/20 p-3.5 text-sm">
@@ -310,36 +318,28 @@ export default function App() {
           (me ? (
             <Hub me={me} onOpenAuction={openAuctionBySlug} />
           ) : (
-            <Landing onAuthenticated={handleAuthenticated} network={health?.network} />
+            <Landing onAuthenticated={handleAuthenticated} network={health?.network} events={events} />
           ))}
 
         {route === '/events' && (
-          <section className="space-y-4 py-8">
-            <div>
-              <h1 className="text-3xl font-semibold tracking-[-0.02em]">Events</h1>
-              <p className="text-muted-foreground mt-1.5 text-sm leading-relaxed">
-                Sold-out nights open for bidding are marked live.
-                {!me && ' Anyone can watch an auction; bidding needs a wallet.'}
-              </p>
-            </div>
+          <section>
             <EventList
               events={events}
               auctionSlugs={auctionSlugs}
               onOpenAuction={setAuctionEvent}
               onBuy={setBuyEvent}
+              note={me ? undefined : 'Anyone can watch an auction; bidding needs a wallet.'}
             />
           </section>
         )}
 
         {route === '/tickets' &&
           (me ? (
-            <section className="space-y-4 py-8">
-              <div>
-                <h1 className="text-3xl font-semibold tracking-[-0.02em]">Your tickets</h1>
-                <p className="text-muted-foreground mt-1.5 text-sm leading-relaxed">
-                  These live in your own wallet, so they're yours even if HubWorld disappears.
-                </p>
-              </div>
+            <section className="space-y-4 pb-8">
+              <PageHeader
+                title="Your tickets"
+                description="These live in your own wallet, so they're yours even if HubWorld disappears."
+              />
               <TicketWallet version={walletVersion} onGift={chooseGift} />
               <GiftPanel onChanged={handleGiftChanged} selectedId={giftTarget} />
               <HandleLookup />
@@ -354,13 +354,11 @@ export default function App() {
 
         {route === '/market' &&
           (me ? (
-            <section className="space-y-4 py-8">
-              <div>
-                <h1 className="text-3xl font-semibold tracking-[-0.02em]">Marketplace</h1>
-                <p className="text-muted-foreground mt-1.5 text-sm leading-relaxed">
-                  Resales settle on-ledger. The organizer earns a royalty on every one.
-                </p>
-              </div>
+            <section className="space-y-4 pb-8">
+              <PageHeader
+                title="Marketplace"
+                description="Resales settle on-ledger. The organizer earns a royalty on every one."
+              />
               <SellPanel onChanged={handleMinted} />
             </section>
           ) : (
@@ -373,13 +371,11 @@ export default function App() {
 
         {route === '/door' &&
           (me ? (
-            <section className="space-y-4 py-8">
-              <div>
-                <h1 className="text-3xl font-semibold tracking-[-0.02em]">Door</h1>
-                <p className="text-muted-foreground mt-1.5 text-sm leading-relaxed">
-                  Check guests in. The verdict shows here, on your device, never on theirs.
-                </p>
-              </div>
+            <section className="space-y-4 pb-8">
+              <PageHeader
+                title="Door"
+                description="Check guests in. The verdict shows here, on your device, never on theirs."
+              />
               <DoorPanel />
             </section>
           ) : (
@@ -399,13 +395,11 @@ export default function App() {
         )}
 
         {route === '/organize' && me && isOrganizer(me.role) && (
-          <section className="space-y-4 py-8">
-            <div>
-              <h1 className="text-3xl font-semibold tracking-[-0.02em]">Organize</h1>
-              <p className="text-muted-foreground mt-1.5 text-sm leading-relaxed">
-                Create events and tickets. You earn a cut of every resale.
-              </p>
-            </div>
+          <section className="space-y-4 pb-8">
+            <PageHeader
+              title="Organize"
+              description="Create events and tickets. You earn a cut of every resale."
+            />
             <OrganizerPanel role={me.role} onChanged={handleMinted} refreshKey={emailVerifiedTick} />
             <EventImagePanel events={organizing} onChanged={handleMinted} />
             <DelegationPanel />
@@ -417,12 +411,13 @@ export default function App() {
         {/* A regular user who types /organize gets the application form
             rather than a blank page or a 403. */}
         {route === '/organize' && me && !isOrganizer(me.role) && (
-          <section className="space-y-4 py-8">
-            <h1 className="text-2xl font-semibold tracking-tight">Run your own events</h1>
+          <section className="space-y-4 pb-8">
+            <PageHeader title="Run your own events" />
             <OrganizerPanel role={me.role} onChanged={handleMinted} refreshKey={emailVerifiedTick} />
           </section>
         )}
       </main>
+      </Backdrop>
 
       <Footer health={health} />
 

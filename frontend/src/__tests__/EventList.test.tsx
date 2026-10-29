@@ -7,7 +7,7 @@
  * thing being asserted, not an implementation detail.
  */
 import { describe, expect, it, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { EventList } from '@/components/EventList'
 import type { EventSummary } from '@/lib/api'
 
@@ -76,6 +76,74 @@ describe('EventList auction gating', () => {
   it('still tells you to seed when there are no events', () => {
     render(<EventList events={[]} auctionSlugs={LIVE} onOpenAuction={vi.fn()} />)
     expect(screen.getByText(/db:seed/)).toBeTruthy()
+  })
+})
+
+/**
+ * Upcoming and Past are two views of one list.
+ *
+ * The page opens on whichever has something in it: an empty "Upcoming" as the
+ * first thing a new visitor sees reads as a dead product. And the switch is tabs,
+ * not buttons, so it never shows up among the controls the gating tests count.
+ */
+describe('the Upcoming and Past views', () => {
+  const day = 86_400_000
+  const at = (slug: string, title: string, offsetDays: number, status: EventSummary['status'] = 'PUBLISHED') => ({
+    ...event(slug, title, status),
+    startsAt: new Date(Date.now() + offsetDays * day).toISOString(),
+  })
+  const SOON = at('soon', 'Soon Night', 3)
+  const LATER = at('later', 'Later Night', 9)
+  const GONE = at('gone', 'Gone Night', -9)
+  const CALLED_OFF = at('called-off', 'Called Off Night', 5, 'CANCELLED')
+
+  const list = (events: EventSummary[]) =>
+    render(<EventList events={events} auctionSlugs={new Set()} onOpenAuction={vi.fn()} />)
+  const titles = () => screen.queryAllByRole('heading', { level: 3 }).map((h) => h.textContent)
+
+  it('opens on Upcoming when something is coming up, soonest first', () => {
+    list([LATER, GONE, SOON])
+    expect(screen.getByRole('tab', { name: 'Upcoming' }).getAttribute('aria-selected')).toBe('true')
+    expect(titles()).toEqual(['Soon Night', 'Later Night'])
+  })
+
+  it('opens on Past when nothing is scheduled, rather than on an empty page', () => {
+    list([GONE])
+    expect(screen.getByRole('tab', { name: 'Past' }).getAttribute('aria-selected')).toBe('true')
+    expect(titles()).toEqual(['Gone Night'])
+  })
+
+  it('switches to the other group, most recent first', () => {
+    const older = at('older', 'Older Night', -30)
+    list([SOON, older, GONE])
+    fireEvent.click(screen.getByRole('tab', { name: 'Past' }))
+    expect(titles()).toEqual(['Gone Night', 'Older Night'])
+  })
+
+  it('files a cancelled event under Past even though its date is ahead', () => {
+    // A called-off night in the Upcoming list wastes somebody's evening.
+    list([SOON, CALLED_OFF])
+    expect(titles()).toEqual(['Soon Night'])
+    fireEvent.click(screen.getByRole('tab', { name: 'Past' }))
+    expect(titles()).toEqual(['Called Off Night'])
+  })
+
+  it('says so, and offers the other view, when Upcoming is empty', () => {
+    list([GONE])
+    fireEvent.click(screen.getByRole('tab', { name: 'Upcoming' }))
+    expect(screen.getByText(/nothing scheduled/i)).toBeTruthy()
+  })
+
+  it('does not count the switch among the page’s buttons', () => {
+    list([SOON])
+    expect(screen.queryByRole('button')).toBeNull()
+  })
+
+  it('moves between the views with the arrow keys, as tabs do', () => {
+    list([SOON, GONE])
+    const upcoming = screen.getByRole('tab', { name: 'Upcoming' })
+    fireEvent.keyDown(upcoming, { key: 'ArrowRight' })
+    expect(screen.getByRole('tab', { name: 'Past' }).getAttribute('aria-selected')).toBe('true')
   })
 })
 

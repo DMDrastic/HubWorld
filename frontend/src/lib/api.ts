@@ -1177,6 +1177,27 @@ export async function uploadEventImage(
 /** What the server accepts. Mirrored here only to fail fast in the picker. */
 export const IMAGE_ACCEPT = 'image/jpeg,image/png,image/webp'
 export const MAX_IMAGE_BYTES = 2 * 1024 * 1024
+/**
+ * The most the PICKER accepts. Anything over MAX_IMAGE_BYTES is shrunk on the
+ * device before it is sent (see image-prep.ts), so this is a sanity bound on what is
+ * worth decoding, not on what is uploaded.
+ */
+export const MAX_PICK_BYTES = 25 * 1024 * 1024
+
+const ACCEPTED_IMAGE_TYPES = new Set(IMAGE_ACCEPT.split(','))
+
+/**
+ * Fails fast on the two mistakes worth catching before any work is done: a type the
+ * server will refuse, and a file too large to be worth decoding. The client check is not the
+ * boundary (the server reads the magic bytes itself); it only saves an upload.
+ */
+export function imageProblem(file: File): string | null {
+  if (!ACCEPTED_IMAGE_TYPES.has(file.type)) return 'Choose a JPEG, PNG or WEBP image'
+  if (file.size > MAX_PICK_BYTES) {
+    return `That image is ${(file.size / 1024 / 1024).toFixed(1)}MB \u2014 the limit is ${MAX_PICK_BYTES / 1024 / 1024}MB`
+  }
+  return null
+}
 
 // There is deliberately no token storage here.
 //

@@ -9,6 +9,10 @@
  *
  * 2. Copyright and provenance.
  *
+ * It is one quiet row of links over two short lines of small print. The earlier
+ * three-column footer gave a two-link site the weight of a sitemap, and labelled
+ * each column in tracked capitals above one or two links.
+ *
  * NOT HERE: a test-network notice. It used to lead the footer ("Running on the
  * XRPL testnet ... no real money is involved") and was removed on request. The
  * nav's network badge and the landing page's ledger line still say which network
@@ -30,57 +34,44 @@ export function Footer({ health }: { health: Health | null }) {
   // Computed, not hardcoded — a literal year silently rots every January.
   const year = new Date().getFullYear()
 
+  const quiet = 'hover:text-foreground focus-visible:ring-ring rounded focus-visible:ring-2 focus-visible:outline-none'
+
   return (
     <footer className="border-t">
-      <div className="text-muted-foreground mx-auto max-w-6xl px-4 py-10 text-sm">
-        <div className="grid gap-8 sm:grid-cols-[1.5fr_1fr_1fr]">
-          <div className="space-y-3">
-            <div className="text-foreground text-[0.95rem] font-semibold tracking-tight">
+      <div className="text-muted-foreground mx-auto max-w-6xl px-4 py-8 text-sm">
+        <div className="flex flex-wrap items-center justify-between gap-x-8 gap-y-3">
+          <nav aria-label="Footer" className="flex flex-wrap items-center gap-x-6 gap-y-2">
+            <a
+              href="/"
+              onClick={link('/')}
+              className="text-foreground focus-visible:ring-ring rounded font-semibold tracking-tight focus-visible:ring-2 focus-visible:outline-none"
+            >
               HubWorld
-            </div>
-            <p className="max-w-sm leading-relaxed text-pretty">
-              Event ticketing on the XRP Ledger. Your tickets are NFTs held in
-              your own wallet — HubWorld never holds your keys, and sale funds
-              never rest with us.
-            </p>
-          </div>
-
-          <nav className="space-y-2.5" aria-label="Footer">
-            <div className="text-foreground text-xs font-medium tracking-[0.18em] uppercase">
-              Explore
-            </div>
-            <a href="/events" onClick={link('/events')} className="hover:text-foreground block">
+            </a>
+            <a href="/events" onClick={link('/events')} className={quiet}>
               Events
             </a>
-            <a href="/market" onClick={link('/market')} className="hover:text-foreground block">
+            <a href="/market" onClick={link('/market')} className={quiet}>
               Marketplace
             </a>
-          </nav>
-
-          <nav className="space-y-2.5" aria-label="Project">
-            <div className="text-foreground text-xs font-medium tracking-[0.18em] uppercase">
-              Project
-            </div>
             {/* External, so a real anchor with the usual safety attributes. */}
-            <a
-              href={XRPL}
-              target="_blank"
-              rel="noreferrer noopener"
-              className="hover:text-foreground block"
-            >
+            <a href={XRPL} target="_blank" rel="noreferrer noopener" className={quiet}>
               XRP Ledger
             </a>
           </nav>
-        </div>
 
-        <div className="mt-8 flex flex-col gap-2 border-t pt-6 text-xs sm:flex-row sm:items-center sm:justify-between">
-          <p>© {year} HubWorld. Built on the XRP Ledger.</p>
           {/* Which build is serving. Quiet, but it turns "it is broken on my
               machine" into a specific commit without anyone opening DevTools. */}
           {health?.commit && health.commit !== 'unknown' && (
-            <p className="font-mono opacity-60">build {health.commit.slice(0, 7)}</p>
+            <p className="font-mono text-xs opacity-60">build {health.commit.slice(0, 7)}</p>
           )}
         </div>
+
+        <p className="mt-6 max-w-xl leading-relaxed text-pretty">
+          Event ticketing on the XRP Ledger. Your tickets are NFTs held in your own wallet —
+          HubWorld never holds your keys, and sale funds never rest with us.
+        </p>
+        <p className="mt-3 text-xs">© {year} HubWorld. Built on the XRP Ledger.</p>
       </div>
     </footer>
   )

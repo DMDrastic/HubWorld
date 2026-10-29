@@ -260,28 +260,34 @@ function PermissionCard({
 
       <CardContent className="space-y-4">
         {phase.kind === 'idle' && (
-          <div className="space-y-3">
-            <p className="text-sm" role="status">
-              {granted && copy.on}
-              {unknown && "We couldn't read your account just now. Your access hasn't changed."}
-              {!granted && !unknown && copy.off}
+          // The state on the left and the one action that changes it on the right,
+          // wrapping under it on a phone. A stretched full-width button read as the
+          // most important thing on the page, which a permission switch is not.
+          <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
+            <p className="flex items-center gap-2.5 text-sm" role="status">
+              {/* Neutral on purpose: this is a setting, not a live event, and green
+                  is kept for those. Filled when on, faint when off. */}
+              <span
+                aria-hidden
+                className={`size-2 shrink-0 rounded-full ${granted ? 'bg-foreground' : 'bg-muted-foreground/40'}`}
+              />
+              <span>
+                {granted && copy.on}
+                {unknown && "We couldn't read your account just now. Your access hasn't changed."}
+                {!granted && !unknown && copy.off}
+              </span>
             </p>
 
             {granted ? (
-              <Button
-                variant="secondary"
-                onClick={() => void start('revoke')}
-                disabled={busy}
-                className="w-full"
-              >
+              <Button variant="secondary" onClick={() => void start('revoke')} disabled={busy}>
                 {busy ? 'Preparing…' : copy.revoke}
               </Button>
             ) : unknown ? (
-              <Button variant="secondary" onClick={() => void onChanged()} className="w-full">
+              <Button variant="secondary" onClick={() => void onChanged()}>
                 Check again
               </Button>
             ) : (
-              <Button onClick={() => void start('grant')} disabled={busy} className="w-full">
+              <Button onClick={() => void start('grant')} disabled={busy}>
                 {busy ? 'Preparing…' : copy.grant}
               </Button>
             )}
