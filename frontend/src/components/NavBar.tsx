@@ -8,14 +8,30 @@
  * Real `<a href>` elements, not buttons — middle-click, copy-link and
  * open-in-new-tab all keep working, and the router only intercepts plain left
  * clicks.
+ *
+ * Each destination carries an icon, and the icon is decoration: the label is the
+ * name. The current page is marked by brightness AND a bar under it, because a
+ * state carried by one shade of grey is not a state a tired eye at the door can
+ * rely on.
  */
 import { useEffect, useState } from 'react'
-import { Moon, Sun } from 'lucide-react'
+import {
+  CalendarDays,
+  DoorOpen,
+  House,
+  Moon,
+  SquarePen,
+  Store,
+  Sun,
+  Ticket,
+  type LucideIcon,
+} from 'lucide-react'
 import { isOrganizer, type Health, type User } from '@/lib/api'
+import { hueFrom } from '@/lib/poster'
 import { useLinkHandler, type Route } from '@/lib/router'
 import { useTheme } from '@/lib/theme'
 
-type Destination = { to: Route; label: string }
+type Destination = { to: Route; label: string; icon: LucideIcon }
 
 function destinations(me: User | null, hasDoor: boolean): Destination[] {
   // Signed out, Events is still worth reaching: it is about the world rather
@@ -23,17 +39,17 @@ function destinations(me: User | null, hasDoor: boolean): Destination[] {
   // crypto wallet before they may even look at what is on is the same mistake
   // the landing page was written to fix. Everything else stays absent, because
   // the remaining destinations describe things only an account can have.
-  if (!me) return [{ to: '/events', label: 'Events' }]
+  if (!me) return [{ to: '/events', label: 'Events', icon: CalendarDays }]
 
   const base: Destination[] = [
-    { to: '/', label: 'Hub' },
-    { to: '/events', label: 'Events' },
-    { to: '/tickets', label: 'Tickets' },
-    { to: '/market', label: 'Market' },
+    { to: '/', label: 'Hub', icon: House },
+    { to: '/events', label: 'Events', icon: CalendarDays },
+    { to: '/tickets', label: 'Tickets', icon: Ticket },
+    { to: '/market', label: 'Market', icon: Store },
   ]
   // A volunteer is a plain USER with a door, so this cannot be decided by role.
-  if (hasDoor) base.push({ to: '/door', label: 'Door' })
-  if (isOrganizer(me.role)) base.push({ to: '/organize', label: 'Organize' })
+  if (hasDoor) base.push({ to: '/door', label: 'Door', icon: DoorOpen })
+  if (isOrganizer(me.role)) base.push({ to: '/organize', label: 'Organize', icon: SquarePen })
   return base
 }
 
@@ -106,14 +122,13 @@ function ThemeToggle() {
       // a button that is already dark reads as a status, not a control.
       aria-label={`Switch to ${next} mode`}
       title={`Switch to ${next} mode`}
-      className="text-muted-foreground hover:text-foreground hover:bg-accent focus-visible:ring-ring flex size-8 items-center justify-center rounded-lg transition-colors focus-visible:ring-2 focus-visible:outline-none"
+      className="text-muted-foreground hover:text-foreground hover:bg-accent focus-visible:ring-ring flex size-11 items-center sm:size-9 justify-center rounded-lg transition-colors focus-visible:ring-2 focus-visible:outline-none"
     >
       {theme === 'dark' ? <Moon className="size-4" /> : <Sun className="size-4" />}
     </button>
   )
 }
 
-/** The mark: a ring of destinations around a centre — the hub-world idea. */
 /**
  * The HubWorld mark: two nodes orbiting a hub.
  *
@@ -148,7 +163,7 @@ function Mark() {
   }, [])
 
   return (
-    <svg viewBox="0 0 100 100" className="size-11 shrink-0" aria-hidden>
+    <svg viewBox="0 0 100 100" className="size-10 shrink-0" aria-hidden>
       <defs>
         <linearGradient id="hw-nav" x1="0" y1="0" x2="1" y2="1">
           <stop offset="0" stopColor="#4f8cff" />
@@ -172,6 +187,19 @@ function Mark() {
   )
 }
 
+/** A round initial for the signed-in account, coloured from the handle. */
+function Avatar({ username }: { username: string }) {
+  return (
+    <span
+      className="flex size-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold text-white/90"
+      style={{ background: `oklch(0.42 0.1 ${hueFrom(username)})` }}
+      aria-hidden
+    >
+      {username.charAt(0).toUpperCase()}
+    </span>
+  )
+}
+
 export function NavBar({
   me,
   health,
@@ -192,33 +220,35 @@ export function NavBar({
   // on every frame, a leading cause of scroll jank on iPhones. Phones and tablets get a
   // nearly solid bar instead; the frosted look stays where it is cheap.
   return (
-    <header className="bg-background lg:bg-background/70 sticky top-0 z-40 border-b lg:backdrop-blur-xl">
-      <div className="mx-auto flex h-16 max-w-6xl items-center gap-6 px-4">
+    <header className="bg-background lg:bg-background/80 sticky top-0 z-40 border-b lg:backdrop-blur-xl">
+      <div className="mx-auto flex h-16 max-w-6xl items-center gap-8 px-4">
         <a
           href="/"
           onClick={link('/')}
-          className="flex shrink-0 items-center gap-2.5 text-[0.95rem] font-semibold tracking-tight"
+          className="focus-visible:ring-ring flex shrink-0 items-center gap-2 rounded-lg text-[0.95rem] font-semibold tracking-tight focus-visible:ring-2 focus-visible:outline-none"
         >
           <Mark />
           HubWorld
         </a>
 
-        <nav className="hidden flex-1 items-center gap-0.5 sm:flex">
-          {items.map((d) => {
-            const active = route === d.to
+        <nav className="hidden flex-1 items-center gap-1 sm:flex">
+          {items.map(({ to, label, icon: Icon }) => {
+            const active = route === to
             return (
               <a
-                key={d.to}
-                href={d.to}
-                onClick={link(d.to)}
+                key={to}
+                href={to}
+                onClick={link(to)}
                 aria-current={active ? 'page' : undefined}
-                className={`rounded-lg px-3 py-1.5 text-sm transition-colors ${
-                  active
-                    ? 'bg-primary/12 text-primary font-medium'
-                    : 'text-muted-foreground hover:text-foreground hover:bg-accent/60'
+                className={`focus-visible:ring-ring relative flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors focus-visible:ring-2 focus-visible:outline-none ${
+                  active ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'
                 }`}
               >
-                {d.label}
+                <Icon className="size-4" aria-hidden />
+                {label}
+                {active && (
+                  <span className="bg-brand absolute inset-x-3 -bottom-3.5 h-0.5 rounded-full" aria-hidden />
+                )}
               </a>
             )
           })}
@@ -229,42 +259,45 @@ export function NavBar({
           <HealthDot health={health} />
           <ThemeToggle />
           {me ? (
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2.5">
               <span className="bg-muted text-muted-foreground hidden rounded-lg px-2 py-1 font-mono text-xs md:inline">
                 @{me.username}
               </span>
+              <Avatar username={me.username} />
               <button
                 type="button"
                 onClick={onSignOut}
-                className="text-muted-foreground hover:text-foreground text-xs underline-offset-4 hover:underline"
+                className="text-muted-foreground hover:text-foreground inline-flex min-h-11 items-center px-1 text-xs underline-offset-4 hover:underline sm:min-h-0"
               >
                 Sign out
               </button>
             </div>
           ) : (
-            <span className="text-muted-foreground text-xs">not signed in</span>
+            <span className="text-muted-foreground text-xs whitespace-nowrap">not signed in</span>
           )}
         </div>
       </div>
 
       {/* Narrow screens: the same destinations, scrollable, below the brand. */}
       {items.length > 0 && (
-        <nav className="flex gap-1 overflow-x-auto border-t px-4 py-2 sm:hidden">
-          {items.map((d) => (
-            <a
-              key={d.to}
-              href={d.to}
-              onClick={link(d.to)}
-              aria-current={route === d.to ? 'page' : undefined}
-              className={`shrink-0 rounded-lg px-3 py-1 text-sm ${
-                route === d.to
-                  ? 'bg-primary/12 text-primary font-medium'
-                  : 'text-muted-foreground'
-              }`}
-            >
-              {d.label}
-            </a>
-          ))}
+        <nav className="flex gap-1 overflow-x-auto border-t px-4 py-1.5 sm:hidden">
+          {items.map(({ to, label, icon: Icon }) => {
+            const active = route === to
+            return (
+              <a
+                key={to}
+                href={to}
+                onClick={link(to)}
+                aria-current={active ? 'page' : undefined}
+                className={`flex min-h-11 shrink-0 items-center gap-2 rounded-lg px-3 text-sm font-medium ${
+                  active ? 'bg-foreground/10 text-foreground' : 'text-muted-foreground'
+                }`}
+              >
+                <Icon className="size-4" aria-hidden />
+                {label}
+              </a>
+            )
+          })}
         </nav>
       )}
     </header>

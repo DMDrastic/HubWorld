@@ -179,8 +179,8 @@ export function SignIn({
             />
             <p className="text-muted-foreground flex items-center gap-2 text-center text-sm">
               <span className="relative flex size-1.5">
-                <span className="bg-primary absolute inline-flex size-full animate-ping rounded-full opacity-70" />
-                <span className="bg-primary relative inline-flex size-1.5 rounded-full" />
+                <span className="bg-brand absolute inline-flex size-full animate-ping rounded-full opacity-70" />
+                <span className="bg-brand relative inline-flex size-1.5 rounded-full" />
               </span>
               Scan in the Xaman app. Waiting for signature…
             </p>
