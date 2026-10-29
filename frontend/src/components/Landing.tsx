@@ -187,7 +187,7 @@ const ORGANIZER_VALUE = [
  */
 const SPLIT = [
   { who: 'Seller', xrp: '0.926250', pct: 92.6, tone: 'bg-foreground' },
-  { who: 'Organizer, royalty', xrp: '0.048750', pct: 4.9, tone: 'bg-primary' },
+  { who: 'Organizer, royalty', xrp: '0.048750', pct: 4.9, tone: 'bg-brand' },
   { who: 'Platform, after the network fee', xrp: '0.024988', pct: 2.5, tone: 'bg-muted-foreground' },
 ] as const
 
@@ -336,7 +336,7 @@ export function Landing({
                   rather than mounting a second. */}
               <div
                 id="hero-signin"
-                className="[&_[data-slot=card-content]]:p-0 [&_[data-slot=card-header]]:hidden [&_[data-slot=card]]:rounded-none [&_[data-slot=card]]:bg-transparent [&_[data-slot=card]]:p-0 [&_[data-slot=card]]:shadow-none [&_[data-slot=card]]:ring-0"
+                className="[&_[data-slot=card-content]]:p-0 [&_[data-slot=card-header]]:hidden [&_[data-slot=card]]:rounded-none [&_[data-slot=card]]:bg-transparent [&_[data-slot=card]]:p-0 [&_[data-slot=card]]:shadow-none [&_[data-slot=card]]:ring-0 [&_[data-slot=card]]:border-0"
               >
                 <SignIn
                   onAuthenticated={onAuthenticated}

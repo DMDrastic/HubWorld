@@ -10,8 +10,10 @@ colors:
   day-plate: "#ffffff"
   day-ink: "#101014"
   day-ink-muted: "#6b6a76"
-  action-violet-night: "#8b7cff"
-  action-violet-day: "#6d4aff"
+  ink-action-night: "#f2f2f5"
+  ink-action-day: "#101014"
+  brand-violet-night: "#8b7cff"
+  brand-violet-day: "#6d4aff"
   live-green-night: "#3fb463"
   live-green-day: "#15803d"
   fault-red-night: "#f0575c"
@@ -56,8 +58,8 @@ components:
     rounded: "{rounded.surface}"
     padding: "20px"
   button-action:
-    backgroundColor: "{colors.action-violet-night}"
-    textColor: "#0b0b0f"
+    backgroundColor: "{colors.ink-action-night}"
+    textColor: "#0e0e12"
     rounded: "{rounded.pill}"
     height: "40px"
     padding: "0 16px"
@@ -77,16 +79,17 @@ The signed-out Landing page is a deliberate exception: a marketing surface that 
 
 **Key Characteristics:**
 - Near-black ground, translucent 4% plates, hairline edges that brighten on hover. No resting shadows.
-- One action colour (violet) and one state colour (green), never swapped.
+- Actions are neutral pills (near-white on dark, ink on light). Violet is the brand and marks where you are and what is in focus; green is the one state colour. Never swapped.
 - Titles in tight 600-weight Geist; addresses, prices and times in Geist Mono or tabular figures.
 - State is always written down as well as coloured.
 
 ## Colors
 
-A neutral ground with a violet cast, one action colour, one state colour.
+A neutral ground with a violet cast, neutral action pills, a violet brand accent, one state colour.
 
 ### Primary
-- **Action Violet** (#8b7cff on night, #6d4aff on day): every control a person can press that does something, and keyboard focus. If it is violet, you can act on it.
+- **Brand Violet** (#8b7cff on night, #6d4aff on day): where you are and what is in focus, never what to press. Keyboard focus, the current-page bar, the "on sale" ring on the timeline, links, text selection, the caret, a progress bar. Also the logo.
+- **Action Ink** (#f2f2f5 on night, #101014 on day): the fill of every primary action. The strongest contrast either theme has, and indifferent to the colour a poster washes the page in.
 
 ### Secondary
 - **Live Green** (#3fb463 night, #15803d day): a live auction, or a ticket admitted at the door, and nothing else, always paired with a label ("auction live", "Admitted") or an icon. It is also the rail node's filled, pulsing state.
@@ -97,7 +100,7 @@ A neutral ground with a violet cast, one action colour, one state colour.
 - **Fault Red** (#f0575c night, #d03b3b day): errors and a cancelled event only.
 
 ### Named Rules
-**The One Meaning Rule.** Violet means "you can act", green means "live". A thumbnail, a chip or a chart that happens to land in either hue is moved out of it (see `offGreen` in `EventRow`).
+**The One Meaning Rule.** A neutral pill means "you can act", violet means "you are here, or this is focused", green means "live". A thumbnail, a chip or a chart that happens to land in either hue is moved out of it (see `offGreen` in `EventRow`).
 **The Words Too Rule.** State is never carried by hue alone. A node is backed by a chip; a chip is backed by its label.
 
 ## Typography
@@ -133,8 +136,8 @@ Soft but not round. Plates are 16px, thumbnails 12px, the tab switch's inner pil
 
 ### Buttons
 - **Shape:** full pill, 40px tall (44px on touch).
-- **Action:** violet fill, near-black text on night and white on day; opacity to 90% on hover.
-- **Focus:** 2px ring in the action colour.
+- **Action:** a neutral fill (near-white on night, ink on day) with the opposite colour as its text; opacity to 90% on hover. Disabled is the same pill at 50%.
+- **Focus:** 2px ring in brand violet.
 
 ### Event row
 - **Plate:** `surface` with `surface-hover`; `surface-live` adds the green edge.
@@ -159,7 +162,7 @@ Soft but not round. Plates are 16px, thumbnails 12px, the tab switch's inner pil
 ## Do's and Don'ts
 
 ### Do:
-- **Do** keep violet for what can be pressed and green for what is live.
+- **Do** keep action pills neutral, violet for place and focus, and green for what is live.
 - **Do** write state as a word as well as a colour.
 - **Do** let an edge brighten on hover instead of adding a shadow.
 - **Do** keep controls that cannot work absent, not disabled.

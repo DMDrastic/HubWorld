@@ -247,7 +247,7 @@ export function NavBar({
                 <Icon className="size-4" aria-hidden />
                 {label}
                 {active && (
-                  <span className="bg-primary absolute inset-x-3 -bottom-3.5 h-0.5 rounded-full" aria-hidden />
+                  <span className="bg-brand absolute inset-x-3 -bottom-3.5 h-0.5 rounded-full" aria-hidden />
                 )}
               </a>
             )

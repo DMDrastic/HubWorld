@@ -260,7 +260,7 @@ export function BulkMintPanel({
               aria-valuenow={job.minted}
               className="bg-muted h-2 overflow-hidden rounded-full"
             >
-              <div className="bg-primary h-full transition-[width] duration-500" style={{ width: `${pct}%` }} />
+              <div className="bg-brand h-full transition-[width] duration-500" style={{ width: `${pct}%` }} />
             </div>
 
             {job.waiting ? (

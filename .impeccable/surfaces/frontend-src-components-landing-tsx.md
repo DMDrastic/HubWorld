@@ -15,7 +15,7 @@ Unresolved: the two concert photographs (not used in this pass); attendee-facing
 
 THESIS: The first screen is a verdict, not a pitch: the full-width moment at the door when a ticket either works or doesn't, with the organizer's offer written beneath it. Refuses the category default of a centred headline over two buttons and a row of cards.
 
-OWN-WORLD: The Departures Board system from DESIGN.md for plates, type and the violet action, plus the previous Landing's teal accent and tonal washes as the page atmosphere. The hero verdict sits on a crowd-under-stage-lights photograph under a flat 50% black layer, with white text; live green is only a dot and a check, always beside the word Admitted. Geist with Geist Mono for figures and labels. Sections other than the auction panel and closing panel are left-aligned on one grid.
+OWN-WORLD: The Departures Board system from DESIGN.md for plates, type and the neutral action pill with a violet brand accent, plus the previous Landing's teal accent and tonal washes as the page atmosphere. The hero verdict sits on a crowd-under-stage-lights photograph under a flat 50% black layer, with white text; live green is only a dot and a check, always beside the word Admitted. Geist with Geist Mono for figures and labels. Sections other than the auction panel and closing panel are left-aligned on one grid.
 
 STORY: A stranger understands in one screen that this is ticketing where each ticket is checked against a ledger at the door, reads that resale pays the organizer, sees the measured split, scrolls through one ticket's life on the phone, and is asked once to sign in and apply.
 

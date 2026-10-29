@@ -41,7 +41,7 @@ HubWorld gives organizers control beyond the sale. It does not compete with Luma
 ## Brand Commitments
 
 - Name: HubWorld. Mark: two nodes orbiting a hub (`NavBar.tsx` `Mark`, `favicon.svg`).
-- **The violet brand accent is kept, deliberately** (confirmed 2026-10-28), even though `frontend/CLAUDE.md` bans purple as a primary hue. Executed with care: no gradient headline words, no purple gradients, no aurora backdrops on the app surfaces.
+- **The violet brand accent is kept, deliberately** (confirmed 2026-10-28), even though `frontend/CLAUDE.md` bans purple as a primary hue, and since the same day it is no longer the colour of buttons: primary actions are neutral pills (near-white on dark, ink on light), and violet marks place and focus. Executed with care: no gradient headline words, no purple gradients, no aurora backdrops on the app surfaces.
 - Visual reference the user pinned: Luma's app UI (screenshots supplied 2026-10-28) as design philosophy, translated into something unmistakably HubWorld, not copied. Two stage-light concert photographs were supplied as imagery.
 - Organizer features are hidden, not disabled.
 

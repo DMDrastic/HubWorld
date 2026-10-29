@@ -13,11 +13,14 @@
  * supported alternative rather than an afterthought, so both are tuned by hand
  * rather than one being a mechanical inversion of the other.
  *
- * The brand accent is violet, and it carries interaction — buttons, focus
- * rings, links, the price line. A violet element on screen always means "this
- * is actionable, or this is the number that matters". Live/auction state gets
- * its OWN token (`--live`, green) and is deliberately not the brand hue: an
- * auction closing in forty seconds should not look like a button.
+ * Violet is the brand, and it is deliberately NOT the colour of buttons. A primary
+ * action is a neutral pill (`--primary`: ink on light, near-white on dark), which
+ * has the most contrast either theme can offer and sits equally well on any poster
+ * colour the create page is washed in. Violet (`--brand`) marks where you are and
+ * what is in focus: the focus ring, the current-page bar, the "on sale" ring on the
+ * timeline, links, selection, the caret. Live/auction state gets its OWN token
+ * (`--live`, green) and is deliberately not the brand hue: an auction closing in
+ * forty seconds should not look like a link.
  *
  * The chart slots are validated, not eyeballed. `--chart-1..3` (violet, amber,
  * teal) clear the data-viz gates on the ALL-PAIRS list in both modes — worst
@@ -62,6 +65,7 @@
     --color-secondary: var(--secondary);
     --color-primary-foreground: var(--primary-foreground);
     --color-primary: var(--primary);
+    --color-brand: var(--brand);
     --color-popover-foreground: var(--popover-foreground);
     --color-popover: var(--popover);
     --color-card-foreground: var(--card-foreground);
@@ -88,8 +92,14 @@
     --popover: #ffffff;
     --popover-foreground: #101014;
 
-    --primary: #6d4aff;
-    --primary-foreground: #ffffff;
+    /* Two different jobs, kept apart on purpose. `--primary` is the FILL of a primary
+       action: ink on light, near-white on dark, the highest contrast either theme
+       has, and indifferent to whatever colour a poster washes the page in.
+       `--brand` is the violet, and it marks where you are and what is in focus,
+       never what to press. */
+    --brand: #6d4aff;
+    --primary: #101014;
+    --primary-foreground: #f6f6f8;
     --secondary: #eeeef3;
     --secondary-foreground: #101014;
     --muted: #eeeef3;
@@ -106,7 +116,7 @@
 
     --border: oklch(0.16 0.01 285 / 11%);
     --input: oklch(0.16 0.01 285 / 16%);
-    --ring: #6d4aff;
+    --ring: var(--brand);
 
     --chart-1: #6d4aff;
     --chart-2: #b57d00;
@@ -145,8 +155,9 @@
     --popover: #181820;
     --popover-foreground: #f2f2f5;
 
-    --primary: #8b7cff;
-    --primary-foreground: #0b0b0f;
+    --brand: #8b7cff;
+    --primary: #f2f2f5;
+    --primary-foreground: #0e0e12;
     --secondary: #1e1e26;
     --secondary-foreground: #f2f2f5;
     --muted: #1b1b22;
@@ -160,7 +171,7 @@
 
     --border: oklch(1 0 0 / 9%);
     --input: oklch(1 0 0 / 14%);
-    --ring: #8b7cff;
+    --ring: var(--brand);
 
     --chart-1: #8b7cff;
     --chart-2: #b8820f;
@@ -210,7 +221,7 @@
     }
   input,
   textarea {
-    caret-color: var(--primary);
+    caret-color: var(--brand);
     }
   html {
     @apply font-sans;
@@ -220,7 +231,7 @@
     scroll-behavior: smooth;
     }
   ::selection {
-    background-color: color-mix(in oklch, var(--primary) 30%, transparent);
+    background-color: color-mix(in oklch, var(--brand) 30%, transparent);
     }
 }
 
@@ -234,8 +245,8 @@
    */
   .glow-primary {
     box-shadow:
-      0 0 0 1px color-mix(in oklch, var(--primary) 22%, transparent),
-      0 0 24px -6px color-mix(in oklch, var(--primary) 45%, transparent),
+      0 0 0 1px color-mix(in oklch, var(--brand) 22%, transparent),
+      0 0 24px -6px color-mix(in oklch, var(--brand) 45%, transparent),
       0 1px 2px hsl(var(--shadow-color) / 0.3);
     }
   .glow-live {
@@ -317,7 +328,7 @@
    */
   .aurora {
     background-image:
-      radial-gradient(60% 60% at 12% 0%, color-mix(in oklch, var(--primary) 22%, transparent) 0%, transparent 62%),
+      radial-gradient(60% 60% at 12% 0%, color-mix(in oklch, var(--brand) 22%, transparent) 0%, transparent 62%),
       radial-gradient(48% 52% at 92% 8%, color-mix(in oklch, var(--chart-3) 16%, transparent) 0%, transparent 60%);
     }
 
@@ -344,7 +355,7 @@
     top: -8%;
     width: 380px;
     height: 380px;
-    background: color-mix(in oklch, var(--primary) 55%, transparent);
+    background: color-mix(in oklch, var(--brand) 55%, transparent);
     animation: blob-drift 17s ease-in-out infinite;
     animation-delay: -4s;
     }
@@ -379,7 +390,7 @@
     background-image: linear-gradient(
       180deg,
       var(--foreground) 0%,
-      color-mix(in oklch, var(--foreground) 62%, var(--primary)) 100%
+      color-mix(in oklch, var(--foreground) 62%, var(--brand)) 100%
     );
     -webkit-background-clip: text;
     background-clip: text;

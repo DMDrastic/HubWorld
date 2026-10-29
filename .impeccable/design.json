@@ -4,17 +4,60 @@
   "title": "Design System: HubWorld",
   "extensions": {
     "colorMeta": {
-      "night-ground": { "role": "neutral", "displayName": "Night Ground", "canonical": "#0e0e12" },
-      "night-plate": { "role": "neutral", "displayName": "Night Plate", "canonical": "#15151b" },
-      "action-violet-night": { "role": "primary", "displayName": "Action Violet", "canonical": "#8b7cff" },
-      "action-violet-day": { "role": "primary", "displayName": "Action Violet (day)", "canonical": "#6d4aff" },
-      "live-green-night": { "role": "secondary", "displayName": "Live Green", "canonical": "#3fb463" },
-      "live-green-day": { "role": "secondary", "displayName": "Live Green (day)", "canonical": "#15803d" }
+      "night-ground": {
+        "role": "neutral",
+        "displayName": "Night Ground",
+        "canonical": "#0e0e12"
+      },
+      "night-plate": {
+        "role": "neutral",
+        "displayName": "Night Plate",
+        "canonical": "#15151b"
+      },
+      "live-green-night": {
+        "role": "secondary",
+        "displayName": "Live Green",
+        "canonical": "#3fb463"
+      },
+      "live-green-day": {
+        "role": "secondary",
+        "displayName": "Live Green (day)",
+        "canonical": "#15803d"
+      },
+      "brand-violet-night": {
+        "role": "secondary",
+        "displayName": "Brand Violet",
+        "canonical": "#8b7cff"
+      },
+      "brand-violet-day": {
+        "role": "secondary",
+        "displayName": "Brand Violet (day)",
+        "canonical": "#6d4aff"
+      },
+      "ink-action-night": {
+        "role": "primary",
+        "displayName": "Action Ink",
+        "canonical": "#f2f2f5"
+      },
+      "ink-action-day": {
+        "role": "primary",
+        "displayName": "Action Ink (day)",
+        "canonical": "#101014"
+      }
     },
     "typographyMeta": {
-      "page-title": { "displayName": "Page title", "purpose": "The single h1 on each page." },
-      "row-title": { "displayName": "Row title", "purpose": "An event's name on the timeline." },
-      "data": { "displayName": "Data", "purpose": "Addresses, amounts and build hashes in Geist Mono." }
+      "page-title": {
+        "displayName": "Page title",
+        "purpose": "The single h1 on each page."
+      },
+      "row-title": {
+        "displayName": "Row title",
+        "purpose": "An event's name on the timeline."
+      },
+      "data": {
+        "displayName": "Data",
+        "purpose": "Addresses, amounts and build hashes in Geist Mono."
+      }
     },
     "shadows": [
       {
@@ -31,8 +74,14 @@
       }
     ],
     "breakpoints": [
-      { "name": "sm", "value": "640px" },
-      { "name": "lg", "value": "1024px" }
+      {
+        "name": "sm",
+        "value": "640px"
+      },
+      {
+        "name": "lg",
+        "value": "1024px"
+      }
     ]
   },
   "components": [
@@ -42,7 +91,7 @@
       "refersTo": "button-action",
       "description": "The one thing a person can press on a row: buy, or watch the bidding.",
       "html": "<button class=\"ds-btn\">Buy · 25 XRP</button>",
-      "css": ".ds-btn { background: #8b7cff; color: #0b0b0f; height: 40px; padding: 0 16px; border: 0; border-radius: 9999px; font: 500 14px/1 system-ui, sans-serif; cursor: pointer; transition: opacity .2s; } .ds-btn:hover { opacity: .9; } .ds-btn:focus-visible { outline: 2px solid #8b7cff; outline-offset: 2px; }"
+      "css": ".ds-btn { background: #f2f2f5; color: #0e0e12; height: 40px; padding: 0 16px; border: 0; border-radius: 9999px; font: 500 14px/1 system-ui, sans-serif; cursor: pointer; transition: opacity .2s; } .ds-btn:hover { opacity: .9; } .ds-btn:focus-visible { outline: 2px solid #8b7cff; outline-offset: 2px; }"
     },
     {
       "name": "Event Plate",
@@ -66,17 +115,29 @@
     "overview": "HubWorld reads as a timetable: dates run down a left-hand rail, each event is a plate hung off that rail, and a small node on the rail says in one glance what state the night is in. Nothing is decorative that is not also information.",
     "keyCharacteristics": [
       "Near-black ground, translucent 4% plates, hairline edges that brighten on hover. No resting shadows.",
-      "One action colour (violet) and one state colour (green), never swapped.",
+      "Actions are neutral pills (near-white on dark, ink on light). Violet is the brand and marks where you are and what is in focus; green is the one state colour. Never swapped.",
       "Titles in tight 600-weight Geist; addresses, prices and times in Geist Mono or tabular figures.",
       "State is always written down as well as coloured."
     ],
     "rules": [
-      { "name": "The One Meaning Rule", "body": "Violet means \"you can act\", green means \"live\". A thumbnail, a chip or a chart that happens to land in either hue is moved out of it.", "section": "colors" },
-      { "name": "The Words Too Rule", "body": "State is never carried by hue alone. A node is backed by a chip; a chip is backed by its label.", "section": "colors" },
-      { "name": "The No Eyebrow Rule", "body": "No small tracked-capital label above a heading. The heading carries its own weight.", "section": "typography" }
+      {
+        "name": "The One Meaning Rule",
+        "body": "A neutral pill means \"you can act\", violet means \"you are here, or this is focused\", green means \"live\". A thumbnail, a chip or a chart that happens to land in either hue is moved out of it.",
+        "section": "colors"
+      },
+      {
+        "name": "The Words Too Rule",
+        "body": "State is never carried by hue alone. A node is backed by a chip; a chip is backed by its label.",
+        "section": "colors"
+      },
+      {
+        "name": "The No Eyebrow Rule",
+        "body": "No small tracked-capital label above a heading. The heading carries its own weight.",
+        "section": "typography"
+      }
     ],
     "dos": [
-      "Do keep violet for what can be pressed and green for what is live.",
+      "Do keep action pills neutral, violet for place and focus, and green for what is live.",
       "Do write state as a word as well as a colour.",
       "Do let an edge brighten on hover instead of adding a shadow.",
       "Do keep controls that cannot work absent, not disabled."

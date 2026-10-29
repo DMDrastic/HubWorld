@@ -159,7 +159,7 @@ export function EventRow({
             live
               ? 'bg-live ring-live/30 ring-4'
               : buyable
-                ? 'bg-background border-primary border-2'
+                ? 'bg-background border-brand border-2'
                 : 'bg-foreground/25'
           }`}
           style={{ top: NODE_Y }}
