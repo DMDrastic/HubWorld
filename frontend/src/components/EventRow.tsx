@@ -69,7 +69,7 @@ function offGreen(hue: number): number {
  * neighbours differ. No title: the heading beside it carries that, and painting
  * it twice is the bug the poster spent three reviews fixing.
  */
-function FallbackThumb({ event }: { event: EventSummary }) {
+export function FallbackThumb({ event }: { event: EventSummary }) {
   const hue = offGreen(hueFrom(event.slug))
   const when = new Date(event.startsAt)
   return (

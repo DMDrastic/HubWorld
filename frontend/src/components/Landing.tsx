@@ -56,8 +56,10 @@ import { CircleCheck, Link2, SlidersHorizontal, TrendingUp } from 'lucide-react'
 import stageLights from '@/assets/landing-stage-lights.jpg'
 import { SignIn } from '@/components/SignIn'
 import { LandingAuctionDemo } from '@/components/LandingAuctionDemo'
+import { LandingCreateDemo } from '@/components/LandingCreateDemo'
 import { LandingPhoneShowcase } from '@/components/LandingPhoneShowcase'
-import type { AuthUser, Health } from '@/lib/api'
+import { LandingPosterCloud } from '@/components/LandingPosterCloud'
+import type { AuthUser, EventSummary, Health } from '@/lib/api'
 import { useLinkHandler } from '@/lib/router'
 
 /**
@@ -204,10 +206,13 @@ function QuietVerdict({ title, hint }: { title: string; hint: string }) {
 export function Landing({
   onAuthenticated,
   network,
+  events = [],
 }: {
   onAuthenticated: (u: AuthUser) => void
   /** From /api/health. Undefined until it loads, or on an API too old to say. */
   network?: Health['network']
+  /** The events on HubWorld now, for the poster cloud. Empty shows no cloud. */
+  events?: EventSummary[]
 }) {
   const link = useLinkHandler()
 
@@ -271,19 +276,79 @@ export function Landing({
       </div>
 
       {/* ------------------------------------------------------------- 1.
-          The door. A verdict at full width, an example labelled as one, then the
-          offer in one sentence and the single action. `animate-in` plays once on
-          mount: the page's one orchestrated moment, and reduced motion is handled
-          by index.css's global rule. */}
-      <section className="!mt-0 pt-6 sm:pt-10">
-        <div className="animate-in fade-in slide-in-from-bottom-3 mx-auto max-w-6xl px-4 duration-700 ease-out">
+          The offer, and the events it is for. Headline first, as a stranger reads
+          it: what this does for them, in plain words, with ONE phrase picked out
+          in warm colour. That phrase is the page's only gradient text and is a
+          deliberate exception (see `.warm-text` in index.css).
+
+          Around it float the real events that are on HubWorld right now, with the
+          artwork their organizers uploaded. With none, there is no cloud. `animate-in`
+          plays once on mount: the page's one orchestrated moment, and reduced motion
+          is handled by index.css's global rule. */}
+      <section className="!mt-0 pt-8 sm:pt-12">
+        <div className="relative mx-auto max-w-[1280px] px-4">
+          <LandingPosterCloud events={events} />
+
+          <div className="animate-in fade-in slide-in-from-bottom-3 relative mx-auto max-w-2xl text-center duration-700 ease-out lg:py-24">
+            <h1 className="text-4xl leading-[1.04] font-semibold tracking-[-0.035em] text-balance sm:text-5xl lg:text-6xl">
+              Your event <span className="warm-text">keeps paying</span> after the first sale.
+            </h1>
+            <p className="text-muted-foreground mx-auto mt-5 max-w-xl text-lg leading-relaxed text-pretty">
+              HubWorld is ticketing where every ticket is checked against a ledger at the door, and
+              every resale pays the organizer.
+            </p>
+
+            <div className="mt-8 flex flex-wrap items-center justify-center gap-x-6 gap-y-3">
+              {/* `SignIn` always renders inside a `Card`; the `data-slot` hooks
+                  (its documented extension point) collapse that chrome down to
+                  a bare pill for the idle state. This is the ONE live `SignIn`
+                  on the page; the other calls to action anchor back to it
+                  rather than mounting a second. */}
+              <div
+                id="hero-signin"
+                className="[&_[data-slot=card-content]]:p-0 [&_[data-slot=card-header]]:hidden [&_[data-slot=card]]:rounded-none [&_[data-slot=card]]:bg-transparent [&_[data-slot=card]]:p-0 [&_[data-slot=card]]:shadow-none [&_[data-slot=card]]:ring-0 [&_[data-slot=card]]:border-0"
+              >
+                <SignIn
+                  onAuthenticated={onAuthenticated}
+                  primaryButtonLabel="Sign in to apply"
+                  primaryButtonClassName="h-11 rounded-full bg-primary px-6 text-[0.95rem] text-primary-foreground transition-opacity hover:bg-primary hover:opacity-90"
+                />
+              </div>
+              <a
+                href="/events"
+                onClick={link('/events')}
+                className="text-muted-foreground hover:text-foreground focus-visible:ring-ring rounded text-[0.95rem] underline-offset-4 hover:underline focus-visible:ring-2 focus-visible:outline-none"
+              >
+                See events
+              </a>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ------------------------------------------------------------- 2.
+          The door. The previous page opened here; it is now the second beat, once
+          the visitor knows what they are looking at. A verdict at full width, an
+          example labelled as one, and the two other answers a door can give. */}
+      <section id="door" className="scroll-mt-20">
+        <div className="mx-auto max-w-6xl px-4">
+          <Reveal className="mb-8 max-w-xl">
+            <h2 className="text-3xl leading-snug font-semibold tracking-[-0.025em] text-balance sm:text-4xl">
+              Every ticket answers at the door.
+            </h2>
+            <p className="text-muted-foreground mt-3 leading-relaxed text-pretty">
+              Staff see one word, checked against the ledger a moment ago, and a duplicate is told
+              apart from a stranger.
+            </p>
+          </Reveal>
+
           {/* The verdict sits on a photograph of a crowd under stage lights
               instead of a flat field. Text is always white (the photo is dark
               blue in both themes) over a flat 50% black layer, never a
               gradient, so the lightest haze in the middle of the picture still
-              clears contrast. The green that used to be the whole plate is now
-              a dot on the label and a check beside the handle: state still
-              needs a colour AND a word, and the word is "Admitted". */}
+              clears contrast. The green is a dot on the label and a check beside
+              the handle: state still needs a colour AND a word, and the word is
+              "Admitted". */}
           <div
             role="img"
             aria-label="Example of a door check-in: admitted, guest @majula, Neon Rooftop Session, general admission, checked against the ledger."
@@ -323,36 +388,26 @@ export function Landing({
             <QuietVerdict title="Already checked in" hint="a duplicate, not a stranger" />
             <QuietVerdict title="No ticket" hint="a stranger, not a duplicate" />
           </div>
+        </div>
+      </section>
 
-          <div className="mt-12 flex flex-col gap-8 lg:flex-row lg:items-end lg:justify-between">
-            <h1 className="max-w-2xl text-3xl leading-[1.05] font-semibold tracking-[-0.035em] text-balance sm:text-4xl lg:text-[2.75rem]">
-              Every ticket answers at the door, and pays you when it resells.
-            </h1>
-            <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
-              {/* `SignIn` always renders inside a `Card`; the `data-slot` hooks
-                  (its documented extension point) collapse that chrome down to
-                  a bare pill for the idle state. This is the ONE live `SignIn`
-                  on the page; the closing call to action anchors back to it
-                  rather than mounting a second. */}
-              <div
-                id="hero-signin"
-                className="[&_[data-slot=card-content]]:p-0 [&_[data-slot=card-header]]:hidden [&_[data-slot=card]]:rounded-none [&_[data-slot=card]]:bg-transparent [&_[data-slot=card]]:p-0 [&_[data-slot=card]]:shadow-none [&_[data-slot=card]]:ring-0 [&_[data-slot=card]]:border-0"
-              >
-                <SignIn
-                  onAuthenticated={onAuthenticated}
-                  primaryButtonLabel="Sign in to apply"
-                  primaryButtonClassName="h-11 rounded-full bg-primary px-6 text-[0.95rem] text-primary-foreground transition-opacity hover:bg-primary hover:opacity-90"
-                />
-              </div>
-              <a
-                href="/events"
-                onClick={link('/events')}
-                className="text-muted-foreground hover:text-foreground focus-visible:ring-ring rounded text-[0.95rem] underline-offset-4 hover:underline focus-visible:ring-2 focus-visible:outline-none"
-              >
-                See an event
-              </a>
-            </div>
-          </div>
+      {/* ------------------------------------------------------------- 3.
+          Start with the poster. The create page's best moment, shown as something
+          to do: pick a sample poster and the plate takes on its colour. */}
+      <section id="create" className="scroll-mt-20">
+        <div className="mx-auto max-w-6xl px-4">
+          <Reveal className="mb-8 max-w-xl">
+            <h2 className="text-3xl leading-snug font-semibold tracking-[-0.025em] text-balance sm:text-4xl">
+              Start with the poster.
+            </h2>
+            <p className="text-muted-foreground mt-3 leading-relaxed text-pretty">
+              Add one and the page takes on its colour. Then set a price, a royalty, and how high a
+              ticket may resell. That is the whole form.
+            </p>
+          </Reveal>
+          <Reveal step={1}>
+            <LandingCreateDemo />
+          </Reveal>
         </div>
       </section>
 

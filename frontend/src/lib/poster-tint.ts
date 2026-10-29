@@ -50,6 +50,19 @@ export function dominantTint(data: Uint8ClampedArray): Rgb | null {
   return [Math.round(r / total), Math.round(g / total), Math.round(b / total)]
 }
 
+/** The tint of an image URL on this origin, or null. Same rules as `tintFromFile`. */
+export async function tintFromUrl(url: string): Promise<Rgb | null> {
+  if (typeof fetch !== 'function') return null
+  try {
+    const res = await fetch(url)
+    if (!res.ok) return null
+    const blob = await res.blob()
+    return await tintFromFile(new File([blob], 'image', { type: blob.type }))
+  } catch {
+    return null
+  }
+}
+
 /** The tint of an image file, or null when it cannot be read or has no colour. */
 export async function tintFromFile(file: File): Promise<Rgb | null> {
   if (typeof createImageBitmap !== 'function' || typeof document === 'undefined') return null
