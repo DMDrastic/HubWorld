@@ -13,8 +13,9 @@
  */
 import { useRef, useState } from 'react'
 import { ImagePlus, Loader2 } from 'lucide-react'
-import { ApiError, IMAGE_ACCEPT, imageProblem, uploadEventImage } from '@/lib/api'
+import { IMAGE_ACCEPT, imageProblem, uploadEventImage } from '@/lib/api'
 import type { EventSummary } from '@/lib/api'
+import { prepareImage } from '@/lib/image-prep'
 import { posterUrl } from '@/lib/poster'
 import { Button } from '@/components/ui/button'
 import {
@@ -46,10 +47,12 @@ function Row({
     setError(null)
     setBusy(true)
     try {
-      await uploadEventImage(event.slug, file)
+      // Over the server's limit, shrink on this device first (see image-prep.ts).
+      const { file: ready } = await prepareImage(file)
+      await uploadEventImage(event.slug, ready)
       onChanged()
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Upload failed')
+      setError(err instanceof Error ? err.message : 'Upload failed')
     } finally {
       setBusy(false)
       // Clear the input, or picking the SAME file again fires no change event
@@ -128,7 +131,7 @@ export function EventImagePanel({
       <CardHeader>
         <CardTitle>Event posters</CardTitle>
         <CardDescription>
-          The image people see when browsing. JPEG, PNG or WEBP, up to 2MB.
+          The image people see when browsing. JPEG, PNG or WEBP, up to 25MB; larger files are shrunk to fit.
         </CardDescription>
       </CardHeader>
       <CardContent>

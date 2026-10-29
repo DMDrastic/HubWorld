@@ -40,6 +40,7 @@ import {
   type ResalePolicyMode,
   type Role,
 } from '@/lib/api'
+import { prepareImage } from '@/lib/image-prep'
 import { tintFromFile, type Rgb } from '@/lib/poster-tint'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -52,6 +53,7 @@ import {
   CardTitle,
 } from '@/components/ui/card'
 
+const mb = (bytes: number) => `${(bytes / 1024 / 1024).toFixed(1)}MB`
 const bps = (n: number) => `${(n / 100).toFixed(2).replace(/\.00$/, '')}%`
 
 /** A regular user's route in: apply, then wait for review. */
@@ -188,6 +190,7 @@ function PosterPicker({
   const input = useRef<HTMLInputElement>(null)
   const [error, setError] = useState<string | null>(null)
   const [preview, setPreview] = useState<string | null>(null)
+  const [note, setNote] = useState<string | null>(null)
 
   // A state-and-effect pair, not `useMemo`: StrictMode runs the cleanup between
   // its two mounts, which would revoke a URL a memo had already handed out.
@@ -201,13 +204,25 @@ function PosterPicker({
     return () => URL.revokeObjectURL(url)
   }, [file])
 
-  function pick(chosen: File | undefined) {
+  async function pick(chosen: File | undefined) {
     if (!chosen) return
+    setNote(null)
     const problem = imageProblem(chosen)
     setError(problem)
-    if (!problem) onFile(chosen)
     // Clear the input, or picking the SAME file again fires no change event.
     if (input.current) input.current.value = ''
+    if (problem) return
+    try {
+      // Anything over the server's limit is shrunk here, on this device, so a
+      // phone photo never has to be exported smaller by hand first.
+      const { file: ready, shrunk } = await prepareImage(chosen)
+      onFile(ready)
+      if (shrunk) {
+        setNote(`Resized from ${mb(chosen.size)} to ${mb(ready.size)} to fit.`)
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'That image could not be used')
+    }
   }
 
   return (
@@ -245,18 +260,19 @@ function PosterPicker({
         className="sr-only"
         aria-label="poster image"
         tabIndex={-1}
-        onChange={(e) => pick(e.target.files?.[0])}
+        onChange={(e) => void pick(e.target.files?.[0])}
       />
 
       <div className="mt-3 flex items-start justify-between gap-3 text-xs">
         <p className={error ? 'text-destructive' : 'text-muted-foreground'}>
-          {error ?? 'JPEG, PNG or WEBP, up to 2MB. It is what people see when browsing.'}
+          {error ?? note ?? 'JPEG, PNG or WEBP, up to 25MB. Larger files are shrunk to fit. It is what people see when browsing.'}
         </p>
         {file && (
           <button
             type="button"
             onClick={() => {
               setError(null)
+              setNote(null)
               onFile(null)
             }}
             className="text-muted-foreground hover:text-foreground focus-visible:ring-ring shrink-0 rounded underline underline-offset-4 focus-visible:ring-2 focus-visible:outline-none"

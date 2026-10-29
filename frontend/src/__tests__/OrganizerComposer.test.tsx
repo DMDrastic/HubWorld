@@ -132,6 +132,32 @@ describe('the poster on the create page', () => {
     expect(calls.map((c) => c.kind)).toEqual(['create'])
   })
 
+  it('refuses, in words, an image far too big to be worth decoding', async () => {
+    mockApi()
+    renderPanel()
+    // Only the size is read, so the bytes do not need to be a real picture.
+    const huge = new File([new Uint8Array(26 * 1024 * 1024)], 'huge.jpg', { type: 'image/jpeg' })
+    fireEvent.change(await screen.findByLabelText('poster image'), { target: { files: [huge] } })
+
+    expect(await screen.findByText(/the limit is 25MB/i)).toBeTruthy()
+    expect(screen.queryByAltText('Poster preview')).toBeNull()
+  })
+
+  it('says it could not shrink an oversized image where the browser cannot', async () => {
+    // jsdom has no canvas or createImageBitmap, which is the "cannot decode" case.
+    // The file is over the server's 2MB limit, so sending it as it is would only be
+    // refused later; the organizer is told now, and nothing is staged.
+    const calls = mockApi()
+    renderPanel()
+    const photo = new File([new Uint8Array(5 * 1024 * 1024)], 'phone.jpg', { type: 'image/jpeg' })
+    fireEvent.change(await screen.findByLabelText('poster image'), { target: { files: [photo] } })
+
+    expect(await screen.findByText(/could not shrink it/i)).toBeTruthy()
+    expect(screen.queryByAltText('Poster preview')).toBeNull()
+    await fillAndCreate()
+    await waitFor(() => expect(calls.map((c) => c.kind)).toEqual(['create']))
+  })
+
   it('lets the organizer take a staged poster back out', async () => {
     mockApi()
     renderPanel()
