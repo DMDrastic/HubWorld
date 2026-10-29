@@ -13,6 +13,7 @@ import { useCallback, useEffect, useState } from 'react'
 import {
   ApiError,
   applyToOrganize,
+  resendEmailVerification,
   createEvent,
   fetchApplications,
   fetchOrganizerStatus,
@@ -46,12 +47,26 @@ function ApplyForm({ policy, status, onApplied }: {
   onApplied: () => void
 }) {
   const [orgName, setOrgName] = useState('')
+  const [email, setEmail] = useState('')
   const [contact, setContact] = useState('')
   const [pitch, setPitch] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [resendNote, setResendNote] = useState<string | null>(null)
 
   const application = status?.application ?? null
+
+  async function resend() {
+    setBusy(true)
+    try {
+      const { emailSent } = await resendEmailVerification()
+      setResendNote(emailSent ? 'Sent. Check your inbox.' : 'We could not send it just now. Try again in a minute.')
+    } catch (err) {
+      setResendNote(err instanceof ApiError ? err.message : 'Could not send it')
+    } finally {
+      setBusy(false)
+    }
+  }
 
   if (application?.state === 'pending') {
     return (
@@ -60,6 +75,28 @@ function ApplyForm({ policy, status, onApplied }: {
         <p className="text-sm">
           Your application for <strong>{application.orgName}</strong> is with the Hubworld team.
         </p>
+        {application.email &&
+          (application.emailVerified ? (
+            <p className="text-sm">
+              We&rsquo;ll email <strong>{application.email}</strong> with the decision. Email
+              confirmed.
+            </p>
+          ) : (
+            <div className="space-y-1.5">
+              <p className="text-sm">
+                Confirm your email: we sent a link to <strong>{application.email}</strong>. We only
+                send the decision to a confirmed address.
+              </p>
+              <Button type="button" size="sm" variant="secondary" disabled={busy} onClick={() => void resend()}>
+                Send the link again
+              </Button>
+              {resendNote && (
+                <p className="text-muted-foreground text-xs" role="status">
+                  {resendNote}
+                </p>
+              )}
+            </div>
+          ))}
         <p className="text-muted-foreground text-xs">
           Organizers issue real admission and take real money, so every application is read by
           a person.
@@ -72,7 +109,7 @@ function ApplyForm({ policy, status, onApplied }: {
     e.preventDefault()
     setBusy(true)
     try {
-      await applyToOrganize({ orgName, contact, pitch })
+      await applyToOrganize({ orgName, email, contact: contact.trim() || undefined, pitch })
       setError(null)
       onApplied()
     } catch (err) {
@@ -101,10 +138,18 @@ function ApplyForm({ policy, status, onApplied }: {
         aria-label="organisation name"
       />
       <Input
+        type="email"
+        autoComplete="email"
+        value={email}
+        onChange={(e) => setEmail(e.target.value)}
+        placeholder="Your email, for the decision and updates"
+        aria-label="email"
+      />
+      <Input
         value={contact}
         onChange={(e) => setContact(e.target.value)}
-        placeholder="Email or handle we can reach you on"
-        aria-label="contact"
+        placeholder="Anything else: a phone or handle (optional)"
+        aria-label="other contact"
       />
       <textarea
         value={pitch}
@@ -123,7 +168,7 @@ function ApplyForm({ policy, status, onApplied }: {
       )}
       {error && <p className="text-destructive text-sm">{error}</p>}
 
-      <Button type="submit" disabled={busy || !orgName.trim() || !contact.trim() || !pitch.trim()}>
+      <Button type="submit" disabled={busy || !orgName.trim() || !email.trim() || !pitch.trim()}>
         {busy ? 'Sending…' : 'Apply to organize'}
       </Button>
     </form>
@@ -365,7 +410,9 @@ function ReviewQueue() {
         <div key={a.id} className="bg-muted/40 space-y-2 rounded-xl p-3.5">
           <div className="text-sm font-medium">{a.orgName}</div>
           <div className="text-muted-foreground text-xs">
-            {a.applicant} · {a.contact}
+            {a.applicant}
+            {a.email ? ` · ${a.email} (${a.emailVerified ? 'confirmed' : 'not confirmed'})` : ''}
+            {a.contact ? ` · ${a.contact}` : ''}
           </div>
           <p className="text-sm">{a.pitch}</p>
           <div className="flex gap-2">
@@ -387,7 +434,16 @@ function ReviewQueue() {
   )
 }
 
-export function OrganizerPanel({ role, onChanged }: { role: Role; onChanged: () => void }) {
+export function OrganizerPanel({
+  role,
+  onChanged,
+  refreshKey = 0,
+}: {
+  role: Role
+  onChanged: () => void
+  /** Bumped when something outside this panel changes the application (an email confirmed). */
+  refreshKey?: number
+}) {
   const [policy, setPolicy] = useState<Policy | null>(null)
   const [status, setStatus] = useState<OrganizerStatus | null>(null)
 
@@ -399,7 +455,7 @@ export function OrganizerPanel({ role, onChanged }: { role: Role; onChanged: () 
 
   useEffect(() => {
     void load()
-  }, [load])
+  }, [load, refreshKey])
 
   const organizer = role === 'ORGANIZER' || role === 'ADMIN'
 

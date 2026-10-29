@@ -19,12 +19,22 @@ import { NETWORK } from '../network.js'
 import { env, doorTokenMode } from '../env.js'
 import { issuesOf, slugSchema } from '../schemas.js'
 import { requireAdmin, requireAuth, requireOrganizer } from '../session.js'
+import {
+  resendWaitSeconds,
+  sendDecision,
+  sendVerification,
+  verifyEmail,
+} from '../organizer-email.js'
 
 export const organizersRouter = Router()
 
 const ApplyBody = z.object({
   orgName: z.string().trim().min(2).max(80),
-  contact: z.string().trim().min(3).max(120),
+  // Lower-cased so the same address typed two ways is one address, which matters
+  // because a verification link vouches for an exact string.
+  email: z.string().trim().toLowerCase().email().max(254),
+  // Anything else worth knowing (a phone, a handle). Optional: email is how we reach them.
+  contact: z.string().trim().max(120).optional(),
   pitch: z.string().trim().min(10).max(1000),
 })
 
@@ -54,11 +64,18 @@ organizersRouter.post('/organizers/apply', requireAuth, async (req, res) => {
 
   // Upsert rather than insert: one application per user, so a rejected applicant
   // can revise and resubmit without filling the review queue with duplicates.
+  const { email, contact, ...rest } = parsed.data
+  // Verification belongs to an ADDRESS, not to the applicant: resubmitting with the
+  // same email keeps it verified, and any other address starts unverified.
+  const keepsVerification = existing?.email === email && existing.emailVerifiedAt !== null
   const application = await prisma.organizerApplication.upsert({
     where: { userId: req.userId! },
-    create: { userId: req.userId!, ...parsed.data },
+    create: { userId: req.userId!, ...rest, email, contact: contact ?? '' },
     update: {
-      ...parsed.data,
+      ...rest,
+      email,
+      contact: contact ?? '',
+      emailVerifiedAt: keepsVerification ? existing.emailVerifiedAt : null,
       status: 'PENDING',
       reviewedById: null,
       reviewedAt: null,
@@ -66,11 +83,64 @@ organizersRouter.post('/organizers/apply', requireAuth, async (req, res) => {
     },
   })
 
+  // Best-effort: the application stands whether or not the email goes out, and the
+  // response says which, so the page can offer a resend instead of waiting for nothing.
+  const emailSent = keepsVerification
+    ? null
+    : (await sendVerification(application)) === 'sent'
+
   res.status(201).json({
     state: application.status.toLowerCase(),
     orgName: application.orgName,
     submittedAt: application.createdAt.toISOString(),
+    emailVerified: application.emailVerifiedAt !== null,
+    emailSent,
   })
+})
+
+/**
+ * POST /api/organizers/email/resend — send the verification link again.
+ * Cooldown-limited, and only for an application whose address is still unverified.
+ */
+organizersRouter.post('/organizers/email/resend', requireAuth, async (req, res) => {
+  const application = await prisma.organizerApplication.findUnique({
+    where: { userId: req.userId! },
+  })
+  if (!application?.email) {
+    res.status(404).json({ error: 'No application with an email' })
+    return
+  }
+  if (application.emailVerifiedAt) {
+    res.status(409).json({ error: 'Your email is already confirmed' })
+    return
+  }
+  const wait = await resendWaitSeconds(application.id)
+  if (wait > 0) {
+    res.setHeader('Retry-After', String(wait))
+    res.status(429).json({ error: `Wait ${wait}s before asking for another email` })
+    return
+  }
+  res.json({ emailSent: (await sendVerification(application)) === 'sent' })
+})
+
+const VerifyBody = z.object({ token: z.string().min(20).max(200) })
+
+/**
+ * POST /api/organizers/email/verify — consume an emailed link.
+ *
+ * Unauthenticated on purpose: people open the link on whatever device holds the
+ * email, which is often not the one they signed in on. The 256-bit token is the proof.
+ * It is a POST, issued by the page the link opens, never a GET, because mail
+ * scanners and link previewers fetch every URL in a message and would burn the token.
+ */
+organizersRouter.post('/organizers/email/verify', async (req, res) => {
+  const body = VerifyBody.safeParse(req.body ?? {})
+  const outcome = body.success ? await verifyEmail(body.data.token) : 'invalid'
+  if (outcome !== 'verified') {
+    res.status(400).json({ error: 'This link is invalid or has expired' })
+    return
+  }
+  res.json({ verified: true })
 })
 
 /** GET /api/organizers/me — my role and application status. */
@@ -87,6 +157,9 @@ organizersRouter.get('/organizers/me', requireAuth, async (req, res) => {
           orgName: application.orgName,
           submittedAt: application.createdAt.toISOString(),
           reviewNote: application.reviewNote,
+          // Their own address, back to them. Null for applications from before email.
+          email: application.email,
+          emailVerified: application.emailVerifiedAt !== null,
         }
       : null,
   })
@@ -122,6 +195,8 @@ organizersRouter.get(
         applicant: `@${a.user.username}`,
         orgName: a.orgName,
         contact: a.contact,
+        email: a.email,
+        emailVerified: a.emailVerifiedAt !== null,
         pitch: a.pitch,
         state: a.status.toLowerCase(),
         submittedAt: a.createdAt.toISOString(),
@@ -182,7 +257,11 @@ organizersRouter.post(
         : []),
     ])
 
-    res.json({ state: approved ? 'approved' : 'rejected' })
+    // After the transaction, never inside it: a mail outage must not undo a review.
+    // Goes only to a verified address (see `sendDecision`).
+    const notified = await sendDecision(application, approved, body.data.note ?? null)
+
+    res.json({ state: approved ? 'approved' : 'rejected', notified: notified === 'sent' })
   },
 )
 

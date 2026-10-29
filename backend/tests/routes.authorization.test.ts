@@ -474,7 +474,7 @@ describe('promotion to organizer is reviewed, never self-declared', () => {
     const res = await request(app)
       .post('/api/organizers/apply')
       .set('authorization', as(applicant))
-      .send({ orgName: 'Org', contact: 'a@b.co', pitch: 'ten chars ok', role: 'ADMIN' })
+      .send({ orgName: 'Org', email: 'a@b.co', pitch: 'ten chars ok', role: 'ADMIN' })
 
     expect(res.status).toBe(201)
     const after = await prisma.user.findUniqueOrThrow({ where: { id: applicant.id } })

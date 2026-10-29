@@ -19,19 +19,16 @@ datasource db {
 
 /**
  * Which XRP Ledger a row's on-ledger identifiers belong to.
- *
  * An `NFTokenID`, an offer index, a tx hash and an r-address are only meaningful
  * against one network. Without this column a database holding both is
  * indistinguishable to anything that reads the ledger: `ledger:sync` pointed at
  * mainnet saw every testnet ticket as "held by nobody we know", and `--apply`
  * would have rewritten ownership on rows that were perfectly correct.
- *
  * Deliberately NOT defaulted. A default means a forgotten field silently
  * mislabels a mainnet row as testnet, which is precisely the class of silent
  * wrongness this exists to prevent — so every create must state the network and
  * the compiler finds any that does not. Existing rows were backfilled to
  * TESTNET by the migration, which is what they factually are.
- *
  * Identity is deliberately absent from this: `User`, `Session` and
  * `SignInRequest` carry no network. A signature proving an @handle owns an
  * r-address is a `SignIn` pseudo-transaction that is never submitted to any
@@ -46,18 +43,15 @@ enum XrplNetwork {
 
 /**
  * Which product flow spent a signing payload.
- *
  * The Xaman application has a quota on payloads CREATED, and creations cannot be
  * reclaimed — cancelling a resolved payload returns 404 and it still counts. So
  * the quota is consumed by USERS doing things, not by tickets existing, and the
  * question that decides whether the unit economics work is *"how many payloads
  * does one attendee cost us, end to end?"*. That was unanswerable: every
  * creation looked identical once made.
- *
  * These are the creation sites, one member each. A twelfth flow cannot be
  * added without appearing here, because `PayloadOptions.flow` is required — so
  * the compiler, not a reviewer, is what keeps this list complete.
- *
  * DOOR_CHECKIN is deliberately separate from SIGNIN even though both submit the
  * same `SignIn` pseudo-transaction. They have opposite cost curves: sign-in is
  * once per person per week, check-in is once per person per event, and lumping
@@ -82,34 +76,34 @@ enum PayloadFlow {
 // ---------------------------------------------------------------- identity --
 
 model User {
-  id          String   @id @default(uuid())
-  username    String   @unique // @handle, stored lowercase
-  xrplAddress String   @unique // r-address. Never a seed — Xaman holds the keys.
+  id          String  @id @default(uuid())
+  username    String  @unique // @handle, stored lowercase
+  xrplAddress String  @unique // r-address. Never a seed — Xaman holds the keys.
   displayName String?
 
   /// What this account may do. Organizers issue tickets and run doors, which is
   /// a materially different trust level from attending, so it is an account
   /// property rather than something inferred from owning an Event row.
-  role UserRole @default(USER)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  role      UserRole @default(USER)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  organizedEvents Event[]         @relation("EventOrganizer")
-  ticketsOwned    Ticket[]        @relation("TicketOwner")
-  listingsSelling Listing[]       @relation("ListingSeller")
-  listingsBuying  Listing[]       @relation("ListingBuyer")
-  listingsReserved Listing[]      @relation("ListingReservedFor")
-  bids            Bid[]
-  sessions        Session[]
-  signInRequests  SignInRequest[]
-  mintRequests    MintRequest[]
-  delegations     Delegation[]
-  mintJobs        MintJob[]
-  giftsSent       Gift[]          @relation("GiftSender")
-  giftsReceived   Gift[]          @relation("GiftRecipient")
-  redemptions     Redemption[]    @relation("RedeemedHolder")
-  checkInsRun     Redemption[]    @relation("RedeemedByStaff")
-  organizerApplication OrganizerApplication? @relation("Applicant")
+  organizedEvents      Event[]                @relation("EventOrganizer")
+  ticketsOwned         Ticket[]               @relation("TicketOwner")
+  listingsSelling      Listing[]              @relation("ListingSeller")
+  listingsBuying       Listing[]              @relation("ListingBuyer")
+  listingsReserved     Listing[]              @relation("ListingReservedFor")
+  bids                 Bid[]
+  sessions             Session[]
+  signInRequests       SignInRequest[]
+  mintRequests         MintRequest[]
+  delegations          Delegation[]
+  mintJobs             MintJob[]
+  giftsSent            Gift[]                 @relation("GiftSender")
+  giftsReceived        Gift[]                 @relation("GiftRecipient")
+  redemptions          Redemption[]           @relation("RedeemedHolder")
+  checkInsRun          Redemption[]           @relation("RedeemedByStaff")
+  organizerApplication OrganizerApplication?  @relation("Applicant")
   applicationsReviewed OrganizerApplication[] @relation("Reviewer")
   staffFor             EventStaff[]           @relation("StaffMember")
   staffGranted         EventStaff[]           @relation("StaffGrantedBy")
@@ -156,12 +150,10 @@ enum UserRole {
 
 /**
  * Someone an organizer has authorised to work the door of one event.
- *
  * Checking people in and issuing tickets are very different powers. A door needs
  * casual staff and volunteers, and handing each of them ORGANIZER would let them
  * mint tickets, create events, and open auctions — the entire supply side of the
  * business, so that a friend can scan QRs for one evening.
- *
  * Scoped to a single event on purpose: staff for tonight's show should not be
  * able to work next month's, and access should lapse without anyone remembering
  * to revoke it.
@@ -190,7 +182,6 @@ model EventStaff {
 
 /**
  * A request to become an organizer.
- *
  * Organizers issue real admission and take real money, so becoming one is
  * reviewed rather than self-declared. One application per user: re-applying
  * updates the existing row so a rejected applicant cannot spam the queue.
@@ -201,10 +192,17 @@ model OrganizerApplication {
   userId String @unique
   user   User   @relation("Applicant", fields: [userId], references: [id])
 
-  orgName String
-  contact String
+  orgName         String
+  /// Free-text way to reach them besides email (a phone, a handle). Optional since
+  /// 2026-10-28; older rows carry what the applicant typed.
+  contact         String    @default("")
+  /// Where decisions and notices are sent. Null on applications from before this
+  /// field existed. Never trusted until `emailVerifiedAt` is set: anyone can type
+  /// anyone's address, and a decision mailed to a stranger is spam from us.
+  email           String?
+  emailVerifiedAt DateTime?
   /// What they intend to run. The reviewer's main signal.
-  pitch   String
+  pitch           String
 
   status ApplicationStatus @default(PENDING)
 
@@ -217,7 +215,33 @@ model OrganizerApplication {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  verifications EmailVerification[]
+
   @@index([status, createdAt])
+}
+
+/**
+ * One emailed link that proves an applicant controls the address they gave.
+ * Only the SHA-256 of the token is stored, like sessions: a database leak must not
+ * hand out working links. A link is single-use and short-lived, and issuing a new
+ * one leaves older ones valid until they expire or are used, so a slow inbox never
+ * strands someone with a link that a newer email already killed.
+ */
+model EmailVerification {
+  id String @id @default(uuid())
+
+  applicationId String
+  application   OrganizerApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  /// The address this link vouches for. Stored so a link sent to an old address
+  /// cannot verify a new one the applicant has since switched to.
+  email     String
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([applicationId, createdAt])
 }
 
 enum ApplicationStatus {
@@ -255,14 +279,14 @@ model Session {
 // ------------------------------------------------------------------ events --
 
 model Event {
-  id          String   @id @default(uuid())
+  id   String @id @default(uuid())
   /// Slug stays globally unique — it is a URL, and two events cannot share one
   /// path just because they issue on different ledgers.
-  slug        String   @unique
+  slug String @unique
 
   /// Which ledger this event's tickets are issued on. Every Ticket, MintRequest
   /// and Listing beneath it inherits the same value.
-  network XrplNetwork
+  network     XrplNetwork
   title       String
   description String?
   venue       String?
@@ -271,9 +295,9 @@ model Event {
   /// Public URL of the event's poster in object storage. Null renders a
   /// generated fallback rather than a broken image — an organizer who has not
   /// uploaded one yet is the normal case, not an error.
-  imageUrl String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  imageUrl  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   organizerId String
   organizer   User   @relation("EventOrganizer", fields: [organizerId], references: [id])
@@ -296,9 +320,9 @@ model Event {
   /// Organizer-set, create-time only — there is no event-edit route, same as
   /// royaltyBps/platformBps/ticketCount. UNRESTRICTED is a safe, honest
   /// default: it means "no cap configured," not a guess about intent.
-  resalePolicy ResalePolicy @default(UNRESTRICTED)
+  resalePolicy   ResalePolicy @default(UNRESTRICTED)
   /// PERCENTAGE_CAP only. 10000 = 100% of face value, so 12000 = 120%.
-  resaleCapBps Int?
+  resaleCapBps   Int?
   /// FIXED_CAP only, in drops.
   resaleCapDrops BigInt?
 
@@ -324,7 +348,6 @@ model Event {
 
 /**
  * One in-flight NFTokenMint awaiting the organizer's signature in Xaman.
- *
  * Minting is asynchronous and Hubworld never signs: we build the transaction,
  * hand it to Xaman, and only learn the NFTokenID after the organizer signs and
  * the ledger validates. This row is what survives that gap — without it a
@@ -352,7 +375,7 @@ model MintRequest {
   // Populated only after the ledger validates the transaction.
   txHash     String?
   nfTokenId  String?
-  ticketId   String? @unique
+  ticketId   String?   @unique
   resolvedAt DateTime?
 
   // Why a mint failed, for the organizer to act on.
@@ -367,12 +390,10 @@ model MintRequest {
 
 /**
  * An unattended run of delegated mints for one event.
- *
  * The organizer signed nothing per ticket: Hubworld's delegate account submits
  * `NFTokenMint` with `Account` = organizer under the organizer's grant. This row
  * is what survives a restart mid-run, so it records what was SENT before it
  * records what landed — see `pendingWave`.
- *
  * `minted` counts tickets that are validated on the ledger and recorded, never
  * transactions submitted. A transaction can be dropped, rejected, or applied
  * with a `tec` code (which still burns its sequence and fee), and counting
@@ -392,15 +413,15 @@ model MintJob {
   /// The delegate this job signs as, frozen from the grant it ran under.
   delegateAddress String
 
-  total  Int
-  minted Int @default(0)
+  total     Int
+  minted    Int @default(0)
   /// Transactions the ledger applied with a failure code. Each burned a sequence
   /// and a fee for no ticket, so they are counted rather than hidden.
   failedTxs Int @default(0)
 
-  status MintJobStatus @default(QUEUED)
+  status        MintJobStatus @default(QUEUED)
   /// Why it is paused / failed / waiting, in words for the organizer.
-  statusReason String?
+  statusReason  String?
   /// When a transient wait (fee spike, throttled node) may be retried.
   nextAttemptAt DateTime?
 
@@ -445,12 +466,10 @@ enum MintStatus {
 
 /**
  * An organizer's grant of `NFTokenMint` to Hubworld's delegate account.
- *
  * This is a CACHE of the ledger, like `Ticket.ownerId`. The authority is the
  * `Delegate` object on the organizer's account: they can revoke in Xaman without
  * telling us, so `ACTIVE` here means "we saw it granted", never "it is granted
  * now". Anything that acts on the permission re-reads the ledger first.
- *
  * One live grant per organizer: `NFTokenMint` cannot be scoped to an event by
  * the ledger, so which events may be minted is enforced by us, not by this row.
  */
@@ -458,8 +477,8 @@ model Delegation {
   id      String      @id @default(uuid())
   network XrplNetwork
 
-  organizerId String
-  organizer   User   @relation(fields: [organizerId], references: [id])
+  organizerId      String
+  organizer        User   @relation(fields: [organizerId], references: [id])
   /// Snapshotted, like `Listing.sellerAddress`: the ledger object is keyed by
   /// this address, not by our user row.
   organizerAddress String
@@ -587,12 +606,10 @@ model Ticket {
 
 /**
  * A peer-to-peer gift in flight.
- *
  * XRPL has no "transfer" transaction, so a gift is TWO signatures on two
  * different devices: the sender creates a zero-amount sell offer restricted to
  * the recipient, then the recipient accepts it. Ownership does not move until
  * that second signature validates.
- *
  * Both halves are tracked here because the sender and the recipient poll
  * independently, and either can abandon partway.
  */
@@ -666,15 +683,12 @@ enum TicketStatus {
 
 /**
  * One check-in at the door.
- *
  * A ticket is proved by a SIGNATURE, not by showing something. A displayed QR can
  * be screenshotted and passed to a friend; a Xaman signature cannot, because it
  * requires the holder's device and key at that moment.
- *
  * Check-in is therefore organizer-initiated: the door device creates the payload
  * and the RESULT APPEARS THERE. If the attendee's phone showed the verdict, a
  * screenshot of a green tick would be enough to get in.
- *
  * Signing alone is not sufficient either — it proves who they are, not what they
  * hold. The ledger is re-read to confirm that address still holds a ticket for
  * this event, because they may have sold or gifted it since.
@@ -739,12 +753,10 @@ enum RedemptionStatus {
 
 /**
  * A fixed-price resale, settled in XRPL brokered mode.
- *
  * THREE signatures, on three different accounts:
- *   1. seller   NFTokenCreateOffer  Amount=price, Destination=broker, tfSell
- *   2. buyer    NFTokenCreateOffer  Amount=price+fee, Owner=seller  (a bid)
- *   3. Hubworld NFTokenAcceptOffer  both offers + NFTokenBrokerFee=fee
- *
+ * 1. seller   NFTokenCreateOffer  Amount=price, Destination=broker, tfSell
+ * 2. buyer    NFTokenCreateOffer  Amount=price+fee, Owner=seller  (a bid)
+ * 3. Hubworld NFTokenAcceptOffer  both offers + NFTokenBrokerFee=fee
  * The seller's `Destination` is the broker so nobody can accept the sell offer
  * directly and bypass the platform fee. The organizer's royalty is not modelled
  * here at all — the NFToken's native TransferFee deducts it and pays the issuer
@@ -758,8 +770,8 @@ model Listing {
   ticketId String
   ticket   Ticket @relation(fields: [ticketId], references: [id])
 
-  sellerId String
-  seller   User   @relation("ListingSeller", fields: [sellerId], references: [id])
+  sellerId      String
+  seller        User   @relation("ListingSeller", fields: [sellerId], references: [id])
   // Snapshotted: re-resolving later could retarget a listing already on-ledger.
   sellerAddress String
 
@@ -781,7 +793,7 @@ model Listing {
   brokerAddress String?
 
   /// What the seller receives before the issuer's TransferFee. Always drops.
-  priceDrops BigInt
+  priceDrops       BigInt
   /// Hubworld's cut, fixed at listing time from the event's platformBps, so a
   /// later config change cannot alter the terms a buyer already saw.
   platformFeeDrops BigInt @default(0)
@@ -868,7 +880,7 @@ model Auction {
   status    AuctionStatus @default(SCHEDULED)
   createdAt DateTime      @default(now())
 
-  bids Bid[]
+  bids    Bid[]
   /// The holder's sell offer, which settlement brokers the winning bid against.
   listing Listing?
 
@@ -885,18 +897,15 @@ enum AuctionStatus {
 
 /**
  * One bid: an XRPL buy offer, not an escrow.
- *
  * The original design escrowed each bid, but an XRPL `Escrow` releases on a time
  * or crypto-condition trigger and knows nothing about the NFT, so it cannot
  * settle a ticket sale atomically — it can pay a seller whose ticket never moves.
  * `NFTokenAcceptOffer` moves the NFT and the XRP together, all-or-nothing, so a
  * bid is an `NFTokenCreateOffer` with `Destination` = the broker.
- *
  * The trade-off, stated plainly: **funds are not locked.** A bidder can spend the
  * money after bidding, and settlement then fails with `tecINSUFFICIENT_FUNDS`.
  * Balance is therefore checked when the bid is placed and again at settlement,
  * falling back to the next-highest bid.
- *
  * The compensating benefit is that losing costs nothing: there is no refund to
  * process and no cancellation transaction a loser must sign. A losing offer is
  * inert on-ledger because only the broker can accept it.
@@ -909,8 +918,8 @@ model Bid {
   auctionId String
   auction   Auction @relation(fields: [auctionId], references: [id])
 
-  bidderId String
-  bidder   User   @relation(fields: [bidderId], references: [id])
+  bidderId      String
+  bidder        User    @relation(fields: [bidderId], references: [id])
   // Snapshotted: re-resolving the handle later could retarget a live offer.
   bidderAddress String?
 
@@ -927,8 +936,8 @@ model Bid {
   status        BidStatus @default(PENDING)
   failureReason String?
 
-  placedAt   DateTime  @default(now())
-  expiresAt  DateTime?
+  placedAt    DateTime  @default(now())
+  expiresAt   DateTime?
   committedAt DateTime?
 
   // Drives the real-time price tracker: bids for one auction, in time order.
@@ -1007,11 +1016,9 @@ model SocketIoAttachment {
 
 /**
  * A lease held by whichever process is running a periodic job.
- *
  * The auction sweep must not run twice concurrently: two processes would each
  * pick the same due auction and try to broker it, and the second would waste a
  * transaction fee discovering the offers were already consumed.
- *
  * This is a lease rather than a Postgres advisory lock on purpose. Advisory
  * locks are scoped to a CONNECTION, and Prisma pools connections — the unlock
  * could easily land on a different connection than the lock, leaking it
@@ -1027,15 +1034,12 @@ model JobLock {
 
 /**
  * Last known state of a Xaman payload.
- *
  * Exists so payload resolution can be PUSHED rather than polled. Every signature
  * flow — sign-in, mint, gift, listing, bid, check-in — used to ask Xaman on every
  * poll, which is one request per 2.5s per waiting user and is what produced a 429
  * during the first live gift.
- *
  * With a webhook configured, Xaman tells us once and this row is the answer from
  * then on. Without one, this is a cache in front of the same polling as before.
- *
  * `terminal` matters: signed, cancelled and expired are final, so a terminal row
  * can be served forever without asking again.
  */
