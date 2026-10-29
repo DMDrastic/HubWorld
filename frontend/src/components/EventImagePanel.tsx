@@ -13,7 +13,7 @@
  */
 import { useRef, useState } from 'react'
 import { ImagePlus, Loader2 } from 'lucide-react'
-import { ApiError, IMAGE_ACCEPT, MAX_IMAGE_BYTES, uploadEventImage } from '@/lib/api'
+import { ApiError, IMAGE_ACCEPT, imageProblem, uploadEventImage } from '@/lib/api'
 import type { EventSummary } from '@/lib/api'
 import { posterUrl } from '@/lib/poster'
 import { Button } from '@/components/ui/button'
@@ -24,17 +24,6 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
-
-const ACCEPTED = new Set(IMAGE_ACCEPT.split(','))
-
-/** Fails fast on the two mistakes worth catching before a round trip. */
-function localProblem(file: File): string | null {
-  if (!ACCEPTED.has(file.type)) return 'Choose a JPEG, PNG or WEBP image'
-  if (file.size > MAX_IMAGE_BYTES) {
-    return `That image is ${(file.size / 1024 / 1024).toFixed(1)}MB — the limit is 2MB`
-  }
-  return null
-}
 
 function Row({
   event,
@@ -49,7 +38,7 @@ function Row({
 
   async function pick(file: File | undefined) {
     if (!file) return
-    const problem = localProblem(file)
+    const problem = imageProblem(file)
     if (problem) {
       setError(problem)
       return

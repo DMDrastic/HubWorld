@@ -9,15 +9,29 @@
  * The server enforces all of this independently; hiding is presentation, not
  * security.
  */
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useId, useRef, useState } from 'react'
+import {
+  CalendarDays,
+  DoorOpen,
+  Globe,
+  ImagePlus,
+  MapPin,
+  Percent,
+  Repeat,
+  Ticket,
+  Users,
+} from 'lucide-react'
 import {
   ApiError,
+  IMAGE_ACCEPT,
   applyToOrganize,
   createEvent,
   fetchApplications,
   fetchOrganizerStatus,
   fetchPolicy,
+  imageProblem,
   reviewApplication,
+  uploadEventImage,
   xrpToDrops,
   type DoorMode,
   type OrganizerStatus,
@@ -130,7 +144,177 @@ function ApplyForm({ policy, status, onApplied }: {
   )
 }
 
-/** Organizers create events. platformBps is absent on purpose — it is policy. */
+/**
+ * Where an event starts, as the organizer's own clock will read it.
+ *
+ * `startsAt` is typed in local time and converted with `new Date(...)`, so the
+ * zone is whatever this browser is in. Saying so on the form (offset and place)
+ * turns "7 pm" into "7 pm Toronto" before anyone commits to it. The offset is
+ * measured on the chosen date, not on today, so a date after a clock change reads
+ * the offset it will really have.
+ */
+function zoneFor(startsAt: string): { offset: string; place: string } {
+  const when = startsAt && !Number.isNaN(new Date(startsAt).getTime()) ? new Date(startsAt) : new Date()
+  const minutes = -when.getTimezoneOffset()
+  const abs = Math.abs(minutes)
+  const hh = String(Math.floor(abs / 60)).padStart(2, '0')
+  const mm = String(abs % 60).padStart(2, '0')
+  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone ?? ''
+  return {
+    offset: `GMT${minutes >= 0 ? '+' : '-'}${hh}:${mm}`,
+    place: tz.split('/').pop()?.replace(/_/g, ' ') ?? '',
+  }
+}
+
+/**
+ * The poster, chosen before the event exists.
+ *
+ * The upload endpoint is keyed on the event's slug, which only exists once the
+ * event has been created, so the file is held here and sent right after the
+ * create succeeds (see `CreateEventForm`). Picking it now still matters: an
+ * organizer sees how the event will look while they are describing it.
+ *
+ * The preview is a 3:4 tile because that is the crop the Events timeline uses,
+ * so what is shown here is what a visitor will see.
+ */
+function PosterPicker({
+  file,
+  onFile,
+}: {
+  file: File | null
+  onFile: (f: File | null) => void
+}) {
+  const input = useRef<HTMLInputElement>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [preview, setPreview] = useState<string | null>(null)
+
+  // A state-and-effect pair, not `useMemo`: StrictMode runs the cleanup between
+  // its two mounts, which would revoke a URL a memo had already handed out.
+  useEffect(() => {
+    if (!file || typeof URL.createObjectURL !== 'function') {
+      setPreview(null)
+      return
+    }
+    const url = URL.createObjectURL(file)
+    setPreview(url)
+    return () => URL.revokeObjectURL(url)
+  }, [file])
+
+  function pick(chosen: File | undefined) {
+    if (!chosen) return
+    const problem = imageProblem(chosen)
+    setError(problem)
+    if (!problem) onFile(chosen)
+    // Clear the input, or picking the SAME file again fires no change event.
+    if (input.current) input.current.value = ''
+  }
+
+  return (
+    <div>
+      <div className="surface relative aspect-3/4 overflow-hidden">
+        {preview ? (
+          <img src={preview} alt="Poster preview" className="absolute inset-0 size-full object-cover" />
+        ) : (
+          <button
+            type="button"
+            onClick={() => input.current?.click()}
+            className="text-muted-foreground hover:text-foreground focus-visible:ring-ring absolute inset-0 flex flex-col items-center justify-center gap-3 px-6 text-center text-sm transition-colors focus-visible:ring-2 focus-visible:outline-none"
+          >
+            <ImagePlus className="size-8" aria-hidden />
+            <span>Add a poster</span>
+          </button>
+        )}
+
+        {preview && (
+          <button
+            type="button"
+            onClick={() => input.current?.click()}
+            aria-label="Replace poster"
+            className="bg-background text-foreground focus-visible:ring-ring absolute right-3 bottom-3 flex size-11 items-center justify-center rounded-full shadow-md ring-1 ring-black/10 focus-visible:ring-2 focus-visible:outline-none"
+          >
+            <ImagePlus className="size-5" aria-hidden />
+          </button>
+        )}
+      </div>
+
+      <input
+        ref={input}
+        type="file"
+        accept={IMAGE_ACCEPT}
+        className="sr-only"
+        aria-label="poster image"
+        tabIndex={-1}
+        onChange={(e) => pick(e.target.files?.[0])}
+      />
+
+      <div className="mt-3 flex items-start justify-between gap-3 text-xs">
+        <p className={error ? 'text-destructive' : 'text-muted-foreground'}>
+          {error ?? 'JPEG, PNG or WEBP, up to 2MB. It is what people see when browsing.'}
+        </p>
+        {file && (
+          <button
+            type="button"
+            onClick={() => {
+              setError(null)
+              onFile(null)
+            }}
+            className="text-muted-foreground hover:text-foreground focus-visible:ring-ring shrink-0 rounded underline underline-offset-4 focus-visible:ring-2 focus-visible:outline-none"
+          >
+            Remove
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+
+/**
+ * One line of the form: an icon, what it is, and its value at the right edge.
+ * The whole line lights up while its control has focus, so the target is the row
+ * and not a thin input inside it. A hint, when there is one, sits underneath
+ * inside the same plate.
+ */
+function Option({
+  icon: Icon,
+  label,
+  hint,
+  children,
+}: {
+  icon: React.ComponentType<{ className?: string; 'aria-hidden'?: boolean }>
+  label: string
+  hint?: React.ReactNode
+  children: React.ReactNode
+}) {
+  return (
+    <div className="focus-within:bg-foreground/5 px-4 py-3 transition-colors first:rounded-t-2xl last:rounded-b-2xl">
+      <div className="flex min-h-8 items-center gap-3">
+        <Icon className="text-muted-foreground size-[1.125rem] shrink-0" aria-hidden />
+        <span className="shrink-0">{label}</span>
+        <div className="flex min-w-0 flex-1 items-center justify-end gap-2">{children}</div>
+      </div>
+      {hint && (
+        <div className="text-muted-foreground mt-1.5 pl-[1.875rem] text-xs leading-relaxed">{hint}</div>
+      )}
+    </div>
+  )
+}
+
+/** A bare input for the right edge of an `Option`. */
+const VALUE_INPUT =
+  'bg-transparent text-right outline-none placeholder:text-muted-foreground/60 min-w-0 w-28'
+const VALUE_SELECT =
+  'bg-transparent text-right outline-none cursor-pointer max-w-full min-w-0 [&>option]:bg-popover [&>option]:text-popover-foreground'
+
+/**
+ * Organizers create events. platformBps is absent on purpose — it is policy.
+ *
+ * Laid out like a composer rather than a form: the poster on one side, and on the
+ * other the name as the largest thing on the page, when and where, then the
+ * options that decide what the event is. Only fields the server actually takes
+ * are here, and none is a placeholder for something later (there is no
+ * description, end time, calendar or visibility choice, because there is
+ * nothing behind any of them).
+ */
 function CreateEventForm({ policy, onCreated }: { policy: Policy | null; onCreated: () => void }) {
   const [title, setTitle] = useState('')
   const [venue, setVenue] = useState('')
@@ -144,9 +328,14 @@ function CreateEventForm({ policy, onCreated }: { policy: Policy | null; onCreat
   // Offered only where this server can run the code door; otherwise the server's own default (Xaman) applies.
   const [doorMode, setDoorMode] = useState<DoorMode>('SIGNATURE')
   const offerDoorMode = policy?.doorCodes === true
+  const [poster, setPoster] = useState<File | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [created, setCreated] = useState<string | null>(null)
+  const [posterNote, setPosterNote] = useState<string | null>(null)
+  const id = useId()
+
+  const zone = zoneFor(startsAt)
 
   async function submit(e: React.FormEvent) {
     e.preventDefault()
@@ -183,11 +372,27 @@ function CreateEventForm({ policy, onCreated }: { policy: Policy | null; onCreat
         ...(resalePolicy === 'PERCENTAGE_CAP' ? { resaleCapBps } : {}),
         ...(resalePolicy === 'FIXED_CAP' ? { resaleCapDrops } : {}),
       })
+
+      // The event exists from here on. A poster that fails to upload must not
+      // read as a failed event (that would invite a second, duplicate create),
+      // so it is reported on its own and the poster panel below can retry it.
+      setPosterNote(null)
+      if (poster) {
+        try {
+          await uploadEventImage(event.slug, poster)
+        } catch (err) {
+          setPosterNote(
+            `The poster could not be uploaded (${err instanceof ApiError ? err.message : 'upload failed'}). Add it under Event posters below.`,
+          )
+        }
+      }
+
       setCreated(event.title)
       setTitle('')
       setVenue('')
       setPriceXrp('')
       setStartsAt('')
+      setPoster(null)
       setError(null)
       onCreated()
     } catch (err) {
@@ -198,133 +403,204 @@ function CreateEventForm({ policy, onCreated }: { policy: Policy | null; onCreat
   }
 
   return (
-    <form onSubmit={submit} className="space-y-3">
-      <div className="text-sm font-medium">Create an event</div>
-      {created && <p className="text-live text-sm">Created “{created}”.</p>}
-
-      <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Event title" aria-label="event title" />
-      <Input value={venue} onChange={(e) => setVenue(e.target.value)} placeholder="Venue" aria-label="venue" />
-      <div className="flex gap-2">
-        <Input
-          type="datetime-local"
-          value={startsAt}
-          onChange={(e) => setStartsAt(e.target.value)}
-          aria-label="starts at"
-        />
-        <Input
-          value={ticketCount}
-          onChange={(e) => setTicketCount(e.target.value)}
-          placeholder="Tickets"
-          inputMode="numeric"
-          aria-label="ticket count"
-          className="w-28"
-        />
-      </div>
-      <div className="flex items-center gap-2">
-        <Input
-          value={royaltyPct}
-          onChange={(e) => setRoyaltyPct(e.target.value)}
-          placeholder="Royalty %"
-          inputMode="decimal"
-          aria-label="royalty percent"
-          className="w-28"
-        />
-        <span className="text-muted-foreground text-xs">
-          your cut of every resale{policy ? `, max ${bps(policy.maxRoyaltyBps)}` : ''}
-        </span>
+    <form
+      onSubmit={submit}
+      // The base column is `minmax(0,1fr)`, not the implicit `auto`: an auto column grows
+      // to its widest child's minimum, and a native select sizes itself to its longest
+      // option, which pushed this whole page past the edge of a phone.
+      className="grid grid-cols-[minmax(0,1fr)] gap-8 lg:grid-cols-[19rem_minmax(0,1fr)] lg:gap-12"
+    >
+      <div className="w-full max-w-[12rem] lg:max-w-[19rem]">
+        <PosterPicker file={poster} onFile={setPoster} />
       </div>
 
-      <div className="flex items-center gap-2">
-        <Input
-          value={priceXrp}
-          onChange={(e) => setPriceXrp(e.target.value)}
-          placeholder="Price, XRP"
-          inputMode="decimal"
-          aria-label="ticket price in XRP"
-          className="w-28"
-        />
-        <span className="text-muted-foreground text-xs">
-          per ticket at the box office. Leave blank to sell by hand instead.
-        </span>
-      </div>
-
-      <div className="space-y-2">
-        <div className="flex items-center gap-2">
-          <select
-            value={resalePolicy}
-            onChange={(e) => setResalePolicy(e.target.value as ResalePolicyMode)}
-            aria-label="resale policy"
-            className="border-input bg-background focus-visible:border-ring focus-visible:ring-ring/50 rounded-lg border px-3 py-2 text-sm transition-colors focus-visible:ring-[3px] focus-visible:outline-none"
-          >
-            <option value="UNRESTRICTED">Resale: unrestricted</option>
-            <option value="PERCENTAGE_CAP">Resale: capped at % of face value</option>
-            <option value="FIXED_CAP">Resale: capped at a fixed price</option>
-            <option value="FACE_VALUE_ONLY">Resale: face value only, no markup</option>
-            <option value="DISABLED">Resale: disabled</option>
-          </select>
-          {resalePolicy === 'PERCENTAGE_CAP' && (
-            <>
-              <Input
-                value={resaleCapPct}
-                onChange={(e) => setResaleCapPct(e.target.value)}
-                placeholder="% of face value"
-                inputMode="decimal"
-                aria-label="resale cap percent of face value"
-                className="w-28"
-              />
-              <span className="text-muted-foreground text-xs">
-                e.g. 120 means a resale may not exceed 120% of what the ticket originally sold for
-              </span>
-            </>
-          )}
-          {resalePolicy === 'FIXED_CAP' && (
-            <>
-              <Input
-                value={resaleCapXrp}
-                onChange={(e) => setResaleCapXrp(e.target.value)}
-                placeholder="Max resale price in XRP"
-                inputMode="decimal"
-                aria-label="resale cap in XRP"
-                className="w-36"
-              />
-              <span className="text-muted-foreground text-xs">an absolute ceiling, in XRP</span>
-            </>
-          )}
-        </div>
-        <p className="text-muted-foreground text-xs">
-          Sets how high buyers can resell a ticket. Gifts aren't affected. You choose this now and
-          can't change it later.
-        </p>
-      </div>
-
-      {offerDoorMode && (
-        <div className="space-y-1.5">
-          <select
-            value={doorMode}
-            onChange={(e) => setDoorMode(e.target.value as DoorMode)}
-            aria-label="how guests get in"
-            className="border-input bg-background focus-visible:border-ring focus-visible:ring-ring/50 rounded-lg border px-3 py-2 text-sm transition-colors focus-visible:ring-[3px] focus-visible:outline-none"
-          >
-            <option value="SIGNATURE">Door: guests approve in Xaman (recommended)</option>
-            <option value="QR">Door: guests show a code (faster, proves less)</option>
-          </select>
-          <p className="text-muted-foreground text-xs">
-            Approving in Xaman proves the guest's own wallet is at the door. A code is faster, but
-            only proves a logged-in HubWorld session. You can change this later.
+      <div className="space-y-4">
+        {created && (
+          <p className="text-sm" role="status">
+            <span className="text-live font-medium">Created</span> “{created}”.
           </p>
+        )}
+        {posterNote && <p className="text-destructive text-sm">{posterNote}</p>}
+
+        <div className="focus-within:ring-ring/60 rounded-xl focus-within:ring-2">
+          <input
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="Event name"
+            aria-label="event title"
+            className="placeholder:text-muted-foreground/40 w-full bg-transparent px-1 py-1 text-4xl font-semibold tracking-[-0.03em] outline-none sm:text-5xl"
+          />
         </div>
-      )}
 
-      {policy && (
-        <p className="text-muted-foreground text-xs">
-          HubWorld takes {bps(policy.platformBps)} of each sale. It's the same for every event.
-        </p>
-      )}
-      {error && <p className="text-destructive text-sm">{error}</p>}
+        <div className="grid grid-cols-[minmax(0,1fr)] gap-2 sm:grid-cols-[minmax(0,1fr)_11rem]">
+          <label className="surface flex items-center gap-3 px-4 py-3" htmlFor={`${id}-start`}>
+            <CalendarDays className="text-muted-foreground size-[1.125rem] shrink-0" aria-hidden />
+            <span className="shrink-0">Starts</span>
+            <input
+              id={`${id}-start`}
+              type="datetime-local"
+              value={startsAt}
+              onChange={(e) => setStartsAt(e.target.value)}
+              aria-label="starts at"
+              className="min-w-0 flex-1 bg-transparent text-right outline-none"
+            />
+          </label>
+          <div className="surface px-4 py-3" title="Times are read in this browser's time zone.">
+            <Globe className="text-muted-foreground size-[1.125rem]" aria-hidden />
+            <div className="mt-1 text-sm font-medium tabular-nums">{zone.offset}</div>
+            <div className="text-muted-foreground text-sm">{zone.place}</div>
+          </div>
+        </div>
 
-      <Button type="submit" disabled={busy || !title.trim() || !startsAt}>
-        {busy ? 'Creating…' : 'Create event'}
-      </Button>
+        <label className="surface focus-within:bg-foreground/5 flex items-start gap-3 px-4 py-3 transition-colors">
+          <MapPin className="text-muted-foreground mt-0.5 size-[1.125rem] shrink-0" aria-hidden />
+          <span className="min-w-0 flex-1">
+            <input
+              value={venue}
+              onChange={(e) => setVenue(e.target.value)}
+              placeholder="Add event location"
+              aria-label="venue"
+              className="placeholder:text-foreground w-full bg-transparent outline-none"
+            />
+            <span className="text-muted-foreground text-sm">Venue or address. Optional.</span>
+          </span>
+        </label>
+
+        <h2 className="text-muted-foreground pt-3 text-sm font-medium">Event options</h2>
+        <div className="surface divide-y">
+          <Option
+            icon={Ticket}
+            label="Ticket price"
+            hint="Per ticket at the box office. Leave it blank to sell by hand instead."
+          >
+            <input
+              value={priceXrp}
+              onChange={(e) => setPriceXrp(e.target.value)}
+              placeholder="Not for sale"
+              inputMode="decimal"
+              aria-label="ticket price in XRP"
+              className={VALUE_INPUT}
+            />
+            <span className="text-muted-foreground">XRP</span>
+          </Option>
+
+          <Option icon={Users} label="Tickets">
+            <input
+              value={ticketCount}
+              onChange={(e) => setTicketCount(e.target.value)}
+              placeholder="100"
+              inputMode="numeric"
+              aria-label="ticket count"
+              className={VALUE_INPUT}
+            />
+          </Option>
+
+          <Option
+            icon={Percent}
+            label="Royalty"
+            hint={`Your cut of every resale${policy ? `, up to ${bps(policy.maxRoyaltyBps)}` : ''}.`}
+          >
+            <input
+              value={royaltyPct}
+              onChange={(e) => setRoyaltyPct(e.target.value)}
+              placeholder="5"
+              inputMode="decimal"
+              aria-label="royalty percent"
+              className={`${VALUE_INPUT} w-16`}
+            />
+            <span className="text-muted-foreground">%</span>
+          </Option>
+
+          <Option
+            icon={Repeat}
+            label="Resale"
+            hint={
+              <>
+                Sets how high buyers can resell a ticket. Gifts aren't affected. You choose this now
+                and can't change it later.
+                {resalePolicy === 'PERCENTAGE_CAP' &&
+                  ' 120 means a resale may not exceed 120% of what the ticket originally sold for.'}
+              </>
+            }
+          >
+            {resalePolicy === 'PERCENTAGE_CAP' && (
+              <>
+                <input
+                  value={resaleCapPct}
+                  onChange={(e) => setResaleCapPct(e.target.value)}
+                  placeholder="120"
+                  inputMode="decimal"
+                  aria-label="resale cap percent of face value"
+                  className={`${VALUE_INPUT} w-14 border-b`}
+                />
+                <span className="text-muted-foreground">%</span>
+              </>
+            )}
+            {resalePolicy === 'FIXED_CAP' && (
+              <>
+                <input
+                  value={resaleCapXrp}
+                  onChange={(e) => setResaleCapXrp(e.target.value)}
+                  placeholder="Max price"
+                  inputMode="decimal"
+                  aria-label="resale cap in XRP"
+                  className={`${VALUE_INPUT} w-24 border-b`}
+                />
+                <span className="text-muted-foreground">XRP</span>
+              </>
+            )}
+            <select
+              value={resalePolicy}
+              onChange={(e) => setResalePolicy(e.target.value as ResalePolicyMode)}
+              aria-label="resale policy"
+              className={VALUE_SELECT}
+            >
+              <option value="UNRESTRICTED">Unrestricted</option>
+              <option value="PERCENTAGE_CAP">Capped at % of face value</option>
+              <option value="FIXED_CAP">Capped at a fixed price</option>
+              <option value="FACE_VALUE_ONLY">Face value only, no markup</option>
+              <option value="DISABLED">Disabled</option>
+            </select>
+          </Option>
+
+          {offerDoorMode && (
+            <Option
+              icon={DoorOpen}
+              label="Door"
+              hint="Approving in Xaman proves the guest's own wallet is at the door. A code is faster, but only proves a logged-in HubWorld session. You can change this later."
+            >
+              <select
+                value={doorMode}
+                onChange={(e) => setDoorMode(e.target.value as DoorMode)}
+                aria-label="how guests get in"
+                className={VALUE_SELECT}
+              >
+                <option value="SIGNATURE">Xaman (recommended)</option>
+                <option value="QR">Code (faster)</option>
+              </select>
+            </Option>
+          )}
+        </div>
+
+        {policy && (
+          <p className="text-muted-foreground text-sm">
+            HubWorld takes {bps(policy.platformBps)} of each sale. It's the same for every event.
+          </p>
+        )}
+        {error && (
+          <p className="text-destructive text-sm" role="alert">
+            {error}
+          </p>
+        )}
+
+        <Button
+          type="submit"
+          disabled={busy || !title.trim() || !startsAt}
+          className="mt-2 h-12 w-full rounded-xl text-base"
+        >
+          {busy ? 'Creating…' : 'Create event'}
+        </Button>
+      </div>
     </form>
   )
 }
@@ -403,32 +679,46 @@ export function OrganizerPanel({ role, onChanged }: { role: Role; onChanged: () 
 
   const organizer = role === 'ORGANIZER' || role === 'ADMIN'
 
+  // An organizer gets the composer on the page itself, not inside a card: it is
+  // the page's main job, and a form boxed in a panel reads as one tool among
+  // many. Everyone else still gets the small, boxed invitation to apply.
+  if (organizer) {
+    return (
+      <div className="space-y-8">
+        <CreateEventForm
+          policy={policy}
+          onCreated={() => {
+            void load()
+            onChanged()
+          }}
+        />
+        {role === 'ADMIN' && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                Review <Badge variant="secondary">admin</Badge>
+              </CardTitle>
+              <CardDescription>Organizer applications waiting on a decision.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <ReviewQueue />
+            </CardContent>
+          </Card>
+        )}
+      </div>
+    )
+  }
+
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          {organizer ? 'Organizer' : 'Run your own events'}
-          {role === 'ADMIN' && <Badge variant="secondary">admin</Badge>}
-        </CardTitle>
+        <CardTitle>Run your own events</CardTitle>
         <CardDescription>
-          {organizer
-            ? 'Create events and tickets. You earn a cut of every resale.'
-            : 'Hosting on Hubworld is a separate account type — apply and someone will review it.'}
+          Hosting on Hubworld is a separate account type — apply and someone will review it.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        {organizer ? (
-          <CreateEventForm
-            policy={policy}
-            onCreated={() => {
-              void load()
-              onChanged()
-            }}
-          />
-        ) : (
-          <ApplyForm policy={policy} status={status} onApplied={load} />
-        )}
-        {role === 'ADMIN' && <ReviewQueue />}
+        <ApplyForm policy={policy} status={status} onApplied={load} />
       </CardContent>
     </Card>
   )

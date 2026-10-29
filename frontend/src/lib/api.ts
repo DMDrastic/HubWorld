@@ -1152,6 +1152,21 @@ export async function uploadEventImage(
 export const IMAGE_ACCEPT = 'image/jpeg,image/png,image/webp'
 export const MAX_IMAGE_BYTES = 2 * 1024 * 1024
 
+const ACCEPTED_IMAGE_TYPES = new Set(IMAGE_ACCEPT.split(','))
+
+/**
+ * Fails fast on the two mistakes worth catching before a round trip: a type the
+ * server will refuse, and a file over its size limit. The client check is not the
+ * boundary (the server reads the magic bytes itself); it only saves an upload.
+ */
+export function imageProblem(file: File): string | null {
+  if (!ACCEPTED_IMAGE_TYPES.has(file.type)) return 'Choose a JPEG, PNG or WEBP image'
+  if (file.size > MAX_IMAGE_BYTES) {
+    return `That image is ${(file.size / 1024 / 1024).toFixed(1)}MB \u2014 the limit is 2MB`
+  }
+  return null
+}
+
 // There is deliberately no token storage here.
 //
 // The session lives in an httpOnly SameSite=Lax cookie set by the backend, so
