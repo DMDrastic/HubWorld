@@ -27,6 +27,7 @@ import { TicketWallet } from '@/components/TicketWallet'
 import { SellPanel } from '@/components/SellPanel'
 import { DoorPanel } from '@/components/DoorPanel'
 import { NavBar } from '@/components/NavBar'
+import { EmailVerifyNotice } from '@/components/EmailVerifyNotice'
 import { Landing } from '@/components/Landing'
 import { PageBackdrop } from '@/components/PageBackdrop'
 import { SignInRequired } from '@/components/SignInRequired'
@@ -255,6 +256,8 @@ export default function App() {
 
   const [doorEvents, setDoorEvents] = useState<DoorEvent[]>([])
   const route = useRoute()
+  // Bumped when an emailed confirmation link is spent, so the application panel re-reads it.
+  const [emailVerifiedTick, setEmailVerifiedTick] = useState(0)
 
   // Door access is per event, so whether to show that destination cannot be
   // decided from the role — a volunteer is a plain USER.
@@ -300,6 +303,11 @@ export default function App() {
           <p className="text-destructive bg-destructive/8 mt-4 rounded-xl border border-current/20 p-3.5 text-sm">
             {error}
           </p>
+        )}
+
+        {/* The link in an applicant's confirmation email. It needs no session. */}
+        {route === '/organize' && (
+          <EmailVerifyNotice onVerified={() => setEmailVerifiedTick((n) => n + 1)} />
         )}
 
         {/* `/` and `/events` render for everybody. The rest describe an account
@@ -392,7 +400,7 @@ export default function App() {
               title="Organize"
               description="Create events and tickets. You earn a cut of every resale."
             />
-            <OrganizerPanel role={me.role} onChanged={handleMinted} />
+            <OrganizerPanel role={me.role} onChanged={handleMinted} refreshKey={emailVerifiedTick} />
             <EventImagePanel events={organizing} onChanged={handleMinted} />
             <DelegationPanel />
             <BulkMintPanel events={organizing} onChanged={handleMinted} />
@@ -405,7 +413,7 @@ export default function App() {
         {route === '/organize' && me && !isOrganizer(me.role) && (
           <section className="space-y-4 pb-8">
             <PageHeader title="Run your own events" />
-            <OrganizerPanel role={me.role} onChanged={handleMinted} />
+            <OrganizerPanel role={me.role} onChanged={handleMinted} refreshKey={emailVerifiedTick} />
           </section>
         )}
       </main>

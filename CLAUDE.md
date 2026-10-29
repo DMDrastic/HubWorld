@@ -691,6 +691,41 @@ event creation are absent from their UI rather than disabled: a greyed-out
 control still advertises a capability and invites someone to probe the endpoint.
 The server enforces this independently — hiding is presentation, not security.
 
+### An application carries an email, and the email is proved before it is used
+
+An application used to carry a free-text "contact" that nothing could reach, so an
+approval or a rejection was only seen if the applicant happened to sign in again.
+`email` (required) and `emailVerifiedAt` fix that, with the smallest mechanism that is
+safe: a link emailed to the address, spent with one POST.
+
+- **Nothing but the confirmation link goes to an unconfirmed address.** Anyone can type
+  anyone's address, and a decision mailed to a stranger is spam from us. `sendDecision`
+  skips an unverified address, and the review still records the decision either way.
+- **A link vouches for one address.** `EmailVerification.email` is what it was sent to;
+  verifying checks it is still the application's, so switching address after requesting a
+  link cannot confirm the new one. Resubmitting with the SAME confirmed address keeps it
+  confirmed; any other starts unconfirmed.
+- **Only the token's hash is stored, it is single-use (a conditional `usedAt` update, so
+  racing clicks confirm once) and lives 24 hours.** Every kind of bad token gets one answer.
+- **Verification is a POST from the page the link opens, never a GET.** Mail scanners
+  and link previewers fetch every URL in a message and would spend the token. It needs no
+  session, since people open email on whatever device holds it; the 256-bit token is the
+  proof. `EmailVerifyNotice` reads the token once into state: reading it from the URL
+  inside the effect broke under StrictMode, which runs the effect twice after the first
+  run has already removed the token from the address bar.
+- **Mail is best-effort and a seam** (`src/mailer.ts`, Resend over one `fetch`, no SDK;
+  `RESEND_API_KEY` + `MAIL_FROM`, else a stub whose outbox tests read). A failed send is
+  reported (`emailSent: false`) and never fails an application or undoes a review; neither
+  sender logs an address or a body in production. A resend has a 60s cooldown.
+- **Unauthenticated, so it wants a rate limit.** `/organizers/email/verify` is public. The
+  token space makes guessing hopeless, but the endpoint should sit behind whatever limiter
+  the security branch (`security/headers-rate-limits-deps`) adds.
+
+Not built, deliberately: Google sign-in, email as a login, marketing mail, and a bounce
+or complaint webhook. See the conversation that chose this: organizers must still be
+wallets (they are the issuer and sign the delegation), so email is a contact channel, not
+an identity.
+
 ### `platformBps` is policy; `royaltyBps` is the organizer's
 
 `PLATFORM_FEE_BPS` (env, default 250, capped at 1000) is set **by the server** on
@@ -806,7 +841,9 @@ Hubworld out of the funds-custody path. Changing this changes who mints.
 | `GET /api/auth/me` | current user (bearer token) |
 | `POST /api/auth/signout` | revoke session |
 | `GET /api/users/:username` | @handle → XRPL address (accepts a leading `@`) |
-| `POST /api/organizers/apply` | apply to become an organizer |
+| `POST /api/organizers/apply` | apply to become an organizer (email required; emails a confirmation link) |
+| `POST /api/organizers/email/resend` | re-send the confirmation link (60s cooldown) |
+| `POST /api/organizers/email/verify` | spend an emailed link; no session needed |
 | `GET /api/organizers/me` | my role + application status |
 | `GET /api/admin/organizer-applications` | admin: the review queue |
 | `POST /api/admin/organizer-applications/:id/review` | admin: approve / reject |

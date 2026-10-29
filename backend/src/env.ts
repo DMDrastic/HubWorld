@@ -81,6 +81,16 @@ const EnvSchema = z.object({
   // seconds, so outstanding ones simply stop scanning.
   DOOR_TOKEN_SECRET: z.string().min(32).optional(),
 
+  // Transactional email (Resend's HTTP API; no SDK, one fetch). Both must be set
+  // for mail to be live. Unset, mail is a STUB that keeps messages in memory and,
+  // outside production, prints them: applications still work, the address just
+  // stays unverified, and the response says no email was sent. `emptyAsAbsent`
+  // because a blank value in a host's env form must not stop the server booting.
+  RESEND_API_KEY: emptyAsAbsent(z.string().min(8)),
+  // The From header, e.g. `HubWorld <noreply@hubworld.app>`. The domain must be
+  // verified with the provider or every send is refused.
+  MAIL_FROM: emptyAsAbsent(z.string().min(5)),
+
   // How Socket.IO shares events between processes.
   //
   // 'memory' (the default) keeps rooms in this process only, which is correct
@@ -207,6 +217,12 @@ export const delegateMode: 'live' | 'disabled' = env.DELEGATE_SEED ? 'live' : 'd
  * concrete reason to.
  */
 export const webhookMode: 'live' | 'disabled' = env.XAMAN_WEBHOOK_SECRET ? 'live' : 'disabled'
+
+/**
+ * Whether email actually leaves the building. Off, `mailer` keeps messages in
+ * memory (see `src/mailer.ts`) and nothing is sent.
+ */
+export const mailMode: 'live' | 'stub' = env.RESEND_API_KEY && env.MAIL_FROM ? 'live' : 'stub'
 
 /**
  * Whether attendees can show a code at the door. Off means every event uses the

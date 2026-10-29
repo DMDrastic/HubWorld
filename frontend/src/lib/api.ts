@@ -1011,6 +1011,9 @@ export const OrganizerStatusSchema = z.object({
       orgName: z.string(),
       submittedAt: z.string(),
       reviewNote: z.string().nullable(),
+      /** Absent from a server that predates email; null for an application from before it. */
+      email: z.string().nullable().optional(),
+      emailVerified: z.boolean().optional(),
     })
     .nullable(),
 })
@@ -1022,6 +1025,8 @@ export const ApplicationListSchema = z.object({
       applicant: z.string(),
       orgName: z.string(),
       contact: z.string(),
+      email: z.string().nullable().optional(),
+      emailVerified: z.boolean().optional(),
       pitch: z.string(),
       state: z.string(),
       submittedAt: z.string(),
@@ -1064,14 +1069,35 @@ export function fetchOrganizerStatus(): Promise<OrganizerStatus> {
   return request('/organizers/me', OrganizerStatusSchema)
 }
 
+const ApplyResultSchema = z.object({
+  state: z.string(),
+  emailVerified: z.boolean().optional(),
+  /** null: nothing needed sending (the same address was already confirmed). */
+  emailSent: z.boolean().nullable().optional(),
+})
+
 export function applyToOrganize(body: {
   orgName: string
-  contact: string
+  email: string
+  contact?: string
   pitch: string
-}): Promise<{ state: string }> {
-  return request('/organizers/apply', z.object({ state: z.string() }), {
+}): Promise<z.infer<typeof ApplyResultSchema>> {
+  return request('/organizers/apply', ApplyResultSchema, { method: 'POST', body })
+}
+
+/** Ask for the confirmation link again. Refused with 429 inside the cooldown. */
+export function resendEmailVerification(): Promise<{ emailSent: boolean }> {
+  return request('/organizers/email/resend', z.object({ emailSent: z.boolean() }), {
     method: 'POST',
-    body,
+    body: {},
+  })
+}
+
+/** Spend a link from an email. Needs no session: the token is the proof. */
+export function verifyOrganizerEmail(token: string): Promise<{ verified: boolean }> {
+  return request('/organizers/email/verify', z.object({ verified: z.boolean() }), {
+    method: 'POST',
+    body: { token },
   })
 }
 
@@ -1085,10 +1111,10 @@ export function reviewApplication(
   id: string,
   decision: 'approve' | 'reject',
   note?: string,
-): Promise<{ state: string }> {
+): Promise<{ state: string; notified?: boolean }> {
   return request(
     `/admin/organizer-applications/${encodeURIComponent(id)}/review`,
-    z.object({ state: z.string() }),
+    z.object({ state: z.string(), notified: z.boolean().optional() }),
     { method: 'POST', body: { decision, note } },
   )
 }
