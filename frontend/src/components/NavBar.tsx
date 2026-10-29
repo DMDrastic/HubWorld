@@ -49,7 +49,16 @@ function destinations(me: User | null, hasDoor: boolean): Destination[] {
   ]
   // A volunteer is a plain USER with a door, so this cannot be decided by role.
   if (hasDoor) base.push({ to: '/door', label: 'Door', icon: DoorOpen })
-  if (isOrganizer(me.role)) base.push({ to: '/organize', label: 'Organize', icon: SquarePen })
+  // The same page serves both: an organizer gets the composer, everyone else gets the
+  // application. A regular user must be able to FIND that application, or becoming an
+  // organizer is reachable only by typing the URL. It is labelled for what it does for them
+  // ("Host events"), not "Organize", which would promise a tool they do not have yet, and it
+  // is replaced by "Organize" the moment they are approved.
+  base.push(
+    isOrganizer(me.role)
+      ? { to: '/organize', label: 'Organize', icon: SquarePen }
+      : { to: '/organize', label: 'Host events', icon: SquarePen },
+  )
   return base
 }
 

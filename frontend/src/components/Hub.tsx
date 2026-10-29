@@ -23,6 +23,7 @@ import {
   dropsToXrp,
   fetchAuctions,
   fetchInventory,
+  isOrganizer,
   type AuctionSummary,
   type OwnedTicket,
   type User,
@@ -182,6 +183,27 @@ export function Hub({ me, onOpenAuction }: { me: User; onOpenAuction: (slug: str
               </li>
             ))}
           </ul>
+        </section>
+      )}
+
+      {/* The way in for someone who wants to run events. Not shown to organizers, who
+          have the page in their nav already; the link is to the application, which
+          shows its own status once one has been sent. */}
+      {!isOrganizer(me.role) && (
+        <section className="surface flex flex-wrap items-center justify-between gap-4 p-5">
+          <div>
+            <h2 className="font-semibold tracking-tight">Run your own events</h2>
+            <p className="text-muted-foreground mt-1 text-sm">
+              Apply to become an organizer, and earn a royalty on every resale.
+            </p>
+          </div>
+          <a
+            href="/organize"
+            onClick={link('/organize')}
+            className="text-foreground focus-visible:ring-ring rounded text-sm font-medium underline underline-offset-4 focus-visible:ring-2 focus-visible:outline-none"
+          >
+            Apply to organize
+          </a>
         </section>
       )}
 
