@@ -81,3 +81,36 @@ describe('groupTickets', () => {
     expect(groupTickets([], NOW)).toEqual({ featured: [], upcoming: [], past: [] })
   })
 })
+
+import { relativeDay } from '@/lib/hub-tickets'
+
+describe('relativeDay', () => {
+  const at = (days: number, hour = 20) => {
+    const d = new Date(NOW)
+    d.setDate(d.getDate() + days)
+    d.setHours(hour, 0, 0, 0)
+    return d.toISOString()
+  }
+
+  it('says Today for a night that is today, whether or not it has started', () => {
+    expect(relativeDay(at(0, 23), NOW)).toBe('Today')
+    expect(relativeDay(at(0, 1), NOW)).toBe('Today')
+  })
+
+  it('counts calendar days, not 24-hour blocks', () => {
+    // 9 am tomorrow is under 12 hours from 9 pm tonight, and is still "Tomorrow".
+    expect(relativeDay(at(1, 9), NOW)).toBe('Tomorrow')
+    expect(relativeDay(at(2, 0), NOW)).toBe('In 2 days')
+    expect(relativeDay(at(13), NOW)).toBe('In 13 days')
+  })
+
+  it('says nothing for a night too far off to be worth a phrase', () => {
+    expect(relativeDay(at(14), NOW)).toBeNull()
+    expect(relativeDay(at(90), NOW)).toBeNull()
+  })
+
+  it('says nothing for a night that has gone, rather than a phrase about the past', () => {
+    expect(relativeDay(at(-1), NOW)).toBeNull()
+    expect(relativeDay(at(-30), NOW)).toBeNull()
+  })
+})
