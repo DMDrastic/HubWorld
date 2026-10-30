@@ -235,3 +235,100 @@ describe('TicketWallet', () => {
     })
   })
 })
+
+describe('TicketWallet: ordering, timing and resale context', () => {
+  const day = 864e5
+  const inDays = (n: number) => new Date(Date.now() + n * day + 2 * 36e5).toISOString()
+  const t = (id: string, startsInDays: number, over: Record<string, unknown> = {}, ev: Record<string, unknown> = {}) =>
+    ticket(
+      { nfTokenId: id.padEnd(64, 'A'), ...over },
+      { slug: id, title: `Event ${id}`, startsAt: inDays(startsInDays), ...ev },
+    )
+  const titles = () => screen.getAllByRole('heading', { level: 3 }).map((h) => h.textContent)
+
+  it('puts the soonest night first, whatever order the tickets were minted in', async () => {
+    mockInventory([t('later', 9), t('soon', 1), t('mid', 4)])
+    render(
+      <StrictMode>
+        <TicketWallet version={0} onGift={vi.fn()} />
+      </StrictMode>,
+    )
+    await screen.findByRole('heading', { name: 'Event soon', level: 3 })
+    expect(titles()).toEqual(['Event soon', 'Event mid', 'Event later'])
+  })
+
+  it('keeps used and finished tickets, after the upcoming ones and under their own heading', async () => {
+    mockInventory([t('old', -20), t('used', 2, { status: 'REDEEMED' }), t('soon', 1)])
+    render(
+      <StrictMode>
+        <TicketWallet version={0} onGift={vi.fn()} />
+      </StrictMode>,
+    )
+    await screen.findByRole('heading', { name: 'Event soon', level: 3 })
+    expect(screen.getByText('Past')).toBeTruthy()
+    // Nothing is hidden: this is the page that holds all of them, soonest night first.
+    expect(titles()).toHaveLength(3)
+    expect(titles()[0]).toBe('Event soon')
+  })
+
+  it('names the next night and when it is, from real dates', async () => {
+    mockInventory([t('soon', 1), t('later', 6)])
+    render(
+      <StrictMode>
+        <TicketWallet version={0} onGift={vi.fn()} />
+      </StrictMode>,
+    )
+    expect(await screen.findByText(/Next:/)).toBeTruthy()
+    expect(screen.getByText(/Next:/).textContent).toContain('Event soon, tomorrow')
+  })
+
+  it('marks an upcoming ticket with how far off it is, and a used one with nothing', async () => {
+    mockInventory([t('soon', 1), t('used', 1, { status: 'REDEEMED' })])
+    render(
+      <StrictMode>
+        <TicketWallet version={0} onGift={vi.fn()} />
+      </StrictMode>,
+    )
+    await screen.findByRole('heading', { name: 'Event soon', level: 3 })
+    // One chip, on the ticket that can still be used.
+    expect(screen.getAllByText('Tomorrow')).toHaveLength(1)
+  })
+
+  it('says what the box office and the organizer allow, only when they are known', async () => {
+    mockInventory([
+      t('priced', 2, { faceValueDrops: '25000000', maxListingPriceDrops: '30000000' }),
+      t('bare', 3),
+    ])
+    render(
+      <StrictMode>
+        <TicketWallet version={0} onGift={vi.fn()} />
+      </StrictMode>,
+    )
+    expect(await screen.findByText('Face value 25 XRP · resale up to 30 XRP')).toBeTruthy()
+    // The ticket with no known terms says nothing, rather than "0 XRP".
+    expect(screen.getAllByText(/face value/i)).toHaveLength(1)
+  })
+
+  it('says resale is not allowed, in place of a price, when the organizer forbids it', async () => {
+    mockInventory([t('shut', 2, { resaleAllowed: false, faceValueDrops: '25000000' })])
+    render(
+      <StrictMode>
+        <TicketWallet version={0} onGift={vi.fn()} />
+      </StrictMode>,
+    )
+    expect(await screen.findByText('Resale is not allowed for this event')).toBeTruthy()
+    expect(screen.queryByRole('link', { name: /Sell the Event shut ticket/ })).toBeNull()
+  })
+
+  it('offers to sell a ticket you could sell, on the marketplace, and not one that is listed or used', async () => {
+    mockInventory([t('ok', 2), t('listed', 3, { status: 'LISTED' }), t('used', 4, { status: 'REDEEMED' })])
+    render(
+      <StrictMode>
+        <TicketWallet version={0} onGift={vi.fn()} />
+      </StrictMode>,
+    )
+    const sell = await screen.findByRole('link', { name: 'Sell the Event ok ticket' })
+    expect(sell.getAttribute('href')).toBe('/market')
+    expect(screen.getAllByRole('link', { name: /^Sell the / })).toHaveLength(1)
+  })
+})

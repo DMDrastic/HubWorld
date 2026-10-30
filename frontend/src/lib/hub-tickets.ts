@@ -46,3 +46,21 @@ export function groupTickets(tickets: readonly OwnedTicket[], now: number = Date
     past: behind,
   }
 }
+
+/** How far ahead a ticket still reads as "soon" in words. Beyond this the date says it better. */
+export const RELATIVE_DAYS_MAX = 13
+
+/**
+ * When a ticket's night is, in the words a person would use ("Today", "Tomorrow", "In 3 days").
+ *
+ * Counted in calendar days from the local midnight, not in 24-hour blocks: a ticket for 9 am
+ * tomorrow is "Tomorrow" at 11 pm tonight, not "In 10 hours". Null for a night that has gone and
+ * for one too far off to be worth saying, where the printed date is the better answer.
+ */
+export function relativeDay(startsAtIso: string, now: number = Date.now()): string | null {
+  const days = Math.round((startOfDay(new Date(startsAtIso).getTime()) - startOfDay(now)) / 864e5)
+  if (days < 0 || days > RELATIVE_DAYS_MAX) return null
+  if (days === 0) return 'Today'
+  if (days === 1) return 'Tomorrow'
+  return `In ${days} days`
+}
