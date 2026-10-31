@@ -523,6 +523,11 @@ export const OwnedTicketSchema = z.object({
   /** What an auction reserve/bid may be — the buyer's total already, no adjustment. */
   maxAuctionReserveDrops: z.string().nullable(),
   resaleBlockedReason: z.string().nullable(),
+  /**
+   * Where the limit comes from: the organizer's policy, or what the buyer paid (the new rule), or neither.
+   * Absent from a server that predates the rule; the wording then stays what it always was.
+   */
+  resaleCapSource: z.enum(['POLICY', 'PAID', 'NONE']).optional(),
 })
 
 export const InventorySchema = z.object({
@@ -1051,6 +1056,13 @@ export const PolicySchema = z.object({
   signers: z.array(z.enum(['xaman', 'privy'])).optional(),
   /** Public. Present only when Privy is switched on. */
   privyAppId: z.string().optional(),
+  /** Which fee model new sales use. Absent from a server that predates it, which behaves as v1. */
+  feeModel: z.enum(['v1', 'v2']).optional(),
+  /**
+   * Whether the resale policies that allow more than the buyer paid are still offered. Absent means the server
+   * predates the rule, so everything is offered, as it always was.
+   */
+  looseResalePolicies: z.boolean().optional(),
 })
 
 export const OrganizerStatusSchema = z.object({

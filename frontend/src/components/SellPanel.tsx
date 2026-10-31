@@ -517,6 +517,26 @@ export function SellPanel({
                         ? selected.maxListingPriceDrops
                         : selected.maxAuctionReserveDrops;
                     if (max === null) return null;
+                    // A ticket that cost nothing cannot be sold for money, whatever the organizer's policy says.
+                    if (max === "0" && selected.resaleCapSource === "PAID") {
+                      return (
+                        <p className="text-muted-foreground text-xs">
+                          This ticket was free, so it can't be sold for money.
+                          You can still give it to someone.
+                        </p>
+                      );
+                    }
+                    // The new rule: nobody resells for more than was paid. Said as what it is, not as the
+                    // organizer's doing, because it isn't.
+                    if (selected.resaleCapSource === "PAID") {
+                      return (
+                        <p className="text-muted-foreground text-xs">
+                          Capped at what the buyer paid:{" "}
+                          {mode === "sell" ? "list for" : "reserve"} up to{" "}
+                          {dropsToXrp(max)} XRP
+                        </p>
+                      );
+                    }
                     return (
                       <p className="text-muted-foreground text-xs">
                         Organizer resale limit:{" "}

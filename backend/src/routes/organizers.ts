@@ -16,7 +16,7 @@ import { Router } from 'express'
 import { z } from 'zod'
 import { prisma } from '../prisma.js'
 import { NETWORK } from '../network.js'
-import { env, doorTokenMode, privyMode, signersEnabled } from '../env.js'
+import { env, doorTokenMode, feeModelV2, looseResalePolicies, privyMode, signersEnabled } from '../env.js'
 import { issuesOf, slugSchema } from '../schemas.js'
 import { requireAdmin, requireAuth, requireOrganizer } from '../session.js'
 import {
@@ -321,7 +321,8 @@ const CreateEventBody = z
     // policy, since the two are deliberately not coupled.
     resalePolicy: z
       .enum(['UNRESTRICTED', 'PERCENTAGE_CAP', 'FIXED_CAP', 'FACE_VALUE_ONLY', 'DISABLED'])
-      .default('UNRESTRICTED'),
+      // Under the new fee model an unrestricted default would promise more than will happen.
+      .default(looseResalePolicies ? 'UNRESTRICTED' : 'FACE_VALUE_ONLY'),
     // Where the event is, for fees. The founding promo is decided by when the event starts in ITS OWN
     // zone, and the region chooses the card-processing rates. Both default to the pilot (St. Lucia).
     timeZone: z
@@ -367,6 +368,24 @@ const CreateEventBody = z
     }
     if (data.resalePolicy !== 'FIXED_CAP' && data.resaleCapDrops !== undefined) {
       ctx.addIssue({ code: 'custom', path: ['resaleCapDrops'], message: 'resaleCapDrops only applies to FIXED_CAP' })
+    }
+
+    // A ticket can never be resold for more than its buyer paid, so a policy that allows more than that
+    // promises the organizer something that will not happen. Refused for NEW events unless re-enabled; the
+    // paths and every existing event are untouched.
+    if (!looseResalePolicies) {
+      const note = 'resale is capped at what the buyer paid, so a policy that allows more than that is not offered'
+      if (data.resalePolicy === 'UNRESTRICTED') {
+        ctx.addIssue({ code: 'custom', path: ['resalePolicy'], message: `UNRESTRICTED is not available: ${note}` })
+      }
+      if (data.resalePolicy === 'PERCENTAGE_CAP' && data.resaleCapBps !== undefined && data.resaleCapBps > 10_000) {
+        ctx.addIssue({ code: 'custom', path: ['resaleCapBps'], message: `A cap above 100% is not available: ${note}` })
+      }
+      if (data.resalePolicy === 'FIXED_CAP' && data.resaleCapDrops !== undefined && data.primaryPriceDrops !== undefined) {
+        if (BigInt(data.resaleCapDrops) > BigInt(data.primaryPriceDrops)) {
+          ctx.addIssue({ code: 'custom', path: ['resaleCapDrops'], message: `A cap above the ticket price is not available: ${note}` })
+        }
+      }
     }
   })
 
@@ -474,5 +493,9 @@ organizersRouter.get('/policy', (_req, res) => {
     // Privy is actually on, so a deploy with the flag off reveals nothing and offers nothing.
     signers: [...signersEnabled],
     privyAppId: privyMode === 'live' ? env.PRIVY_APP_ID : undefined,
+    // Which fee model new sales use, and whether the resale policies that allow more than was paid are still
+    // offered, so the organizer form shows only choices that will be honoured.
+    feeModel: feeModelV2 ? 'v2' : 'v1',
+    looseResalePolicies,
   })
 })

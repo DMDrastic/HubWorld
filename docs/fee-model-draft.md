@@ -142,3 +142,19 @@ and the cap comparison in `resale-policy.ts`.
 
 New listings use the new terms only when `FEE_MODEL=v2` is set; the default stays today's behaviour, so merging changes nothing in
 production until the switch is turned on. Existing active listings stay on their frozen buyer-pays terms (`feeModel = BUYER_PAYS_V1`).
+
+## 9. The resale cap under the new model (decided 2026-11-01, built)
+
+The effective cap is the **lower of** the organizer's policy and the all-in amount the buyer actually paid. DISABLED stays disabled.
+
+- **Only new terms.** It applies when `FEE_MODEL=v2` AND the ticket has a recorded all-in amount. A ticket with no recorded amount (sold
+  before it existed, or never sold), and everything while the model is off, keeps its organizer policy EXACTLY. Both are pinned by tests.
+- **A ticket that cost nothing** (recorded amount 0) can never be resold for money under any policy; it can still be given away.
+- **Same currency.** The cap is compared in drops, so a ticket bought in another currency must be resold in that currency; no exchange
+  rate is guessed.
+- **Organizer options.** Under v2 the policies that promise more than will happen (UNRESTRICTED, a percentage above 100%, a fixed cap
+  above the ticket price) are hidden in the form and refused by the server for NEW events, and the default is face value only. The code
+  paths and every existing event are untouched. `ALLOW_LOOSE_RESALE_POLICIES=true` turns them back on (default: on under v1, off under v2).
+- **What people are told.** Organizers: "Resale is capped at what the buyer paid." Sellers: "Capped at what the buyer paid: list for up
+  to X XRP" (or the organizer's wording when it is the policy that binds; a free ticket is told it can't be sold for money but can be given).
+- Not yet built: the fixed-price listing's TERMS (seller-pays) and recording the all-in amount on a first sale; those are the wiring step.

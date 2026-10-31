@@ -32,6 +32,7 @@ import { issuesOf } from '../schemas.js'
 import { requireAuth } from '../session.js'
 import { canAuction } from '../auction-policy.js'
 import { checkResalePrice } from '../resale-policy.js'
+import { paidCostOf } from '../paid-cost.js'
 import {
   auctionSellAmountDrops,
   buildSellOfferTx,
@@ -169,6 +170,7 @@ openAuctionRouter.post('/tickets/:nfTokenId/auction', requireAuth, async (req, r
     capBps: ticket.event.resaleCapBps,
     capDrops: ticket.event.resaleCapDrops,
     faceValueDrops: ticket.faceValueDrops,
+    paid: paidCostOf(ticket),
     priceDrops: reserveDrops,
   })
   if (!resaleCap.allowed) {

@@ -13,7 +13,8 @@ import { issuesOf } from '../schemas.js'
 import { requireAuth } from '../session.js'
 import { accountNfts } from '../ledger.js'
 import { canAuction } from '../auction-policy.js'
-import { resaleCeiling, maxAskForCap, isPrimarySale } from '../resale-policy.js'
+import { resaleCeiling, maxAskForCap, isPrimarySale, capSource } from '../resale-policy.js'
+import { paidCostOf } from '../paid-cost.js'
 
 export const ticketsRouter = Router()
 
@@ -125,12 +126,14 @@ ticketsRouter.get('/tickets/mine', requireAuth, async (req, res) => {
             resaleBlockedReason: null,
           }
         : (() => {
-            const ceiling = resaleCeiling({
+            const capInput = {
               policy: t.event.resalePolicy,
               capBps: t.event.resaleCapBps,
               capDrops: t.event.resaleCapDrops,
               faceValueDrops: t.faceValueDrops,
-            })
+              paid: paidCostOf(t),
+            }
+            const ceiling = resaleCeiling(capInput)
             if (!ceiling.resaleAllowed) {
               return {
                 resaleAllowed: false,
@@ -150,6 +153,9 @@ ticketsRouter.get('/tickets/mine', requireAuth, async (req, res) => {
                 ceiling.maxDrops === null ? null : maxAskForCap(ceiling.maxDrops, t.event.platformBps).toString(),
               maxAuctionReserveDrops: ceiling.maxDrops?.toString() ?? null,
               resaleBlockedReason: null,
+              // Why the limit is what it is, so the seller is told "capped at what the buyer paid"
+              // rather than left to wonder where the number came from.
+              resaleCapSource: capSource(capInput),
             }
           })()),
     })),

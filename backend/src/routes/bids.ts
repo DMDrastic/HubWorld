@@ -24,6 +24,7 @@ import { requireAuth } from '../session.js'
 import { publishAuctionEvent } from '../realtime.js'
 import { signedByOtherAccount } from '../signer.js'
 import { checkResalePrice } from '../resale-policy.js'
+import { paidCostOf } from '../paid-cost.js'
 import {
   accountFunding,
   bidHeadroom,
@@ -163,6 +164,7 @@ bidsRouter.post('/auctions/:id/bid', requireAuth, async (req, res) => {
     capBps: auction.ticket.event.resaleCapBps,
     capDrops: auction.ticket.event.resaleCapDrops,
     faceValueDrops: auction.ticket.faceValueDrops,
+    paid: paidCostOf(auction.ticket),
     priceDrops: amountDrops,
   })
   if (!resaleCap.allowed) {
