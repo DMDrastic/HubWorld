@@ -1,0 +1,91 @@
+/**
+ * The Privy SDK, adapted to the small `SignerRuntime` the rest of the app uses.
+ *
+ * Only ever imported through `React.lazy` (see `WithSigner`), so Privy and its dependencies are
+ * a separate chunk fetched on demand. Do not import this file from anywhere else.
+ */
+import { useCallback, useEffect, useMemo, useRef, type ReactNode } from 'react'
+import { PrivyProvider, getIdentityToken, usePrivy } from '@privy-io/react-auth'
+import { useCreateWallet, useSignRawHash } from '@privy-io/react-auth/extended-chains'
+import { SignerRuntimeContext, type SignerRuntime } from '@/lib/signer-runtime'
+
+type LinkedWallet = { type?: string; chainType?: string; address?: string; publicKey?: string; public_key?: string }
+
+function xrplWalletOf(user: { linkedAccounts?: unknown[] } | null | undefined): LinkedWallet | null {
+  const found = (user?.linkedAccounts ?? []).find((a) => {
+    const w = a as LinkedWallet
+    return w.type === 'wallet' && w.chainType === 'xrpl'
+  })
+  return (found as LinkedWallet | undefined) ?? null
+}
+
+const publicKeyOf = (w: LinkedWallet) => (w.publicKey ?? w.public_key ?? '').toUpperCase()
+
+function Bridge({ children }: { children: ReactNode }) {
+  const { ready, authenticated, login, logout, user, getAccessToken } = usePrivy()
+  const { createWallet } = useCreateWallet()
+  const { signRawHash } = useSignRawHash()
+
+  // The newest user object, for functions that run after a wallet was just created.
+  const userRef = useRef(user)
+  useEffect(() => {
+    userRef.current = user
+  }, [user])
+
+  const getTokens = useCallback(async () => {
+    const accessToken = await getAccessToken()
+    const identityToken = await getIdentityToken()
+    return accessToken && identityToken ? { accessToken, identityToken } : null
+  }, [getAccessToken])
+
+  const ensureWallet = useCallback(async () => {
+    const existing = xrplWalletOf(userRef.current)
+    if (existing?.address && publicKeyOf(existing)) {
+      return { address: existing.address, publicKey: publicKeyOf(existing) }
+    }
+    const { wallet } = await createWallet({ chainType: 'xrpl' })
+    const w = wallet as unknown as LinkedWallet
+    if (!w.address || !publicKeyOf(w)) throw new Error('Your wallet was created but its details were not returned.')
+    return { address: w.address, publicKey: publicKeyOf(w) }
+  }, [createWallet])
+
+  const signHash = useCallback(
+    async (address: string, hashHex: string) => {
+      const { signature } = await signRawHash({ address, chainType: 'xrpl', hash: `0x${hashHex}` })
+      return signature.replace(/^0x/, '')
+    },
+    [signRawHash],
+  )
+
+  const walletAddress = xrplWalletOf(user)?.address ?? null
+  const runtime = useMemo<SignerRuntime>(
+    () => ({
+      ready,
+      authenticated,
+      walletAddress,
+      openLogin: () => login(),
+      getTokens,
+      ensureWallet,
+      signHash,
+      logout: () => logout(),
+    }),
+    [ready, authenticated, walletAddress, login, getTokens, ensureWallet, signHash, logout],
+  )
+
+  return <SignerRuntimeContext.Provider value={runtime}>{children}</SignerRuntimeContext.Provider>
+}
+
+export default function PrivyRuntime({ appId, children }: { appId: string; children: ReactNode }) {
+  return (
+    <PrivyProvider
+      appId={appId}
+      config={{
+        loginMethods: ['email'],
+        // Wallets are created explicitly, once, and only the XRPL one.
+        embeddedWallets: { ethereum: { createOnLogin: 'off' }, solana: { createOnLogin: 'off' } },
+      }}
+    >
+      <Bridge>{children}</Bridge>
+    </PrivyProvider>
+  )
+}

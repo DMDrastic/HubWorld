@@ -15,6 +15,7 @@ import { Wallet } from 'xrpl'
 const { prisma } = await import('../src/prisma.js')
 const { createApp } = await import('../src/app.js')
 const { getUserXrplAddress } = await import('../src/wallet.js')
+const { createSession } = await import('../src/session.js')
 
 const app = createApp()
 const P = 'wallettest_'
@@ -144,5 +145,26 @@ describe('signing up with Xaman', () => {
     expect(res.status).toBeGreaterThanOrEqual(400)
     // The user write rolled back with the wallet write.
     expect(await prisma.user.count({ where: { username: `${P}ghost` } })).toBe(0)
+  })
+})
+
+describe('which signer an account uses', () => {
+  it('says PRIVY for a Privy wallet, XAMAN for a Xaman wallet, and XAMAN when there is no wallet row', async () => {
+    const mk = async (name: string, kind?: 'PRIVY' | 'XAMAN') => {
+      const a = addr()
+      const u = await prisma.user.create({
+        data: {
+          username: `${P}${name}`,
+          xrplAddress: a,
+          ...(kind ? { wallet: { create: { xrplAddress: a, signerKind: kind, providerUserId: kind === 'PRIVY' ? `did:privy:${P}${name}` : null } } } : {}),
+        },
+      })
+      const { token } = await createSession(u.id)
+      const res = await request(app).get('/api/auth/me').set('Cookie', `hubworld_session=${token}`)
+      return res.body.signer as string
+    }
+    expect(await mk('mep', 'PRIVY')).toBe('PRIVY')
+    expect(await mk('mex', 'XAMAN')).toBe('XAMAN')
+    expect(await mk('mel')).toBe('XAMAN')
   })
 })

@@ -48,6 +48,8 @@ export const UserSchema = z.object({
   createdAt: z.string(),
   role: RoleSchema,
   ticketsOwned: z.number(),
+  /** Which kind of wallet signs for this account. Absent from a server that predates Privy. */
+  signer: z.enum(['XAMAN', 'PRIVY']).optional(),
 })
 
 export type Role = z.infer<typeof RoleSchema>
@@ -229,6 +231,37 @@ export function claimUsername(uuid: string, username: string, displayName?: stri
   })
 }
 
+// ----------------------------------------------------------- privy sign-in --
+
+/** The three things the server needs to know who a Privy login is. See `routes/privy-auth.ts`. */
+export type PrivyLoginBody = { accessToken: string; identityToken: string; publicKey: string }
+
+const PrivyLoginSchema = z.union([z.object({ state: z.literal('needs_username') }), AuthenticatedSchema])
+
+export function privyLogin(body: PrivyLoginBody) {
+  return request('/auth/privy', PrivyLoginSchema, { method: 'POST', body })
+}
+
+export function privyClaim(body: PrivyLoginBody & { username: string; displayName?: string }) {
+  return request('/auth/privy/claim', AuthenticatedSchema, {
+    method: 'POST',
+    body: { ...body, username: body.username.replace(/^@/, ''), displayName: body.displayName || undefined },
+  })
+}
+
+const SubmittedSchema = z.object({ txid: z.string(), replay: z.boolean() })
+
+/**
+ * Send ONLY the signature back. The server holds the transaction and attaches this to its own
+ * copy; nothing the page sends can change what gets submitted.
+ */
+export function submitSignature(uuid: string, signature: string) {
+  return request(`/signatures/${encodeURIComponent(uuid)}`, SubmittedSchema, {
+    method: 'POST',
+    body: { signature },
+  })
+}
+
 export function fetchMe(): Promise<User> {
   return request('/auth/me', UserSchema)
 }
@@ -259,12 +292,25 @@ export function simulateSign(uuid: string, outcome: 'sign' | 'reject' = 'sign') 
 
 // ------------------------------------------------------------------ mint --
 
+/**
+ * Present when the person signs in their OWN wallet in this page instead of scanning a code. It
+ * carries the whole transaction so the page can show what is being approved, decode it, and work
+ * out the hash for itself rather than trusting the one it is handed (see `lib/sign-review.ts`).
+ */
+export const SignBlockSchema = z.object({
+  tx: z.record(z.string(), z.unknown()),
+  hash: z.string(),
+  account: z.string(),
+})
+export type SignBlock = z.infer<typeof SignBlockSchema>
+
 export const MintCreatedSchema = z.object({
   uuid: z.string(),
   next: z.string(),
   qrPng: z.string(),
   expiresAt: z.string(),
   mode: z.enum(['live', 'stub']),
+  sign: SignBlockSchema.optional(),
 })
 
 export const MintedTicketSchema = z.object({
@@ -1001,6 +1047,10 @@ export const PolicySchema = z.object({
   maxRoyaltyBps: z.number(),
   /** Whether this server can run the code door. Absent from a server that predates it. */
   doorCodes: z.boolean().optional(),
+  /** Which ways a person may sign in and sign. Absent from a server that predates Privy. */
+  signers: z.array(z.enum(['xaman', 'privy'])).optional(),
+  /** Public. Present only when Privy is switched on. */
+  privyAppId: z.string().optional(),
 })
 
 export const OrganizerStatusSchema = z.object({

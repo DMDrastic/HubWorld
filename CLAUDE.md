@@ -406,6 +406,17 @@ with an XRPL wallet the PERSON owns (Privy embedded wallets), in their own brows
 - `Wallet` (0 or 1 per user, `XAMAN | PRIVY`) is the account's wallet; `getUserXrplAddress` answers
   `string | null`. Nothing new may assume every user has an address: a later phase creates users with
   none. `User.xrplAddress` stays required and in sync until then.
+- **The page, too, signs nothing it has not read.** `lib/sign-review.ts` decodes the transaction the server
+  built, writes the summary FROM it, recomputes the hash itself, and refuses (no Approve button at all) on a
+  different delegate account, a result that is not exactly what was asked, a field or type it cannot describe,
+  a missing expiry, an absurd fee, or a hash that does not match. `SignStep` sends back only the signature.
+  A hostile server could also lie about which delegate is HubWorld's; the summary always prints the full account
+  so it can be checked elsewhere, and that limit is stated in the module.
+- **Privy stays out of the main bundle** (measured: the XRPL codec doubled the entry chunk, 1.16 MB against
+  0.52 MB, when it was imported statically). Only `PrivyRuntime.tsx` imports `@privy-io/*`, only
+  `sign-review.ts` imports `xrpl`, and both arrive through dynamic imports (`WithSigner`, `sign-review-loader`).
+  `bundle-boundary.test.ts` pins it against the source. The Privy SDK also needs its optional Solana peers
+  installed (`@solana/kit`, `@solana-program/*`) or the production build fails on missing exports.
 - Proven on testnet 2026-10-30 by `scripts/embedded-wallet-spike.ts`: a Privy wallet signs
   `DelegateSet`, the delegate then mints AS that organizer (issuer = organizer, 5% intact), the grant is
   scoped, and a resale pays the royalty in XRP and in real testnet RLUSD.

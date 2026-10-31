@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { QrCode } from '@/components/QrCode'
+import { SignStep } from '@/components/SignStep'
 import {
   ApiError,
   fetchDelegation,
@@ -129,11 +130,27 @@ export function DelegationPanel() {
   if (!me || !me.available) return null
 
   const perms = me.permissions
+  // What is held today, for the screen that shows exactly what an approval would change. A server
+  // that predates the second permission reports only the first.
+  const held = { mint: (perms?.mint ?? me.state) === 'granted', offers: perms?.offers === 'granted' }
   return (
     <>
-      <PermissionCard scope="mint" reading={perms?.mint ?? me.state} onChanged={load} />
-      {/* A server that predates the second permission reports only the first. */}
-      {perms && <PermissionCard scope="offers" reading={perms.offers} onChanged={load} />}
+      <PermissionCard
+        scope="mint"
+        reading={perms?.mint ?? me.state}
+        held={held}
+        delegateAddress={me.delegateAddress}
+        onChanged={load}
+      />
+      {perms && (
+        <PermissionCard
+          scope="offers"
+          reading={perms.offers}
+          held={held}
+          delegateAddress={me.delegateAddress}
+          onChanged={load}
+        />
+      )}
       {me.staleGrant && (
         <p className="text-muted-foreground text-xs">
           Your earlier approval was for an account HubWorld has since replaced, so it no longer
@@ -152,10 +169,16 @@ type Phase =
 function PermissionCard({
   scope,
   reading,
+  held,
+  delegateAddress,
   onChanged,
 }: {
   scope: DelegationScope
   reading: 'granted' | 'not_granted' | 'unknown'
+  /** Both permissions as they stand, so a signing screen can check the result is exactly what was asked. */
+  held: { mint: boolean; offers: boolean }
+  /** HubWorld's delegate account as the server advertises it, for the screen to check an approval against. */
+  delegateAddress: string
   onChanged: () => Promise<void>
 }) {
   const copy = COPY[scope]
@@ -295,24 +318,41 @@ function PermissionCard({
         )}
 
         {phase.kind === 'awaiting' && (
-          <div className="flex flex-col items-center gap-3">
-            <QrCode
-              src={phase.payload.qrPng}
-              alt={phase.action === 'grant' ? copy.qrGrant : copy.qrRevoke}
-              next={phase.payload.next}
-              mode={phase.payload.mode}
+          phase.payload.sign && !phase.signed ? (
+            // A wallet the person owns: show what the approval would do, in words, and let the
+            // wallet sign it here. Our own poll below reports the outcome exactly as it does for Xaman.
+            <SignStep
+              uuid={phase.payload.uuid}
+              sign={phase.payload.sign}
+              context={{
+                hubworldDelegate: delegateAddress,
+                delegation: { held, action: phase.action, scope },
+              }}
+              onSubmitted={() => setPhase((p) => (p.kind === 'awaiting' ? { ...p, signed: true } : p))}
+              onCancel={() => setPhase({ kind: 'idle' })}
             />
-            <p className="text-muted-foreground text-center text-sm">
-              {phase.signed
-                ? 'Signed — waiting for the ledger to confirm…'
-                : phase.action === 'grant'
-                  ? copy.scanGrant
-                  : copy.scanRevoke}
-            </p>
-            <Button variant="ghost" size="sm" onClick={() => setPhase({ kind: 'idle' })}>
-              Cancel
-            </Button>
-          </div>
+          ) : phase.payload.sign ? (
+            <p className="text-muted-foreground text-center text-sm">Signed — waiting for the ledger to confirm…</p>
+          ) : (
+            <div className="flex flex-col items-center gap-3">
+              <QrCode
+                src={phase.payload.qrPng}
+                alt={phase.action === 'grant' ? copy.qrGrant : copy.qrRevoke}
+                next={phase.payload.next}
+                mode={phase.payload.mode}
+              />
+              <p className="text-muted-foreground text-center text-sm">
+                {phase.signed
+                  ? 'Signed — waiting for the ledger to confirm…'
+                  : phase.action === 'grant'
+                    ? copy.scanGrant
+                    : copy.scanRevoke}
+              </p>
+              <Button variant="ghost" size="sm" onClick={() => setPhase({ kind: 'idle' })}>
+                Cancel
+              </Button>
+            </div>
+          )
         )}
 
         {phase.kind === 'failed' && (

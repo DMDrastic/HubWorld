@@ -12,6 +12,7 @@
  * you may admit — and there is no honest way to render them for nobody.
  */
 import { PageHeader } from '@/components/PageHeader'
+import { EmailSignIn } from '@/components/EmailSignIn'
 import { SignIn } from '@/components/SignIn'
 import type { AuthUser } from '@/lib/api'
 
@@ -19,18 +20,25 @@ export function SignInRequired({
   title,
   blurb,
   onAuthenticated,
+  emailSignIn = false,
 }: {
   title: string
   /** Why an account is needed here specifically, not a generic "please log in". */
   blurb: string
   onAuthenticated: (u: AuthUser) => void
+  /**
+   * Also offer signing in with an email. For organizers: it is only offered on their page, and it
+   * draws nothing at all unless the deployment has the email wallet switched on.
+   */
+  emailSignIn?: boolean
 }) {
   return (
     <section className="space-y-2 pb-8">
       <PageHeader title={title} description={blurb} />
 
-      <div className="max-w-sm">
+      <div className="max-w-sm space-y-4">
         <SignIn onAuthenticated={onAuthenticated} />
+        {emailSignIn && <EmailSignIn onAuthenticated={onAuthenticated} />}
       </div>
     </section>
   )
