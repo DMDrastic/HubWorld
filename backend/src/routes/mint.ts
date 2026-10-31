@@ -18,7 +18,7 @@ import { z } from 'zod'
 import { prisma } from '../prisma.js'
 import { NETWORK } from '../network.js'
 import { brokerMode, xamanMode } from '../env.js'
-import { tryGetPayload, signing, SIGNIN_TTL_MINUTES } from '../signing.js'
+import { tryGetPayload, signing, SIGNIN_TTL_MINUTES, signingFor } from '../signing.js'
 import { issuesOf, slugSchema } from '../schemas.js'
 import { requireAuth, requireOrganizer } from '../session.js'
 import {
@@ -156,7 +156,7 @@ mintRouter.post('/events/:slug/mint', requireAuth, requireOrganizer, async (req,
     return
   }
 
-  const payload = await signing.createPayload(txjson as unknown as Record<string, unknown>, {
+  const payload = await (await signingFor(req.userId!, 'MINT')).createPayload(txjson as unknown as Record<string, unknown>, {
     flow: 'MINT',
     userId: req.userId!,
     expireMinutes: MINT_TTL_MINUTES,
@@ -182,6 +182,8 @@ mintRouter.post('/events/:slug/mint', requireAuth, requireOrganizer, async (req,
     uuid: payload.uuid,
     next: payload.next,
     qrPng: payload.qrPng,
+    // Present only when the person signs in their own browser; the page shows what it asks.
+    sign: payload.sign,
     expiresAt: expiresAt.toISOString(),
     mode: xamanMode,
   })

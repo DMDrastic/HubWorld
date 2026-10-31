@@ -30,7 +30,7 @@ const SIGNIN_TTL_MS = SIGNIN_TTL_MINUTES * 60 * 1000
  * account left the first account's session live and unreachable, so "sign out"
  * could only ever end the newest one.
  */
-async function issueSession(req: Request, res: Response, userId: string) {
+export async function issueSession(req: Request, res: Response, userId: string) {
   const previous = tokenFrom(req)
   if (previous) await revokeSession(previous)
 

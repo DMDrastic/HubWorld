@@ -9,6 +9,8 @@ import { usersRouter } from './routes/users.js'
 import { eventsRouter } from './routes/events.js'
 import { eventImageRouter } from './routes/event-image.js'
 import { authRouter } from './routes/auth.js'
+import { privyAuthRouter } from './routes/privy-auth.js'
+import { signaturesRouter } from './routes/signatures.js'
 import { mintRouter } from './routes/mint.js'
 import { delegationRouter } from './routes/delegation.js'
 import { bulkMintRouter } from './routes/bulk-mint.js'
@@ -127,6 +129,8 @@ export function createApp() {
 
   app.use('/api', healthRouter)
   app.use('/api', authRouter)
+  app.use('/api', privyAuthRouter)
+  app.use('/api', signaturesRouter)
   app.use('/api', usersRouter)
   app.use('/api', eventsRouter)
   app.use('/api', eventImageRouter)
@@ -180,6 +184,13 @@ export function createApp() {
         error:
           'Too many sign-in requests are open at once. Old ones are cleared automatically — try again shortly.',
       })
+      return
+    }
+
+    // Something a Privy-signing person cannot do yet, or a request we refused to build. Neither is
+    // a fault: nothing was changed, and the message says why.
+    if (err instanceof Error && (err.name === 'SignerNotSupported' || err.name === 'SigningRequestRefused')) {
+      res.status(409).json({ error: err.message })
       return
     }
 

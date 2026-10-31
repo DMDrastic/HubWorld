@@ -29,6 +29,7 @@ import { prisma } from './prisma.js'
 import { webhookMode } from './env.js'
 import { NETWORK } from './network.js'
 import { XamanRateLimited } from './xaman.js'
+import { privyStatus } from './privy-signing.js'
 import { signing, type PayloadStatus } from './signing.js'
 
 /**
@@ -184,6 +185,9 @@ export async function resolvePayload(
 ): Promise<PayloadStatus | null | 'unavailable'> {
   const cached = await prisma.xamanPayload.findUnique({ where: { uuid } })
 
+  // A Privy request lives only in our table; Xaman has never heard of it and must not be asked.
+  if (cached?.signer === 'privy') return privyStatus(cached)
+
   if (cached?.terminal) return toStatus(cached)
 
   if (webhookMode === 'disabled') return refreshPayload(uuid, 'poll')
@@ -229,7 +233,8 @@ export async function reconcileStalePayloads(olderThanMs = 20_000, limit = 25): 
 
   const cutoff = new Date(Date.now() - olderThanMs)
   const stale = await prisma.xamanPayload.findMany({
-    where: { terminal: false, fetchedAt: { lt: cutoff } },
+    // Privy requests are not at Xaman: asking it about them is a wasted call that can only say no.
+    where: { terminal: false, signer: { not: 'privy' }, fetchedAt: { lt: cutoff } },
     orderBy: { fetchedAt: 'asc' },
     take: limit,
     select: { uuid: true },
@@ -309,7 +314,7 @@ export async function cancelAbandonedPayloads(limit = 50, force = false): Promis
   // Skip anything already known to be resolved — cancelling it would fail and
   // it is not holding a slot anyway.
   const known = await prisma.xamanPayload.findMany({
-    where: { uuid: { in: uuids }, terminal: true },
+    where: { uuid: { in: uuids }, OR: [{ terminal: true }, { signer: 'privy' }] },
     select: { uuid: true },
   })
   const resolved = new Set(known.map((k) => k.uuid))

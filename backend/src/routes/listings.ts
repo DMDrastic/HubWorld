@@ -21,7 +21,7 @@ import { z } from 'zod'
 import { prisma } from '../prisma.js'
 import { NETWORK } from '../network.js'
 import { brokerMode, xamanMode } from '../env.js'
-import { signing, SIGNIN_TTL_MINUTES } from '../signing.js'
+import { signing, SIGNIN_TTL_MINUTES, signingFor } from '../signing.js'
 import { issuesOf } from '../schemas.js'
 import { requireAuth } from '../session.js'
 import { advanceListing, listingInclude, listingView } from '../listing-advance.js'
@@ -199,7 +199,7 @@ listingsRouter.post('/tickets/:nfTokenId/list', requireAuth, async (req, res) =>
     return
   }
 
-  const payload = await signing.createPayload(txjson as unknown as Record<string, unknown>, {
+  const payload = await (await signingFor(me.id, 'LISTING_CREATE')).createPayload(txjson as unknown as Record<string, unknown>, {
     flow: 'LISTING_CREATE',
     userId: me.id,
     expireMinutes: LIST_TTL_MINUTES,
@@ -392,7 +392,7 @@ listingsRouter.post('/listings/:id/buy', requireAuth, async (req, res) => {
     return
   }
 
-  const payload = await signing.createPayload(txjson as unknown as Record<string, unknown>, {
+  const payload = await (await signingFor(me.id, 'LISTING_BUY')).createPayload(txjson as unknown as Record<string, unknown>, {
     flow: 'LISTING_BUY',
     userId: me.id,
     expireMinutes: LIST_TTL_MINUTES,
@@ -456,7 +456,7 @@ listingsRouter.post('/listings/:id/cancel', requireAuth, async (req, res) => {
     return
   }
 
-  const payload = await signing.createPayload(
+  const payload = await (await signingFor(req.userId, 'LISTING_CANCEL')).createPayload(
     buildCancelOfferTx({
       ownerAddress: listing.sellerAddress,
       offerIndex: listing.offerIndex,

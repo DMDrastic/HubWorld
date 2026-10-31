@@ -1147,6 +1147,26 @@ model XamanPayload {
   /// Where the current values came from, for debugging a stuck payload.
   source   String  @default("poll")
 
+  /// PRIVY ROWS ONLY (null for Xaman, whose payload lives at Xaman). A Privy "payload" is a
+  /// request the SERVER keeps: the exact transaction the user is asked to sign, so that what is
+  /// submitted is always the server's own copy with the user's signature attached, never anything
+  /// the browser sends back.
+  unsignedTx Json?
+
+  /// The account that must sign it. Compared with the wallet that actually signs.
+  expectedAccount String?
+
+  /// When the request stops being signable. Also bounded on the ledger by the transaction's own
+  /// `LastLedgerSequence`, so an approval cannot sit around and be submitted later.
+  expiresAt DateTime?
+
+  /// Set ONCE, atomically, by whoever submits. This is the idempotency key: a replayed signature
+  /// finds it already set and submits nothing.
+  submittedAt DateTime?
+
+  /// Why the ledger refused the submit, when it did.
+  submitError String?
+
   createdAt DateTime @default(now())
   fetchedAt DateTime @default(now())
 
