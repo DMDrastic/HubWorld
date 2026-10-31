@@ -48,59 +48,68 @@ describe('the schedule', () => {
     expect(DEFAULT_SCHEDULE.minimumResaleUsdCents).toBe(500n)
   })
 
-  it('has the processor rates per region: Caribbean 2.9% + 0.8% international, Canada 2.9%, C$0.30 fixed, no conversion', () => {
+  it('has the processor rates per region: Caribbean 2.9% + 0.8% international, Canada 2.9%, no conversion', () => {
     expect(DEFAULT_SCHEDULE.cardProcessing.regions).toEqual({ CARIBBEAN: { bps: 370 }, CANADA: { bps: 290 } })
-    expect(DEFAULT_SCHEDULE.cardProcessing.fixedCadCents).toBe(30n)
     expect(DEFAULT_SCHEDULE.cardProcessing.currencyConversion).toEqual({ applies: false, bps: 200 })
   })
 
-  it('uses a conservative placeholder exchange rate for the fixed fee, which must be replaced with the real one before cards go live', () => {
-    const { num, den } = DEFAULT_SCHEDULE.cardProcessing.cadToUsd
-    expect(Number(num) / Number(den)).toBeGreaterThanOrEqual(0.72)
+  it('sets the processor\'s fixed fee directly in US cents, at the safe upper bound of 30 until a real test charge confirms it', () => {
+    expect(DEFAULT_SCHEDULE.cardProcessing.fixedUsdCents).toBe(30n)
+    // And there is no exchange rate anywhere in the card-processing config.
+    expect(Object.keys(DEFAULT_SCHEDULE.cardProcessing).sort()).toEqual(['currencyConversion', 'fixedUsdCents', 'regions'])
+  })
+
+  it('takes the fixed fee from configuration: a different figure from a real test charge changes the quote, nothing else', () => {
+    const real: FeeSchedule = {
+      ...DEFAULT_SCHEDULE,
+      cardProcessing: { ...DEFAULT_SCHEDULE.cardProcessing, fixedUsdCents: 25n },
+    }
+    // 25c instead of 30c: smallest T with T - (ceil(0.037 T) + 25) >= 3747 is 3917 (3916 leaves 3746).
+    expect(quote({}, real)).toMatchObject({ fanFeeMinor: 247n, processingMinor: 170n, allInMinor: 3917n })
   })
 })
 
 describe('a first-time sale by card', () => {
-  // The fixed C$0.30 is 22.5 US cents at the placeholder rate 0.75, rounded UP to 23.
+  // The processor's fixed fee is 30 US cents, set directly in the charge currency.
 
-  it('Caribbean US$35: fee 125 + floor(122.5) = 247; processing 3.7% + 23c grossed up makes the all-in 3915', () => {
-    // Subtotal 3747. Smallest total T where T - (ceil(0.037 T) + 23) >= 3747 is 3915 (3914 leaves 3746).
+  it('Caribbean US$35: fee 125 + floor(122.5) = 247; processing 3.7% + 30c grossed up makes the all-in 3923', () => {
+    // Subtotal 3747. Smallest total T where T - (ceil(0.037 T) + 30) >= 3747 is 3923 (3922 leaves 3746).
     expect(quote()).toEqual({
       priceMinor: 3500n,
       fanFeeMinor: 247n,
-      processingMinor: 168n,
-      allInMinor: 3915n,
+      processingMinor: 176n,
+      allInMinor: 3923n,
       promoApplied: false,
     })
   })
 
-  it('Canada US$35: the same fee, domestic cards only (2.9% + 23c), so the all-in is 3883', () => {
+  it('Canada US$35: the same fee, domestic cards only (2.9% + 30c), so the all-in is 3890', () => {
     expect(quote({ region: 'CANADA', eventTimeZone: 'America/Toronto' })).toMatchObject({
       fanFeeMinor: 247n,
-      processingMinor: 136n,
-      allInMinor: 3883n,
+      processingMinor: 143n,
+      allInMinor: 3890n,
     })
   })
 
   it('Caribbean US$5, US$20 and US$1000 (worked the same way)', () => {
-    expect(quote({ priceMinor: 500n })).toMatchObject({ fanFeeMinor: 142n, processingMinor: 49n, allInMinor: 691n })
-    expect(quote({ priceMinor: 2000n })).toMatchObject({ fanFeeMinor: 195n, processingMinor: 109n, allInMinor: 2304n })
-    expect(quote({ priceMinor: 100000n })).toMatchObject({ fanFeeMinor: 3625n, processingMinor: 4006n, allInMinor: 107631n })
+    expect(quote({ priceMinor: 500n })).toMatchObject({ fanFeeMinor: 142n, processingMinor: 56n, allInMinor: 698n })
+    expect(quote({ priceMinor: 2000n })).toMatchObject({ fanFeeMinor: 195n, processingMinor: 116n, allInMinor: 2311n })
+    expect(quote({ priceMinor: 100000n })).toMatchObject({ fanFeeMinor: 3625n, processingMinor: 4013n, allInMinor: 107638n })
   })
 
   it('floors the proportional part, so a price of one cent still pays the fixed US$1.25', () => {
-    expect(quote({ priceMinor: 1n })).toMatchObject({ fanFeeMinor: 125n, processingMinor: 29n, allInMinor: 155n })
+    expect(quote({ priceMinor: 1n })).toMatchObject({ fanFeeMinor: 125n, processingMinor: 36n, allInMinor: 162n })
   })
 
-  it('adds the 2% only when the currency-conversion flag is on: Caribbean US$35 goes from 3915 to 3998', () => {
-    // 5.7% + 23c: smallest T with T - (ceil(0.057 T) + 23) >= 3747 is 3998.
-    expect(quote({}, withConversion)).toMatchObject({ processingMinor: 251n, allInMinor: 3998n })
-    expect(quote({}).allInMinor).toBe(3915n) // and the default stays off
+  it('adds the 2% only when the currency-conversion flag is on: Caribbean US$35 goes from 3923 to 4006', () => {
+    // 5.7% + 30c: smallest T with T - (ceil(0.057 T) + 30) >= 3747 is 4006.
+    expect(quote({}, withConversion)).toMatchObject({ processingMinor: 259n, allInMinor: 4006n })
+    expect(quote({}).allInMinor).toBe(3923n) // and the default stays off
   })
 
   it('NEVER charges less processing than the processor will take, in any region, with or without conversion', () => {
-    // An independent model of the processor, using the UNROUNDED real-number cut: total x rate + 22.5 cents
-    // (C$0.30 at 0.75). The all-in processing must cover it exactly or more: 20000 x processing >= 2 x total x bps + 450000.
+    // An independent model of the processor, using the UNROUNDED real-number cut: total x rate + 30 cents.
+    // The all-in processing must cover it exactly or more: 10000 x processing >= total x bps + 300000.
     // That is stricter than any rounding the processor applies, so a pass means we cannot lose money on processing.
     let seed = 20261031
     const rand = () => (seed = (seed * 1103515245 + 12345) % 2147483648)
@@ -115,10 +124,10 @@ describe('a first-time sale by card', () => {
         const price = BigInt((rand() % 2_000_000) + 1)
         const q = quote({ ...over, priceMinor: price, organizerFounding: rand() % 2 === 0 }, schedule)
         const total = q.allInMinor
-        expect(20000n * q.processingMinor).toBeGreaterThanOrEqual(2n * total * bps + 450000n)
+        expect(10000n * q.processingMinor).toBeGreaterThanOrEqual(total * bps + 300000n)
         // HubWorld nets its subtotal, and it is the SMALLEST total that does (one cent less would not).
         expect(q.allInMinor).toBe(q.priceMinor + q.fanFeeMinor + q.processingMinor)
-        const cut = (t: bigint) => (t * bps + 9999n) / 10000n + 23n
+        const cut = (t: bigint) => (t * bps + 9999n) / 10000n + 30n
         expect(total - cut(total)).toBeGreaterThanOrEqual(q.priceMinor + q.fanFeeMinor)
         expect(total - 1n - cut(total - 1n)).toBeLessThan(q.priceMinor + q.fanFeeMinor)
       }
@@ -173,21 +182,21 @@ describe('a first-time sale on the ledger', () => {
 
 describe('the founding promo ($1 + 3%)', () => {
   it('applies to a flagged organizer on an event inside the window: Caribbean US$35 pays 100 + 105 = 205', () => {
-    // Subtotal 3705; smallest T with T - (ceil(0.037 T) + 23) >= 3705 is 3872.
+    // Subtotal 3705; smallest T with T - (ceil(0.037 T) + 30) >= 3705 is 3879.
     expect(quote({ organizerFounding: true })).toEqual({
       priceMinor: 3500n,
       fanFeeMinor: 205n,
-      processingMinor: 167n,
-      allInMinor: 3872n,
+      processingMinor: 174n,
+      allInMinor: 3879n,
       promoApplied: true,
     })
   })
 
-  it('applies in Canada the same way, with Canada\'s processing: all-in 3840', () => {
+  it('applies in Canada the same way, with Canada\'s processing: all-in 3847', () => {
     expect(quote({ organizerFounding: true, region: 'CANADA', eventTimeZone: 'America/Toronto' })).toMatchObject({
       fanFeeMinor: 205n,
-      processingMinor: 135n,
-      allInMinor: 3840n,
+      processingMinor: 142n,
+      allInMinor: 3847n,
     })
   })
 
