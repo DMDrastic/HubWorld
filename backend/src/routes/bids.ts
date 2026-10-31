@@ -18,7 +18,7 @@ import { z } from 'zod'
 import { prisma } from '../prisma.js'
 import { NETWORK } from '../network.js'
 import { brokerMode, xamanMode } from '../env.js'
-import { tryGetPayload, xaman } from '../xaman.js'
+import { tryGetPayload, signing } from '../signing.js'
 import { issuesOf } from '../schemas.js'
 import { requireAuth } from '../session.js'
 import { publishAuctionEvent } from '../realtime.js'
@@ -227,7 +227,7 @@ bidsRouter.post('/auctions/:id/bid', requireAuth, async (req, res) => {
     return
   }
 
-  const payload = await xaman.createPayload(txjson as unknown as Record<string, unknown>, {
+  const payload = await signing.createPayload(txjson as unknown as Record<string, unknown>, {
     flow: 'AUCTION_BID',
     userId: me.id,
     expireMinutes: BID_TTL_MINUTES,

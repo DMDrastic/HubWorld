@@ -35,7 +35,7 @@ import { prisma } from '../prisma.js'
 import { NETWORK } from '../network.js'
 import { xamanMode } from '../env.js'
 import { currentDelegate } from '../delegate-account.js'
-import { tryGetPayload, xaman, SIGNIN_TTL_MINUTES } from '../xaman.js'
+import { tryGetPayload, signing, SIGNIN_TTL_MINUTES } from '../signing.js'
 import { issuesOf } from '../schemas.js'
 import { requireAuth, requireOrganizer } from '../session.js'
 import { txSucceeded, XAMAN_NETWORK } from '../ledger.js'
@@ -132,7 +132,7 @@ delegationRouter.post('/delegation/grant', requireAuth, requireOrganizer, async 
 
   const target = permissionsAfterGrant(current, wanted)
   const txjson = buildDelegateSetTx(pair, target)
-  const payload = await xaman.createPayload(txjson as unknown as Record<string, unknown>, {
+  const payload = await signing.createPayload(txjson as unknown as Record<string, unknown>, {
     flow: 'DELEGATE_GRANT',
     userId: organizer.id,
     expireMinutes: SIGNIN_TTL_MINUTES,
@@ -225,7 +225,7 @@ delegationRouter.post('/delegation/revoke', requireAuth, requireOrganizer, async
   }
 
   const txjson = buildDelegateSetTx(pair, target)
-  const payload = await xaman.createPayload(txjson as unknown as Record<string, unknown>, {
+  const payload = await signing.createPayload(txjson as unknown as Record<string, unknown>, {
     flow: 'DELEGATE_REVOKE',
     userId: organizer.id,
     expireMinutes: SIGNIN_TTL_MINUTES,

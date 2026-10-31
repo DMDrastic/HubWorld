@@ -27,7 +27,7 @@ import { NETWORK } from './network.js'
 import { brokerMode, xamanMode } from './env.js'
 import { currentDelegate } from './delegate-account.js'
 import { buildBuyOfferTx, buildSellOfferTx, platformAddress, platformFeeDrops, XAMAN_NETWORK } from './ledger.js'
-import { tryGetPayload, xaman } from './xaman.js'
+import { tryGetPayload, signing } from './signing.js'
 import { evaluateSoldOut } from './auction-policy.js'
 import { withOrganizerLease } from './organizer-lease.js'
 import type { PrimarySaleLedger, DelegatedOffer } from './primary-sale-ledger.js'
@@ -355,7 +355,7 @@ export async function startCheckout(input: {
       amountDrops: owed,
       brokerAddress: broker,
     })
-    payload = await xaman.createPayload(buyTx as unknown as Record<string, unknown>, {
+    payload = await signing.createPayload(buyTx as unknown as Record<string, unknown>, {
       flow: 'LISTING_BUY',
       userId: buyer.id,
       expireMinutes: Math.ceil(HOLD_MS / 60_000),

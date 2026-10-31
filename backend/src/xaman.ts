@@ -15,6 +15,19 @@
 import type { PayloadFlow } from '@prisma/client'
 import { env, xamanMode } from './env.js'
 import * as stubLedger from './stub-ledger.js'
+import type {
+  CreatedPayload,
+  PayloadAttribution,
+  PayloadOptions,
+  PayloadStatus,
+  SigningProvider,
+} from './signing.js'
+
+// The provider-neutral shapes now live in signing.ts. Re-exported so every existing
+// import (and test mock) of them from here keeps working while callers move over.
+export type { CreatedPayload, PayloadAttribution, PayloadOptions, PayloadStatus }
+/** The interface is `SigningProvider` now; Xaman is one implementation of it. */
+export type XamanClient = SigningProvider
 
 const XAMAN_API = 'https://xumm.app/api/v1/platform'
 
@@ -30,28 +43,6 @@ const XAMAN_API = 'https://xumm.app/api/v1/platform'
  * slowly than necessary.
  */
 export const SIGNIN_TTL_MINUTES = 3
-
-export type CreatedPayload = {
-  uuid: string
-  /** Deep link / universal URL that opens the payload in Xaman. */
-  next: string
-  /** PNG the frontend renders as a QR code. */
-  qrPng: string
-}
-
-export type PayloadStatus = {
-  /** Xaman reports these independently; a payload can expire unsigned. */
-  signed: boolean
-  cancelled: boolean
-  expired: boolean
-  /** The r-address that signed, present only once signed. */
-  account: string | null
-  /**
-   * Ledger transaction hash. Null for SignIn (a pseudo-transaction that is
-   * never submitted) and null until a real transaction has been dispatched.
-   */
-  txid: string | null
-}
 
 /**
  * Xaman rate-limited us. Transient and carries no information about the
@@ -126,46 +117,6 @@ export function createFailure(status: number, text: string): Error {
     return new XamanPermissionNotGranted(text)
   }
   return new Error(`Xaman payload create failed: ${status} ${text}`)
-}
-
-/**
- * Who and what a payload is being spent on.
- *
- * `flow` is REQUIRED, and that is the whole enforcement mechanism for payload
- * accounting: the quota counts creations and cannot be reclaimed, so an
- * uncounted flow is real spend that never appears on the dashboard. Making it
- * required means a twelfth creation site cannot be added without saying what it
- * is — the compiler finds it, the way the `network` column made the compiler
- * find every create. Do not give it a default.
- */
-export type PayloadAttribution = {
-  flow: PayloadFlow
-  /**
-   * Who it is for, where that is known. Omitted for SIGNIN (there is no account
-   * yet) and DOOR_CHECKIN (the attendee is unidentified until they sign).
-   */
-  userId?: string | null
-}
-
-export type PayloadOptions = PayloadAttribution & {
-  /** Minutes until Xaman expires the payload. */
-  expireMinutes?: number
-  /**
-   * Pins which network the payload may be signed on. Without it a user whose
-   * Xaman is set to mainnet would sign a testnet-intended mint against real
-   * funds. Always set this for anything that touches the ledger.
-   */
-  forceNetwork?: 'TESTNET' | 'DEVNET' | 'MAINNET'
-}
-
-export interface XamanClient {
-  readonly mode: 'live' | 'stub'
-  /** Generic payload creation — any txjson, signed on the user's device. */
-  createPayload(txjson: Record<string, unknown>, opts: PayloadOptions): Promise<CreatedPayload>
-  createSignInPayload(attribution: PayloadAttribution): Promise<CreatedPayload>
-  getPayload(uuid: string): Promise<PayloadStatus | null>
-  /** Free a slot against the account's unresolved-payload limit. */
-  cancelPayload(uuid: string): Promise<boolean>
 }
 
 // ------------------------------------------------------------------- live --

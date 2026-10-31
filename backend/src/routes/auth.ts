@@ -2,7 +2,7 @@ import { Router, type Request, type Response } from 'express'
 import { z } from 'zod'
 import { prisma } from '../prisma.js'
 import { env, xamanMode } from '../env.js'
-import { asStub, tryGetPayload, xaman, SIGNIN_TTL_MINUTES } from '../xaman.js'
+import { asStub, tryGetPayload, signing, SIGNIN_TTL_MINUTES } from '../signing.js'
 import { issuesOf, usernameSchema, xrplAddressSchema } from '../schemas.js'
 import {
   clearSessionCookie,
@@ -90,7 +90,7 @@ authRouter.post('/auth/signin', async (req, res) => {
     }
   }
 
-  const payload = await xaman.createSignInPayload({ flow: 'SIGNIN' })
+  const payload = await signing.createSignInPayload({ flow: 'SIGNIN' })
   const expiresAt = new Date(Date.now() + SIGNIN_TTL_MS)
 
   await prisma.signInRequest.create({
@@ -371,7 +371,7 @@ const SimulateBody = z.object({
  * arbitrary sessions is a total authentication bypass if it ever ships.
  */
 authRouter.post('/auth/signin/simulate', async (req, res) => {
-  const stub = asStub(xaman)
+  const stub = asStub(signing)
   if (!stub || env.NODE_ENV === 'production') {
     res.status(404).json({ error: 'Not found' })
     return
