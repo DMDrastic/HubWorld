@@ -380,6 +380,36 @@ ran the React loop. The double-invocation *is* the thing under test — these te
 were confirmed to fail when that bug is reintroduced. Any new polling loop
 belongs under the same discipline.
 
+## Signers: Xaman today, a wallet the person owns behind a flag
+
+`src/signing.ts` is the seam every route goes through (`signingFor(userId, flow)`); `src/xaman.ts`
+is one implementation of `SigningProvider`. A second implementation, `src/privy-signing.ts`, signs
+with an XRPL wallet the PERSON owns (Privy embedded wallets), in their own browser. It is off unless
+`SIGNERS` includes `privy` and `PRIVY_APP_ID` is set, and with it off the routes answer 404.
+
+- **No Privy secret exists.** Tokens are verified against Privy's public keys
+  (`https://auth.privy.io/api/v1/apps/<APP_ID>/jwks.json`, issuer `privy.io`, audience the app id). The
+  wallet's address comes from the VERIFIED identity token, never the client. Needs the dashboard
+  setting "Return user data in an identity token" ON (User management > Authentication > Advanced);
+  without it login fails closed with a message. The token carries no public key, so the client sends
+  it and the server accepts it only if it derives to the verified address.
+- **The browser returns only a signature, never a transaction.** The server builds and stores the
+  exact transaction (`XamanPayload.unsignedTx`, `signer = 'privy'`), hands over its hash, and on
+  `POST /api/signatures/:uuid` attaches the signature to ITS OWN copy, verifies it, and submits once
+  (`submittedAt` is claimed atomically). Checked before any submit: the request is the caller's and
+  open; the key is their wallet's, derives to the transaction's account and is the key in it; the
+  stored transaction has a `LastLedgerSequence` and the ledger has not passed it. A request expires
+  rather than waiting to be submitted later.
+- **Only grant, revoke and mint work for a Privy user so far** (`PRIVY_FLOWS`). Everything else
+  answers 409 in words rather than asking Xaman to sign for a wallet it does not hold.
+- Privy's app-managed wallets are for HubWorld's own accounts only, never organizers or buyers.
+- `Wallet` (0 or 1 per user, `XAMAN | PRIVY`) is the account's wallet; `getUserXrplAddress` answers
+  `string | null`. Nothing new may assume every user has an address: a later phase creates users with
+  none. `User.xrplAddress` stays required and in sync until then.
+- Proven on testnet 2026-10-30 by `scripts/embedded-wallet-spike.ts`: a Privy wallet signs
+  `DelegateSet`, the delegate then mints AS that organizer (issuer = organizer, 5% intact), the grant is
+  scoped, and a resale pays the royalty in XRP and in real testnet RLUSD.
+
 ## Bidding: a bid is a buy offer, not an escrow
 
 **Decided.** Despite the name the model started with, bids are **not** escrowed.

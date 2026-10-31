@@ -81,6 +81,14 @@ const EnvSchema = z.object({
   // seconds, so outstanding ones simply stop scanning.
   DOOR_TOKEN_SECRET: z.string().min(32).optional(),
 
+  // Which signers a person may use: a comma list of `xaman` and `privy`. Default `xaman`, so a
+  // deploy that sets nothing behaves exactly as before. `privy` also needs PRIVY_APP_ID, which
+  // is PUBLIC (it ships to the browser and is the audience of every Privy token). There is
+  // deliberately no Privy secret: tokens are verified against Privy's public keys, and the
+  // wallet's address is read from the verified identity token, never from the client.
+  SIGNERS: emptyAsAbsent(z.string()),
+  PRIVY_APP_ID: emptyAsAbsent(z.string().min(10)),
+
   // Transactional email (Resend's HTTP API; no SDK, one fetch). Both must be set
   // for mail to be live. Unset, mail is a STUB that keeps messages in memory and,
   // outside production, prints them: applications still work, the address just
@@ -208,6 +216,27 @@ export const brokerMode: 'live' | 'disabled' = env.PLATFORM_SEED ? 'live' : 'dis
  * no seed — see `delegateAddress()`.
  */
 export const delegateMode: 'live' | 'disabled' = env.DELEGATE_SEED ? 'live' : 'disabled'
+
+/**
+ * The signers this deployment offers. `xaman` is always on: it is how everyone who exists today
+ * signs in, and turning it off is a decision, not a side effect of setting a flag.
+ */
+export const signersEnabled: ReadonlySet<'xaman' | 'privy'> = new Set(
+  ['xaman', ...(env.SIGNERS ?? '').split(',').map((s) => s.trim().toLowerCase())].filter(
+    (s): s is 'xaman' | 'privy' => s === 'xaman' || s === 'privy',
+  ),
+)
+
+/** Whether people can sign in and sign with a Privy wallet. Needs the flag AND the app id. */
+export const privyMode: 'live' | 'disabled' =
+  signersEnabled.has('privy') && env.PRIVY_APP_ID ? 'live' : 'disabled'
+
+// A flag that names Privy without the id would offer a login that can never verify anything.
+// Refuse it at boot, where it is one line in a log, rather than as a login that fails later.
+if (signersEnabled.has('privy') && !env.PRIVY_APP_ID) {
+  console.error('Refusing to start: SIGNERS includes privy but PRIVY_APP_ID is not set.')
+  process.exit(1)
+}
 
 /**
  * Whether Xaman calls us back when a payload resolves.

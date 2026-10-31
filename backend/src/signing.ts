@@ -11,6 +11,9 @@
  */
 import type { PayloadFlow } from '@prisma/client'
 import { xaman, tryGetPayload, asStub, SIGNIN_TTL_MINUTES } from './xaman.js'
+import { prisma } from './prisma.js'
+import { privyMode } from './env.js'
+import { privySigner } from './privy-signing.js'
 
 export type CreatedPayload = {
   uuid: string
@@ -18,6 +21,12 @@ export type CreatedPayload = {
   next: string
   /** PNG the frontend renders as a QR code. */
   qrPng: string
+  /**
+   * Present when the person signs in their own browser instead of scanning a code (Privy). The
+   * full transaction so the page can show what is being approved, the hash it will be asked to
+   * sign, and the account that must sign. Absent for Xaman.
+   */
+  sign?: { tx: Record<string, unknown>; hash: string; account: string }
 }
 
 export type PayloadStatus = {
@@ -86,6 +95,41 @@ export type SigningProviderKind = 'xaman'
  */
 export function providerFor(): SigningProvider {
   return xaman
+}
+
+/**
+ * The flows a Privy user can complete today. Organizers first: granting and revoking the
+ * delegation, and minting. Everything else a person does with a ticket is not built for Privy
+ * yet, and says so plainly rather than quietly asking Xaman to sign for a wallet it does not
+ * hold.
+ */
+export const PRIVY_FLOWS: ReadonlySet<PayloadFlow> = new Set(['DELEGATE_GRANT', 'DELEGATE_REVOKE', 'MINT'])
+
+/** This person's wallet cannot do this yet. Not an error in the app; an honest "not built". */
+export class SignerNotSupported extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'SignerNotSupported'
+  }
+}
+
+/**
+ * The signer for THIS person and THIS action.
+ *
+ * A signature request must go to the signer that holds the key, so the choice follows the
+ * person's wallet, not a global setting. No user id (a sign-in, a door check-in) is always
+ * Xaman. A Privy user is never silently handed a Xaman request: it would be asked of a wallet
+ * that cannot hold their key, so anything Privy cannot do yet is refused with a reason.
+ */
+export async function signingFor(userId: string | null | undefined, flow: PayloadFlow): Promise<SigningProvider> {
+  if (!userId) return xaman
+  const wallet = await prisma.wallet.findUnique({ where: { userId }, select: { signerKind: true } })
+  if (wallet?.signerKind !== 'PRIVY') return xaman
+  if (privyMode !== 'live') throw new SignerNotSupported('Email sign-in is switched off right now.')
+  if (!PRIVY_FLOWS.has(flow)) {
+    throw new SignerNotSupported('That is not available with email sign-in yet. Nothing was changed.')
+  }
+  return privySigner
 }
 
 /** The signing singleton (counted: every creation is attributed to a flow). */

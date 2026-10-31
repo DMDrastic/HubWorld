@@ -16,7 +16,7 @@ import { Router } from 'express'
 import { z } from 'zod'
 import { prisma } from '../prisma.js'
 import { NETWORK } from '../network.js'
-import { env, doorTokenMode } from '../env.js'
+import { env, doorTokenMode, privyMode, signersEnabled } from '../env.js'
 import { issuesOf, slugSchema } from '../schemas.js'
 import { requireAdmin, requireAuth, requireOrganizer } from '../session.js'
 import {
@@ -415,5 +415,10 @@ organizersRouter.get('/policy', (_req, res) => {
     // Whether this server can sign door codes, so the form offers the choice only
     // where it will work.
     doorCodes: doorTokenMode === 'live',
+    // Which ways a person may sign in and sign. `privyAppId` is public (it is the audience of
+    // every Privy token and the browser needs it to start the login), and is omitted unless
+    // Privy is actually on, so a deploy with the flag off reveals nothing and offers nothing.
+    signers: [...signersEnabled],
+    privyAppId: privyMode === 'live' ? env.PRIVY_APP_ID : undefined,
   })
 })
