@@ -33,9 +33,11 @@
  * on domestic cards, +0.8% on international cards, and +2% if currency conversion happens. Caribbean
  * events assume mostly non-Canadian cards (3.7%); Canadian events 2.9%. We assume USD is settled to a USD
  * payout account, so no 2% conversion; `currencyConversion.applies` is the switch if we cannot.
- * The fixed C$0.30 is converted to US cents at `cadToUsd` and rounded up. THE DEFAULT RATE IS A
- * CONSERVATIVE PLACEHOLDER (0.75) AND MUST BE SET TO THE REAL RATE before cards are live; it is not a
- * measured value. The processor rates are unverified for our actual account.
+ * The fixed part is configured DIRECTLY in the charge currency (`fixedUsdCents`), so there is no
+ * exchange rate in the arithmetic at all. It is set to 30 cents until we read the real figure off the
+ * fee breakdown of an actual test charge: 30 is the safer upper bound (it can only slightly over-collect
+ * processing, never under-collect). THE PROCESSOR RATES ARE UNVERIFIED FOR OUR ACTUAL ACCOUNT; replace
+ * all three numbers (the two percentages and the fixed fee) from that breakdown.
  *
  * Minor units: USD = cents, XRP = drops, RLUSD = millionths. Money is BigInt throughout.
  */
@@ -60,10 +62,11 @@ export type FeeSchedule = {
   resale: { bps: number }
   cardProcessing: {
     regions: Record<Region, { bps: number }>
-    /** The processor's fixed fee, in Canadian cents. */
-    fixedCadCents: bigint
-    /** US dollars per Canadian dollar as a fraction. PLACEHOLDER default; set the real rate. */
-    cadToUsd: { num: bigint; den: bigint }
+    /**
+     * The processor's fixed fee per charge, in US cents (the charge currency). 30 until confirmed from
+     * a real test charge's fee breakdown; the upper bound, so it can only over-collect slightly.
+     */
+    fixedUsdCents: bigint
     /** The extra charge if the processor must convert currency. Off: we settle USD to a USD account. */
     currencyConversion: { applies: boolean; bps: number }
   }
@@ -79,8 +82,7 @@ export const DEFAULT_SCHEDULE: FeeSchedule = {
   cardProcessing: {
     // 2.9% domestic + 0.8% international cards = 3.7% for the Caribbean; domestic only for Canada.
     regions: { CARIBBEAN: { bps: 370 }, CANADA: { bps: 290 } },
-    fixedCadCents: 30n,
-    cadToUsd: { num: 3n, den: 4n },
+    fixedUsdCents: 30n,
     currencyConversion: { applies: false, bps: 200 },
   },
   minimumResaleUsdCents: 500n,
@@ -176,9 +178,8 @@ export function primaryQuote(input: PrimaryInput, schedule: FeeSchedule = DEFAUL
   if (input.rail === 'CARD') {
     const c = schedule.cardProcessing
     const bps = c.regions[input.region].bps + (c.currencyConversion.applies ? c.currencyConversion.bps : 0)
-    const fixedUsd = ceilDiv(c.fixedCadCents * c.cadToUsd.num, c.cadToUsd.den)
     const subtotal = input.priceMinor + fanFeeMinor
-    processingMinor = grossUp(subtotal, bps, fixedUsd) - subtotal
+    processingMinor = grossUp(subtotal, bps, c.fixedUsdCents) - subtotal
   }
 
   return {

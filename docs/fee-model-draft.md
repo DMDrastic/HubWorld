@@ -128,13 +128,15 @@ and the cap comparison in `resale-policy.ts`.
 4. **Free tickets and comps:** no fan fee; cost 0, so the resale cap is 0: they can be gifted or transferred, never resold for money.
 5. **Card processing:** one all-in price on every screen, broken out on the receipt only. `Ticket.originalCostMinor` stores the full
    all-in amount paid, processing included, and is the resale cap.
-6. **Processing rates are per event region:** Caribbean 3.7% (2.9% + 0.8% international) + C$0.30; Canada 2.9% + C$0.30; +2% only
-   if currency conversion is needed (off by default: USD settles to a USD payout account). The C$0.30 is converted to US cents at
-   `cadToUsd` and rounded up. **The default rate (0.75) is a conservative placeholder, not a measurement, and must be replaced.**
+6. **Processing rates are per event region:** Caribbean 3.7% (2.9% + 0.8% international); Canada 2.9%; +2% only if currency
+   conversion is needed (off by default: USD settles to a USD payout account). The fixed part is **configured directly in the
+   charge currency, 30 US cents**, the safe upper bound (it can only slightly over-collect processing). There is no exchange rate.
+   All three numbers are unverified for our account and are replaced from the fee breakdown of a real test charge.
    The total is grossed up so HubWorld nets exactly price + fee, and the processor's cut is rounded up so we cannot lose money.
 
-**Open, for the account owner (not code):** confirm in the Stripe dashboard or with Stripe support that the Canadian account can pay out
-USD to a USD bank account. It is the difference between 3.7% and 5.7% processing on every Caribbean ticket.
+**Open, for the account owner (not code):**
+1. Confirm the Canadian account can pay out US dollars to a US-dollar bank account (3.7% vs 5.7% processing on every Caribbean ticket).
+2. Make one test charge in US dollars and read the payment's fee breakdown: the real percentage and fixed part. Update the three config numbers.
 
 ## 8. Rollout
 
