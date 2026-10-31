@@ -55,3 +55,21 @@ export async function findOrCreateWallet(deps: {
   }
   throw failure instanceof Error ? failure : new Error('Could not set up your wallet. Try again.')
 }
+
+type LinkedAccount = { type?: string; chainType?: string; address?: string; publicKey?: string; public_key?: string }
+
+/**
+ * The account's XRPL wallet on a Privy user: the FIRST one listed.
+ *
+ * A login can hold several (a second was made by mistake the first time this ran for real). The
+ * list is in the order they were linked, so the first is the oldest, and the server picks the first
+ * in the identity token by the same rule. They must agree: if they ever do not, the server's check
+ * that the page's key belongs to the wallet it chose refuses the login instead of using the wrong one.
+ */
+export function firstXrplWallet(user: { linkedAccounts?: unknown[] } | null | undefined): LinkedAccount | null {
+  const found = (user?.linkedAccounts ?? []).find((a) => {
+    const w = a as LinkedAccount
+    return w.type === 'wallet' && w.chainType === 'xrpl'
+  })
+  return (found as LinkedAccount | undefined) ?? null
+}

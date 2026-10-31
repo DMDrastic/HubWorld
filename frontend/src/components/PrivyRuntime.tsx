@@ -8,17 +8,9 @@ import { useCallback, useLayoutEffect, useMemo, useRef, type ReactNode } from 'r
 import { PrivyProvider, getIdentityToken, usePrivy } from '@privy-io/react-auth'
 import { useCreateWallet, useSignRawHash } from '@privy-io/react-auth/extended-chains'
 import { SignerRuntimeContext, type SignerRuntime } from '@/lib/signer-runtime'
-import { findOrCreateWallet } from '@/lib/wallet-lookup'
+import { findOrCreateWallet, firstXrplWallet as xrplWalletOf } from '@/lib/wallet-lookup'
 
 type LinkedWallet = { type?: string; chainType?: string; address?: string; publicKey?: string; public_key?: string }
-
-function xrplWalletOf(user: { linkedAccounts?: unknown[] } | null | undefined): LinkedWallet | null {
-  const found = (user?.linkedAccounts ?? []).find((a) => {
-    const w = a as LinkedWallet
-    return w.type === 'wallet' && w.chainType === 'xrpl'
-  })
-  return (found as LinkedWallet | undefined) ?? null
-}
 
 function Bridge({ children }: { children: ReactNode }) {
   const { ready, authenticated, login, logout, user, getAccessToken } = usePrivy()
