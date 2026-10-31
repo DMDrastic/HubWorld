@@ -75,6 +75,14 @@ enum PayloadFlow {
 
 // ---------------------------------------------------------------- identity --
 
+/// Who holds the key behind a wallet, which decides how its owner signs.
+enum SignerKind {
+  /// Xaman: the user signs on their phone from a QR or a deep link.
+  XAMAN
+  /// Privy: a wallet the USER owns, signed in their own browser.
+  PRIVY
+}
+
 model User {
   id          String  @id @default(uuid())
   username    String  @unique // @handle, stored lowercase
@@ -108,8 +116,50 @@ model User {
   staffFor             EventStaff[]           @relation("StaffMember")
   staffGranted         EventStaff[]           @relation("StaffGrantedBy")
   payloads             XamanPayload[]
+  wallet               Wallet?
 
   @@index([xrplAddress])
+}
+
+/// The XRPL wallet an account signs with.
+///
+/// The account is the identity and the wallet is a thing attached to it, so that a user can
+/// one day exist with NO wallet (a card buyer who has not yet claimed their ticket). Nothing
+/// may assume every user has one: read the address through `getUserXrplAddress`, which can
+/// answer null.
+///
+/// `userId` is unique, which makes this zero-or-one wallet per user for now. Allowing several
+/// is a one-line migration dropping that constraint, deliberately not done until something
+/// needs it.
+///
+/// TRANSITIONAL: `User.xrplAddress` is still required and is written in the same transaction
+/// as its Wallet row. A user with NO Wallet row is a legacy Xaman user whose address lives only
+/// on the column (rows created before this table, or by scripts and fixtures that predate it).
+/// The column goes away, or becomes optional, in the phase that creates users with no wallet.
+model Wallet {
+  id String @id @default(uuid())
+
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// The r-address. Never a seed: Xaman or Privy holds the key, never HubWorld.
+  xrplAddress String     @unique
+  signerKind  SignerKind
+
+  /// The signer's own id for this person (a Privy DID). Null for Xaman, which has no account
+  /// concept: its identity IS the address.
+  providerUserId String?
+
+  /// The compressed public key, hex. Needed to verify a signature before it is submitted.
+  /// Null for Xaman rows, which are backfilled from addresses alone.
+  publicKey String?
+
+  /// When the account was funded enough to transact. Null until known.
+  activatedAt DateTime?
+  createdAt   DateTime  @default(now())
+
+  /// One Privy person, one wallet. Nulls are distinct in Postgres, so Xaman rows are unaffected.
+  @@unique([signerKind, providerUserId])
 }
 
 /**

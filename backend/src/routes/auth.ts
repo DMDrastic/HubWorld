@@ -294,8 +294,15 @@ authRouter.post('/auth/claim', async (req, res) => {
     return
   }
 
+  // The account and its wallet are created together or not at all: one nested write is one
+  // transaction, so a failure can never leave a user whose wallet row is missing.
   const user = await prisma.user.create({
-    data: { username, displayName: displayName ?? null, xrplAddress: addressOk.data },
+    data: {
+      username,
+      displayName: displayName ?? null,
+      xrplAddress: addressOk.data,
+      wallet: { create: { xrplAddress: addressOk.data, signerKind: 'XAMAN' } },
+    },
   })
 
   await prisma.signInRequest.update({
