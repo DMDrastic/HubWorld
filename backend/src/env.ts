@@ -64,6 +64,17 @@ const EnvSchema = z.object({
   // a punitive share of someone's sale.
   PLATFORM_FEE_BPS: z.coerce.number().int().min(0).max(1000).default(250),
 
+  // Which fee model NEW sales use. `v1` (the default) is exactly how HubWorld has always charged: the buyer
+  // pays the platform fee on top. `v2` is the new model (seller-pays resale, a fan fee on first sales, the
+  // resale cap at the lower of the organizer's policy and what the buyer paid). Nothing changes until this is
+  // set, and a listing keeps the model it was created under.
+  FEE_MODEL: z.enum(['v1', 'v2']).default('v1'),
+  // Whether organizers may choose a resale policy that allows more than was paid (UNRESTRICTED, a percentage
+  // above 100%, a fixed cap above the price). Under v2 the lower of the two always wins, so those choices
+  // promise something that will not happen; they are off by default there and on under v1. Setting this
+  // explicitly turns them on or off whatever the model.
+  ALLOW_LOOSE_RESALE_POLICIES: emptyAsAbsent(z.enum(['true', 'false'])),
+
   // Ceiling on the royalty an organizer may set for themselves. The royalty is
   // theirs to choose, but an unbounded one makes resale pointless and the ticket
   // effectively non-transferable — which defeats the product.
@@ -237,6 +248,13 @@ if (signersEnabled.has('privy') && !env.PRIVY_APP_ID) {
   console.error('Refusing to start: SIGNERS includes privy but PRIVY_APP_ID is not set.')
   process.exit(1)
 }
+
+/** Whether new sales use the new fee model. */
+export const feeModelV2: boolean = env.FEE_MODEL === 'v2'
+
+/** Whether an organizer may pick a resale policy that allows more than the buyer paid. */
+export const looseResalePolicies: boolean =
+  env.ALLOW_LOOSE_RESALE_POLICIES !== undefined ? env.ALLOW_LOOSE_RESALE_POLICIES === 'true' : !feeModelV2
 
 /**
  * Whether Xaman calls us back when a payload resolves.

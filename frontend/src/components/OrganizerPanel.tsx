@@ -396,7 +396,12 @@ function CreateEventForm({ policy, onCreated }: { policy: Policy | null; onCreat
   const [ticketCount, setTicketCount] = useState('100')
   const [royaltyPct, setRoyaltyPct] = useState('5')
   const [priceXrp, setPriceXrp] = useState('')
-  const [resalePolicy, setResalePolicy] = useState<ResalePolicyMode>('UNRESTRICTED')
+  const [chosenPolicy, setResalePolicy] = useState<ResalePolicyMode>('UNRESTRICTED')
+  // Under the new fee model a ticket is never resold for more than its buyer paid, so a policy that allows
+  // more is not offered. An older server that says nothing keeps offering everything.
+  const loose = policy?.looseResalePolicies !== false
+  // Derived, not stored: the server's answer arrives after the form is up, and a stored default would stay stale.
+  const resalePolicy: ResalePolicyMode = !loose && chosenPolicy === 'UNRESTRICTED' ? 'FACE_VALUE_ONLY' : chosenPolicy
   const [resaleCapPct, setResaleCapPct] = useState('120')
   const [resaleCapXrp, setResaleCapXrp] = useState('')
   // Offered only where this server can run the code door; otherwise the server's own default (Xaman) applies.
@@ -444,6 +449,9 @@ function CreateEventForm({ policy, onCreated }: { policy: Policy | null; onCreat
       if (resalePolicy === 'PERCENTAGE_CAP' && !(resaleCapBps > 0)) {
         throw new ApiError('Enter a resale cap percentage above zero')
       }
+      if (!loose && resalePolicy === 'PERCENTAGE_CAP' && resaleCapBps > 10_000) {
+        throw new ApiError('A resale cap can be at most 100%: a ticket is never resold for more than its buyer paid')
+      }
       const resaleCapDrops = xrpToDrops(resaleCapXrp)
       if (resalePolicy === 'FIXED_CAP' && !(BigInt(resaleCapDrops) > 0n)) {
         throw new ApiError('Enter a resale cap price above zero')
@@ -454,6 +462,9 @@ function CreateEventForm({ policy, onCreated }: { policy: Policy | null; onCreat
       const primaryPriceDrops = priceXrp.trim() ? xrpToDrops(priceXrp) : undefined
       if (primaryPriceDrops !== undefined && !(BigInt(primaryPriceDrops) > 0n)) {
         throw new ApiError('Enter a ticket price above zero, or leave it blank')
+      }
+      if (!loose && resalePolicy === 'FIXED_CAP' && primaryPriceDrops !== undefined && BigInt(resaleCapDrops) > BigInt(primaryPriceDrops)) {
+        throw new ApiError('A fixed resale cap cannot be above the ticket price: a ticket is never resold for more than its buyer paid')
       }
       const event = await createEvent({
         title,
@@ -626,7 +637,10 @@ function CreateEventForm({ policy, onCreated }: { policy: Policy | null; onCreat
               <>
                 Sets how high buyers can resell a ticket. Gifts aren't affected. You choose this now
                 and can't change it later.
-                {resalePolicy === 'PERCENTAGE_CAP' &&
+                {!loose &&
+                  ' Resale is capped at what the buyer paid, so there is no option that allows more.'}
+                {loose &&
+                  resalePolicy === 'PERCENTAGE_CAP' &&
                   ' 120 means a resale may not exceed 120% of what the ticket originally sold for.'}
               </>
             }
@@ -663,7 +677,7 @@ function CreateEventForm({ policy, onCreated }: { policy: Policy | null; onCreat
               aria-label="resale policy"
               className={VALUE_SELECT}
             >
-              <option value="UNRESTRICTED">Unrestricted</option>
+              {loose && <option value="UNRESTRICTED">Unrestricted</option>}
               <option value="PERCENTAGE_CAP">Capped at % of face value</option>
               <option value="FIXED_CAP">Capped at a fixed price</option>
               <option value="FACE_VALUE_ONLY">Face value only, no markup</option>

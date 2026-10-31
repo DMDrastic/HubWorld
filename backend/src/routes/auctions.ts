@@ -15,6 +15,7 @@ import { z } from 'zod'
 import { prisma } from '../prisma.js'
 import { issuesOf, slugSchema } from '../schemas.js'
 import { resaleCeiling } from '../resale-policy.js'
+import { paidCostOf } from '../paid-cost.js'
 
 export const auctionsRouter = Router()
 
@@ -72,6 +73,7 @@ auctionsRouter.get('/events/:slug/auction', async (req, res) => {
     capBps: auction.ticket.event.resaleCapBps,
     capDrops: auction.ticket.event.resaleCapDrops,
     faceValueDrops: auction.ticket.faceValueDrops,
+    paid: paidCostOf(auction.ticket),
   })
 
   res.json({

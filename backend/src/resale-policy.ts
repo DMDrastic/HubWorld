@@ -14,8 +14,17 @@
  * auction, never a gift, and nothing here is ever consulted by `gifts.ts`.
  */
 
-import type { ResalePolicy } from '@prisma/client'
+import type { PriceCurrency, ResalePolicy } from '@prisma/client'
 import { platformFeeDrops } from './ledger.js'
+
+/**
+ * What the ticket's buyer actually paid, all in (price, fan fee and card processing).
+ *
+ * Callers pass this ONLY while the new fee model is on, and `minor: null` means no amount was ever
+ * recorded (a ticket sold before this existed, or never sold). That case, and passing nothing at all,
+ * leave the organizer's policy exactly as it was: the new cap applies to the new terms and to nothing older.
+ */
+export type PaidCost = { minor: bigint | null; currency: PriceCurrency | null }
 
 /**
  * A PRIMARY sale — exempt from the cap, and the moment face value is
@@ -40,7 +49,10 @@ export function isPrimarySale(params: {
   return params.sellerId === params.organizerId && params.faceValueDrops === null
 }
 
-type Ceiling = { ok: true; maxDrops: bigint | null } | { ok: false; reason: string }
+/** `bound` says which rule set the limit: the organizer's policy, or what the buyer paid. */
+type Ceiling =
+  | { ok: true; maxDrops: bigint | null; bound: 'POLICY' | 'PAID' }
+  | { ok: false; reason: string }
 
 /**
  * The policy's limit, with no price to check against yet. Shared by
@@ -55,6 +67,35 @@ function ceilingFor(params: {
   capBps: number | null
   capDrops: bigint | null
   faceValueDrops: bigint | null
+  paid?: PaidCost | undefined
+}): Ceiling {
+  const base = policyCeiling(params)
+  if (!base.ok) return base // DISABLED, or a policy that cannot be evaluated: stays exactly as it was
+
+  const { paid } = params
+  // No amount recorded, or the new model is off: the organizer's policy and nothing else.
+  if (!paid || paid.minor === null) return base
+
+  // The cap is in drops, so it can only be compared with a ticket bought in XRP. Guessing an exchange rate
+  // would let a resale slip past the cap by whatever the guess was off by.
+  if (paid.currency !== 'XRP') {
+    return {
+      ok: false,
+      reason: `This ticket was bought in ${paid.currency ?? 'another currency'}, so it has to be resold in that currency.`,
+    }
+  }
+
+  // The LOWER of the two. An unrestricted policy has no limit of its own, so what was paid is the limit.
+  if (base.maxDrops !== null && base.maxDrops <= paid.minor) return base
+  return { ok: true, maxDrops: paid.minor, bound: 'PAID' }
+}
+
+/** The organizer's policy on its own, with no regard for what anyone paid. This is today's logic, unchanged. */
+function policyCeiling(params: {
+  policy: ResalePolicy
+  capBps: number | null
+  capDrops: bigint | null
+  faceValueDrops: bigint | null
 }): Ceiling {
   const { policy, capBps, capDrops, faceValueDrops } = params
 
@@ -63,14 +104,14 @@ function ceilingFor(params: {
   }
 
   if (policy === 'UNRESTRICTED') {
-    return { ok: true, maxDrops: null }
+    return { ok: true, maxDrops: null, bound: 'POLICY' }
   }
 
   if (policy === 'FIXED_CAP') {
     // Schema/route validation guarantees this is set whenever policy is
     // FIXED_CAP; treated as a programmer error, not a user-facing refusal.
     if (capDrops === null) throw new Error('FIXED_CAP policy with no resaleCapDrops configured')
-    return { ok: true, maxDrops: capDrops }
+    return { ok: true, maxDrops: capDrops, bound: 'POLICY' }
   }
 
   // PERCENTAGE_CAP and FACE_VALUE_ONLY both need a face value to compare
@@ -84,7 +125,7 @@ function ceilingFor(params: {
 
   const maxDrops =
     policy === 'FACE_VALUE_ONLY' ? faceValueDrops : (faceValueDrops * BigInt(capBpsOrThrow(capBps))) / 10_000n
-  return { ok: true, maxDrops }
+  return { ok: true, maxDrops, bound: 'POLICY' }
 }
 
 export type ResaleCapResult =
@@ -106,6 +147,7 @@ export function checkResalePrice(params: {
   capDrops: bigint | null
   faceValueDrops: bigint | null
   priceDrops: bigint
+  paid?: PaidCost | undefined
 }): ResaleCapResult {
   const ceiling = ceilingFor(params)
   if (!ceiling.ok) return { allowed: false, reason: ceiling.reason, maxDrops: null }
@@ -115,7 +157,12 @@ export function checkResalePrice(params: {
     ? { allowed: true, maxDrops: ceiling.maxDrops }
     : {
         allowed: false,
-        reason: `This event's organizer has limited resale prices to ${dropsToXrpString(ceiling.maxDrops)} XRP.`,
+        reason:
+          ceiling.bound === 'POLICY'
+            ? `This event's organizer has limited resale prices to ${dropsToXrpString(ceiling.maxDrops)} XRP.`
+            : ceiling.maxDrops === 0n
+              ? "This ticket was free, so it can't be resold for money. It can still be given to someone."
+              : `A ticket can be resold for at most what its buyer paid, ${dropsToXrpString(ceiling.maxDrops)} XRP.`,
         maxDrops: ceiling.maxDrops,
       }
 }
@@ -133,11 +180,28 @@ export function resaleCeiling(params: {
   capBps: number | null
   capDrops: bigint | null
   faceValueDrops: bigint | null
+  paid?: PaidCost | undefined
 }): ResaleCeiling {
   const ceiling = ceilingFor(params)
   return ceiling.ok
     ? { resaleAllowed: true, maxDrops: ceiling.maxDrops }
     : { resaleAllowed: false, reason: ceiling.reason }
+}
+
+/**
+ * Which rule is setting the limit right now: the organizer's policy, what the buyer paid, or nothing.
+ * For showing a seller WHY a price is capped; the limit itself comes from `resaleCeiling`.
+ */
+export function capSource(params: {
+  policy: ResalePolicy
+  capBps: number | null
+  capDrops: bigint | null
+  faceValueDrops: bigint | null
+  paid?: PaidCost | undefined
+}): 'POLICY' | 'PAID' | 'NONE' {
+  const c = ceilingFor(params)
+  if (!c.ok || c.maxDrops === null) return 'NONE'
+  return c.bound
 }
 
 /**

@@ -26,6 +26,7 @@ import { issuesOf } from '../schemas.js'
 import { requireAuth } from '../session.js'
 import { advanceListing, listingInclude, listingView } from '../listing-advance.js'
 import { checkResalePrice, maxAskForCap, isPrimarySale } from '../resale-policy.js'
+import { paidCostOf } from '../paid-cost.js'
 import {
   buildBuyOfferTx,
   buildCancelOfferTx,
@@ -170,6 +171,7 @@ listingsRouter.post('/tickets/:nfTokenId/list', requireAuth, async (req, res) =>
       capBps: ticket.event.resaleCapBps,
       capDrops: ticket.event.resaleCapDrops,
       faceValueDrops: ticket.faceValueDrops,
+      paid: paidCostOf(ticket),
       priceDrops: priceDrops + fee,
     })
     if (!cap.allowed) {
