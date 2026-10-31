@@ -333,6 +333,7 @@ authRouter.get('/auth/me', requireAuth, async (req, res) => {
       xrplAddress: true,
       createdAt: true,
       role: true,
+      wallet: { select: { signerKind: true } },
       _count: { select: { ticketsOwned: true } },
     },
   })
@@ -342,8 +343,14 @@ authRouter.get('/auth/me', requireAuth, async (req, res) => {
     return
   }
 
-  const { _count, ...rest } = user
-  res.json({ ...rest, ticketsOwned: _count.ticketsOwned })
+  const { _count, wallet, ...rest } = user
+  res.json({
+    ...rest,
+    ticketsOwned: _count.ticketsOwned,
+    // Which kind of wallet signs for this account, so the page knows whether to show a QR or ask
+    // their own wallet. No wallet row is a legacy Xaman account (see `getUserXrplAddress`).
+    signer: wallet?.signerKind ?? 'XAMAN',
+  })
 })
 
 /**

@@ -5,7 +5,12 @@ import { cleanup } from '@testing-library/react'
 // prefers-reduced-motion (or any other media query) throws on mount rather
 // than just reporting false. Default to "no preference" — tests that care
 // about the reduced-motion branch specifically can still override this.
-if (!window.matchMedia) {
+// Guarded: a test can opt into the node environment (`// @vitest-environment node`) when it exercises
+// pure code that jsdom's separate Uint8Array realm breaks (hashing and signing libraries), and node
+// has no `window`.
+const hasDom = typeof window !== 'undefined'
+
+if (hasDom && !window.matchMedia) {
   window.matchMedia = (query: string) =>
     ({
       matches: false,
@@ -24,7 +29,7 @@ if (!window.matchMedia) {
 // throws on mount instead of just never firing a callback, which is the
 // accurate jsdom behaviour: there is no layout, so nothing would ever
 // intersect anyway.
-if (!window.IntersectionObserver) {
+if (hasDom && !window.IntersectionObserver) {
   class NoopIntersectionObserver implements IntersectionObserver {
     readonly root = null
     readonly rootMargin = ''

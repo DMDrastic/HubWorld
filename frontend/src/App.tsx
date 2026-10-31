@@ -6,6 +6,7 @@ import {
   fetchEvents,
   fetchHealth,
   fetchMe,
+  fetchPolicy,
   lookupUser,
   isOrganizer,
   onAuthLost,
@@ -16,6 +17,7 @@ import {
   type DoorEvent,
   type EventSummary,
   type Health,
+  type Policy,
   type User,
 } from '@/lib/api'
 import { MintPanel } from '@/components/MintPanel'
@@ -31,6 +33,7 @@ import { EmailVerifyNotice } from '@/components/EmailVerifyNotice'
 import { Landing } from '@/components/Landing'
 import { PageBackdrop } from '@/components/PageBackdrop'
 import { SignInRequired } from '@/components/SignInRequired'
+import { WithSigner } from '@/components/WithSigner'
 import { Hub } from '@/components/Hub'
 import { Footer } from '@/components/Footer'
 import { EventList } from '@/components/EventList'
@@ -120,6 +123,20 @@ export default function App() {
   const [health, setHealth] = useState<Health | null>(null)
   const [events, setEvents] = useState<EventSummary[]>([])
   const [me, setMe] = useState<User | null>(null)
+  // What this deployment offers. Failing to read it is not an error: it just means Xaman only.
+  const [policy, setPolicy] = useState<Policy | null>(null)
+  useEffect(() => {
+    let stale = false
+    fetchPolicy()
+      .then((p) => {
+        if (!stale) setPolicy(p)
+      })
+      .catch(() => {})
+    return () => {
+      stale = true
+    }
+  }, [])
+  const privyOn = Boolean(policy?.signers?.includes('privy') && policy.privyAppId)
   const [error, setError] = useState<string | null>(null)
   // Which event's auction window is open, or null for none.
   const [auctionEvent, setAuctionEvent] = useState<EventSummary | null>(null)
@@ -391,35 +408,42 @@ export default function App() {
             />
           ))}
 
-        {route === '/organize' && !me && (
-          <SignInRequired
-            title="Organize"
-            blurb="Issuing tickets means minting from your own wallet, so it starts with signing in. Organizer access is reviewed by a person."
-            onAuthenticated={handleAuthenticated}
-          />
-        )}
-
-        {route === '/organize' && me && isOrganizer(me.role) && (
-          <section className="space-y-4 pb-8">
-            <PageHeader
+        {/* The email wallet's code is a separate chunk, fetched only here and only when the
+            server offers it, so no one else downloads it. */}
+        {route === '/organize' && (
+          <WithSigner enabled={privyOn} appId={policy?.privyAppId}>
+          {route === '/organize' && !me && (
+            <SignInRequired
+              emailSignIn
               title="Organize"
-              description="Create events and tickets. You earn a cut of every resale."
+              blurb="Issuing tickets means minting from your own wallet, so it starts with signing in. Organizer access is reviewed by a person."
+              onAuthenticated={handleAuthenticated}
             />
-            <OrganizerPanel role={me.role} onChanged={handleMinted} refreshKey={emailVerifiedTick} />
-            <EventImagePanel events={organizing} onChanged={handleMinted} />
-            <DelegationPanel />
-            <BulkMintPanel events={organizing} onChanged={handleMinted} />
-            <MintPanel events={organizing} onMinted={handleMinted} />
-          </section>
-        )}
+          )}
 
-        {/* A regular user who types /organize gets the application form
-            rather than a blank page or a 403. */}
-        {route === '/organize' && me && !isOrganizer(me.role) && (
-          <section className="space-y-4 pb-8">
-            <PageHeader title="Run your own events" />
-            <OrganizerPanel role={me.role} onChanged={handleMinted} refreshKey={emailVerifiedTick} />
-          </section>
+          {route === '/organize' && me && isOrganizer(me.role) && (
+            <section className="space-y-4 pb-8">
+              <PageHeader
+                title="Organize"
+                description="Create events and tickets. You earn a cut of every resale."
+              />
+              <OrganizerPanel role={me.role} onChanged={handleMinted} refreshKey={emailVerifiedTick} />
+              <EventImagePanel events={organizing} onChanged={handleMinted} />
+              <DelegationPanel />
+              <BulkMintPanel events={organizing} onChanged={handleMinted} />
+              <MintPanel events={organizing} onMinted={handleMinted} />
+            </section>
+          )}
+
+          {/* A regular user who types /organize gets the application form
+              rather than a blank page or a 403. */}
+          {route === '/organize' && me && !isOrganizer(me.role) && (
+            <section className="space-y-4 pb-8">
+              <PageHeader title="Run your own events" />
+              <OrganizerPanel role={me.role} onChanged={handleMinted} refreshKey={emailVerifiedTick} />
+            </section>
+          )}
+          </WithSigner>
         )}
       </main>
       </Backdrop>

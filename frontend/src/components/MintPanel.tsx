@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { QrCode } from '@/components/QrCode'
+import { SignStep } from '@/components/SignStep'
 import {
   ApiError,
   createMint,
@@ -189,7 +190,25 @@ export function MintPanel({
           </div>
         )}
 
-        {phase.kind === 'awaiting' && (
+        {phase.kind === 'awaiting' && phase.payload.sign && !phase.signed && (
+          // A wallet the person owns: show what this creates, in words, and sign it here.
+          <SignStep
+            uuid={phase.payload.uuid}
+            sign={phase.payload.sign}
+            context={{
+              hubworldDelegate: null,
+              eventTitle: events.find((e) => e.slug === slug)?.title,
+            }}
+            onSubmitted={() => setPhase((p) => (p.kind === 'awaiting' ? { ...p, signed: true } : p))}
+            onCancel={() => setPhase({ kind: 'idle' })}
+          />
+        )}
+
+        {phase.kind === 'awaiting' && phase.payload.sign && phase.signed && (
+          <p className="text-muted-foreground text-center text-sm">Approved. Waiting for the network to confirm…</p>
+        )}
+
+        {phase.kind === 'awaiting' && !phase.payload.sign && (
           <div className="flex flex-col items-center gap-3">
             <QrCode
               src={phase.payload.qrPng}
