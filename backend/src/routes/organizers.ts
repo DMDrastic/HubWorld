@@ -265,6 +265,43 @@ organizersRouter.post(
   },
 )
 
+const FoundingBody = z.object({ founding: z.boolean() })
+
+/**
+ * POST /api/admin/organizers/:username/founding   { founding: true | false }
+ *
+ * Marks an organizer as one of the first ~10 "founding" organizers, who pay the lower fan fee on events
+ * starting before the promo's end date. ADMIN ONLY, and deliberately a route of its own: it is not a field
+ * on any body an organizer controls (applying, creating an event), because an organizer choosing their own
+ * discount would choose the discount. Only an organizer can be flagged; the flag means nothing otherwise.
+ * Marking someone who is already marked keeps the original grant time.
+ */
+organizersRouter.post('/admin/organizers/:username/founding', requireAuth, requireAdmin, async (req, res) => {
+  const body = FoundingBody.safeParse(req.body ?? {})
+  if (!body.success) {
+    res.status(400).json({ error: 'Send { "founding": true } or { "founding": false }' })
+    return
+  }
+  const username = String(req.params.username ?? '').replace(/^@/, '').toLowerCase()
+  const user = await prisma.user.findUnique({ where: { username } })
+  if (!user) {
+    res.status(404).json({ error: 'No such user' })
+    return
+  }
+  if (user.role !== 'ORGANIZER') {
+    res.status(409).json({ error: 'Only an organizer can be a founding organizer' })
+    return
+  }
+
+  const updated = await prisma.user.update({
+    where: { id: user.id },
+    data: body.data.founding
+      ? { foundingOrganizer: true, foundingGrantedAt: user.foundingGrantedAt ?? new Date() }
+      : { foundingOrganizer: false, foundingGrantedAt: null },
+  })
+  res.json({ username: updated.username, founding: updated.foundingOrganizer, grantedAt: updated.foundingGrantedAt })
+})
+
 // ------------------------------------------------------- event creation ----
 
 const CreateEventBody = z
@@ -285,6 +322,20 @@ const CreateEventBody = z
     resalePolicy: z
       .enum(['UNRESTRICTED', 'PERCENTAGE_CAP', 'FIXED_CAP', 'FACE_VALUE_ONLY', 'DISABLED'])
       .default('UNRESTRICTED'),
+    // Where the event is, for fees. The founding promo is decided by when the event starts in ITS OWN
+    // zone, and the region chooses the card-processing rates. Both default to the pilot (St. Lucia).
+    timeZone: z
+      .string()
+      .refine((zone) => {
+        try {
+          new Intl.DateTimeFormat('en', { timeZone: zone })
+          return true
+        } catch {
+          return false
+        }
+      }, 'timeZone must be a real IANA time zone, e.g. America/St_Lucia')
+      .optional(),
+    feeRegion: z.enum(['CARIBBEAN', 'CANADA']).optional(),
     // The box-office price of one ticket, in drops. Optional: an event without
     // one has no checkout (tickets are held, gifted or listed by hand). Money is
     // a string of integer drops, never a float.
@@ -388,6 +439,9 @@ organizersRouter.post('/events', requireAuth, requireOrganizer, async (req, res)
       resaleCapDrops: data.resaleCapDrops ? BigInt(data.resaleCapDrops) : null,
       primaryPriceDrops: data.primaryPriceDrops ? BigInt(data.primaryPriceDrops) : null,
       doorMode,
+      // Left to the column defaults (the pilot's zone and region) when the organizer says nothing.
+      ...(data.timeZone ? { timeZone: data.timeZone } : {}),
+      ...(data.feeRegion ? { feeRegion: data.feeRegion } : {}),
     },
   })
 
