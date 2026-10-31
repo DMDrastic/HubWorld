@@ -150,9 +150,22 @@ export function EmailSignIn({
         {phase.kind === 'failed' && (
           <div className="space-y-3">
             <p className="text-destructive text-sm">{phase.reason}</p>
-            <Button variant="secondary" onClick={() => setPhase({ kind: 'idle' })}>
-              Try again
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button variant="secondary" onClick={() => setPhase({ kind: 'idle' })}>
+                Try again
+              </Button>
+              {/* Still signed in to Privy as this email, "try again" would only repeat the same
+                  attempt as the same person. A way out is part of the error, not an extra. */}
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  setPhase({ kind: 'idle' })
+                  void runtime.logout()
+                }}
+              >
+                Use a different email
+              </Button>
+            </div>
           </div>
         )}
       </CardContent>

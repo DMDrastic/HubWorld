@@ -126,6 +126,17 @@ describe('a new person', () => {
 })
 
 describe('failures', () => {
+  it('lets the person switch to another email when this one cannot get through', async () => {
+    mockApi(() => json({ error: 'That wallet already has an account.', code: 'address_taken' }, 409))
+    const runtime = fakeRuntime()
+    mount(runtime)
+    fireEvent.click(await screen.findByRole('button', { name: 'Continue with email' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Use a different email' }))
+    // They are signed out of Privy, not merely returned to the same screen as the same person.
+    expect(runtime.logout).toHaveBeenCalledTimes(1)
+    expect(await screen.findByRole('button', { name: 'Continue with email' })).toBeTruthy()
+  })
+
   it('shows a refused login and lets the person start again', async () => {
     mockApi(() => json({ error: 'Your sign-in could not be verified. Sign in again.' }, 401))
     mount(fakeRuntime())
