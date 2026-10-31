@@ -4,10 +4,11 @@
  * Only ever imported through `React.lazy` (see `WithSigner`), so Privy and its dependencies are
  * a separate chunk fetched on demand. Do not import this file from anywhere else.
  */
-import { useCallback, useEffect, useMemo, useRef, type ReactNode } from 'react'
+import { useCallback, useLayoutEffect, useMemo, useRef, type ReactNode } from 'react'
 import { PrivyProvider, getIdentityToken, usePrivy } from '@privy-io/react-auth'
 import { useCreateWallet, useSignRawHash } from '@privy-io/react-auth/extended-chains'
 import { SignerRuntimeContext, type SignerRuntime } from '@/lib/signer-runtime'
+import { findOrCreateWallet } from '@/lib/wallet-lookup'
 
 type LinkedWallet = { type?: string; chainType?: string; address?: string; publicKey?: string; public_key?: string }
 
@@ -19,16 +20,18 @@ function xrplWalletOf(user: { linkedAccounts?: unknown[] } | null | undefined): 
   return (found as LinkedWallet | undefined) ?? null
 }
 
-const publicKeyOf = (w: LinkedWallet) => (w.publicKey ?? w.public_key ?? '').toUpperCase()
-
 function Bridge({ children }: { children: ReactNode }) {
   const { ready, authenticated, login, logout, user, getAccessToken } = usePrivy()
   const { createWallet } = useCreateWallet()
   const { signRawHash } = useSignRawHash()
 
-  // The newest user object, for functions that run after a wallet was just created.
+  // The newest user object, for functions that run after login or after a wallet was just made.
+  // A LAYOUT effect on purpose: when login completes, the sign-in screen below reacts in an ordinary
+  // effect, and ordinary effects of a child run before those of its parent. With a normal effect here
+  // the screen asked for the wallet while this still held the signed-out user, found none, and tried
+  // to create a second one, which Privy refuses. Layout effects all run before any ordinary effect.
   const userRef = useRef(user)
-  useEffect(() => {
+  useLayoutEffect(() => {
     userRef.current = user
   }, [user])
 
@@ -38,16 +41,14 @@ function Bridge({ children }: { children: ReactNode }) {
     return accessToken && identityToken ? { accessToken, identityToken } : null
   }, [getAccessToken])
 
-  const ensureWallet = useCallback(async () => {
-    const existing = xrplWalletOf(userRef.current)
-    if (existing?.address && publicKeyOf(existing)) {
-      return { address: existing.address, publicKey: publicKeyOf(existing) }
-    }
-    const { wallet } = await createWallet({ chainType: 'xrpl' })
-    const w = wallet as unknown as LinkedWallet
-    if (!w.address || !publicKeyOf(w)) throw new Error('Your wallet was created but its details were not returned.')
-    return { address: w.address, publicKey: publicKeyOf(w) }
-  }, [createWallet])
+  const ensureWallet = useCallback(
+    () =>
+      findOrCreateWallet({
+        read: () => xrplWalletOf(userRef.current),
+        create: async () => (await createWallet({ chainType: 'xrpl' })).wallet as unknown as LinkedWallet,
+      }),
+    [createWallet],
+  )
 
   const signHash = useCallback(
     async (address: string, hashHex: string) => {
