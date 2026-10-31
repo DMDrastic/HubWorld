@@ -6,7 +6,7 @@
  * had an XRPL wallet was told "already linked to an XRPL account" and could not get past it.
  */
 import { describe, expect, it, vi } from 'vitest'
-import { findOrCreateWallet } from '@/lib/wallet-lookup'
+import { findOrCreateWallet, firstXrplWallet } from '@/lib/wallet-lookup'
 
 const W = { address: 'rExisting0000000000000000000000', publicKey: '02ab'.padEnd(66, 'c') }
 const upper = W.publicKey.toUpperCase()
@@ -74,5 +74,24 @@ describe('findOrCreateWallet', () => {
     await expect(
       findOrCreateWallet({ read: () => ({ address: W.address }), create: async () => null, wait: instant, looks: 1 }),
     ).rejects.toThrow()
+  })
+})
+
+describe('firstXrplWallet', () => {
+  const xrpl = (address: string) => ({ type: 'wallet', chainType: 'xrpl', address })
+
+  it('takes the first XRPL wallet listed, which is the oldest, when there are several', () => {
+    const user = { linkedAccounts: [{ type: 'email' }, xrpl('rOldest'), xrpl('rNewer')] }
+    expect(firstXrplWallet(user)?.address).toBe('rOldest')
+  })
+
+  it('ignores wallets on other chains and non-wallet accounts', () => {
+    const user = { linkedAccounts: [{ type: 'wallet', chainType: 'ethereum', address: '0xabc' }, { type: 'email' }, xrpl('rMine')] }
+    expect(firstXrplWallet(user)?.address).toBe('rMine')
+  })
+
+  it('is null when there is no user or no XRPL wallet', () => {
+    expect(firstXrplWallet(null)).toBeNull()
+    expect(firstXrplWallet({ linkedAccounts: [{ type: 'email' }] })).toBeNull()
   })
 })

@@ -113,10 +113,18 @@ describe('verifying a login', () => {
     expect(await code(verifier.verify(await token(), bad))).toBe('no_wallet')
   })
 
-  it('refuses two XRPL wallets rather than guessing which is meant', async () => {
-    const second = Wallet.generate(ECDSA.secp256k1).classicAddress
-    const id = await token({ linked: [xrplAccount(), xrplAccount({ id: 'w2', address: second })] })
-    expect(await code(verifier.verify(await token(), id))).toBe('ambiguous_wallet')
+  it('uses the OLDEST wallet when a login holds several, so the account is stable', async () => {
+    const newer = Wallet.generate(ECDSA.secp256k1).classicAddress
+    const id = await token({ linked: [xrplAccount(), xrplAccount({ id: 'w2', address: newer })] })
+    expect((await verifier.verify(await token(), id)).address).toBe(wallet.classicAddress)
+    // The other way round is a different account: order is what decides, nothing else.
+    const flipped = await token({ linked: [xrplAccount({ id: 'w2', address: newer }), xrplAccount()] })
+    expect((await verifier.verify(await token(), flipped)).address).toBe(newer)
+  })
+
+  it('skips an entry that is not a usable Privy XRPL wallet and takes the next one', async () => {
+    const id = await token({ linked: [xrplAccount({ address: 'not-an-address' }), xrplAccount({ id: 'w2' })] })
+    expect((await verifier.verify(await token(), id)).address).toBe(wallet.classicAddress)
   })
 
   it('treats unreadable linked accounts as no wallet, not as a crash', async () => {

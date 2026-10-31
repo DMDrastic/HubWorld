@@ -393,6 +393,12 @@ with an XRPL wallet the PERSON owns (Privy embedded wallets), in their own brows
   setting "Return user data in an identity token" ON (User management > Authentication > Advanced);
   without it login fails closed with a message. The token carries no public key, so the client sends
   it and the server accepts it only if it derives to the verified address.
+- **A login can hold several XRPL wallets; the OLDEST is the account's.** Found on the first real run: an earlier
+  attempt had made a second, and refusing to choose locked the person out. The identity token lists wallets in
+  the order they were linked and the page takes the first of `user.linkedAccounts` by the same rule
+  (`firstXrplWallet`); the server then refuses any public key that does not derive to the wallet it chose, so
+  a disagreement fails the login instead of using the wrong wallet. The page also reuses an existing wallet
+  rather than creating another (`findOrCreateWallet`).
 - **The browser returns only a signature, never a transaction.** The server builds and stores the
   exact transaction (`XamanPayload.unsignedTx`, `signer = 'privy'`), hands over its hash, and on
   `POST /api/signatures/:uuid` attaches the signature to ITS OWN copy, verifies it, and submits once

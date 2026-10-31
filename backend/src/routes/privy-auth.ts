@@ -49,7 +49,6 @@ const STATUS: Record<PrivyAuthError['code'], number> = {
   invalid_token: 401,
   mismatched_tokens: 401,
   no_wallet: 409,
-  ambiguous_wallet: 409,
   bad_key: 400,
 }
 

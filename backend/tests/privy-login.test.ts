@@ -172,4 +172,35 @@ describe('things that must not get in', () => {
     expect(res.status).toBe(409)
     expect(res.body.code).toBe('address_taken')
   })
+
+  it('signs a login with two wallets in as the account\'s oldest one, and a retry gets the same account', async () => {
+    const p = person('k')
+    const extra = Wallet.generate(ECDSA.secp256k1)
+    const linked = [
+      { type: 'wallet', address: p.wallet.classicAddress, chain_type: 'xrpl', wallet_client_type: 'privy' },
+      { type: 'wallet', address: extra.classicAddress, chain_type: 'xrpl', wallet_client_type: 'privy' },
+    ]
+    const first = await request(app).post('/api/auth/privy/claim').send({ ...(await login(p, { linked })), username: `${P}k` })
+    expect(first.status).toBe(201)
+    expect(first.body.user.xrplAddress).toBe(p.wallet.classicAddress)
+    const again = await request(app).post('/api/auth/privy').send(await login(p, { linked }))
+    expect(again.status).toBe(200)
+    expect(again.body.user.username).toBe(`${P}k`)
+  })
+
+  it('refuses the key of a wallet that is not the one the account uses', async () => {
+    const p = person('l')
+    const extra = Wallet.generate(ECDSA.secp256k1)
+    const linked = [
+      { type: 'wallet', address: p.wallet.classicAddress, chain_type: 'xrpl', wallet_client_type: 'privy' },
+      { type: 'wallet', address: extra.classicAddress, chain_type: 'xrpl', wallet_client_type: 'privy' },
+    ]
+    // The page sent the SECOND wallet's key: the server must not quietly bind to it.
+    const res = await request(app)
+      .post('/api/auth/privy/claim')
+      .send({ ...(await login(p, { linked, publicKey: extra.publicKey })), username: `${P}l` })
+    expect(res.status).toBe(400)
+    expect(res.body.code).toBe('bad_key')
+    expect(await prisma.user.count({ where: { username: `${P}l` } })).toBe(0)
+  })
 })

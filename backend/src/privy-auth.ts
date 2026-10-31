@@ -31,7 +31,7 @@ export type PrivyIdentity = {
   address: string
 }
 
-export type PrivyAuthFailure = 'invalid_token' | 'mismatched_tokens' | 'no_wallet' | 'ambiguous_wallet' | 'bad_key'
+export type PrivyAuthFailure = 'invalid_token' | 'mismatched_tokens' | 'no_wallet' | 'bad_key'
 
 export class PrivyAuthError extends Error {
   constructor(
@@ -109,9 +109,11 @@ export function makePrivyVerifier(opts: { appId: string; keys?: JWTVerifyGetKey 
           'No XRPL wallet came with your sign-in yet. Create one and try again.',
         )
       }
-      if (wallets.length > 1) {
-        throw new PrivyAuthError('ambiguous_wallet', 'More than one XRPL wallet is linked; that is not supported yet.')
-      }
+      // A Privy login CAN hold more than one XRPL wallet (it did, the first time this ran for real:
+      // an earlier attempt had made a second). Refusing left that person locked out, so the OLDEST
+      // is the account's wallet: the array is in the order they were linked, and the page picks the
+      // first one it sees in the same list. If the two ever disagreed, the key binding below would
+      // refuse the login rather than quietly use the wrong wallet. Any others are simply unused.
       return { did: identity.sub as string, address: wallets[0]!.address! }
     },
   }
