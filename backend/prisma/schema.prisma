@@ -92,9 +92,15 @@ model User {
   /// What this account may do. Organizers issue tickets and run doors, which is
   /// a materially different trust level from attending, so it is an account
   /// property rather than something inferred from owning an Event row.
-  role      UserRole @default(USER)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  role UserRole @default(USER)
+
+  /// One of the first ~10 organizers, who pay the lower founding fan fee on events starting before the
+  /// promo's end date. Set ONLY by an admin (`POST /admin/organizers/:username/founding`); no body an
+  /// organizer controls can reach it.
+  foundingOrganizer Boolean   @default(false)
+  foundingGrantedAt DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
   organizedEvents      Event[]                @relation("EventOrganizer")
   ticketsOwned         Ticket[]               @relation("TicketOwner")
@@ -361,6 +367,13 @@ model Event {
   royaltyBps  Int @default(0)
   platformBps Int @default(0)
 
+  /// The event's own IANA time zone. The founding promo is decided by when the event STARTS in this
+  /// zone, not in UTC. Defaults to the pilot's zone so every existing event reads as it did.
+  timeZone String @default("America/St_Lucia")
+
+  /// Which card-processing rates apply to this event's sales.
+  feeRegion FeeRegion @default(CARIBBEAN)
+
   /// What one ticket costs at the box office, in drops. Null means the event has
   /// no checkout: tickets are minted to hold, gifted, or sold by the organizer
   /// one listing at a time. Set at creation like every other term, and BigInt
@@ -602,6 +615,30 @@ enum ResalePolicy {
   DISABLED
 }
 
+/// What a price is denominated in. Minor units: USD = cents, XRP = drops, RLUSD = millionths.
+enum PriceCurrency {
+  USD
+  XRP
+  RLUSD
+}
+
+/// Which card-processing rates apply to an event (see `src/fees.ts`).
+enum FeeRegion {
+  CARIBBEAN
+  CANADA
+}
+
+/// Who pays the platform fee on a fixed-price listing.
+///
+/// BUYER_PAYS_V1 is how every listing made so far works: the buyer pays the price plus the fee on top.
+/// SELLER_PAYS_V2 is the new model: the buyer pays exactly the price and the fee comes out of the
+/// seller's side. It is a property of the LISTING, frozen when it is created, because a listing already
+/// quoted to a buyer must settle to exactly what it said, whatever the rules become later.
+enum ListingFeeModel {
+  BUYER_PAYS_V1
+  SELLER_PAYS_V2
+}
+
 // ----------------------------------------------------------------- tickets --
 
 model Ticket {
@@ -638,6 +675,14 @@ model Ticket {
   /// — see ResalePolicy: percentage/face-value caps refuse resale on a null
   /// face value rather than silently treating it as unrestricted.
   faceValueDrops BigInt?
+
+  /// The full ALL-IN amount the first buyer paid (price + fan fee + card processing), in the minor units
+  /// of `originalCostCurrency`. This is the resale cap under the fee model: nobody may resell for more
+  /// than was paid. NULL on tickets sold before it existed (their cap stays whatever the event's policy
+  /// said) and on tickets never sold (a comp or gift: nothing was paid, and under the new model that
+  /// means no resale for money). Set together with `originalCostCurrency`, never one alone.
+  originalCostMinor    BigInt?
+  originalCostCurrency PriceCurrency?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -848,6 +893,15 @@ model Listing {
   /// later config change cannot alter the terms a buyer already saw.
   platformFeeDrops BigInt @default(0)
 
+  /// Who pays `platformFeeDrops` on this listing. Frozen at creation (see `ListingFeeModel`). Every
+  /// listing made before this existed is BUYER_PAYS_V1 by the column default, which is exactly how it
+  /// was quoted and how it settles.
+  feeModel ListingFeeModel @default(BUYER_PAYS_V1)
+
+  /// The fee rate in basis points that produced `platformFeeDrops`, kept for audit. NULL on
+  /// BUYER_PAYS_V1 rows, whose rate was the event's `platformBps` at the time.
+  feeBps Int?
+
   // Phase 1 — the seller's sell offer.
   listPayloadUuid String  @unique
   listTxHash      String?
@@ -917,6 +971,10 @@ enum ListingStatus {
 
 model Auction {
   id String @id @default(uuid())
+
+  /// The platform fee rate (basis points) this auction settles at, frozen when it opens. NULL on auctions
+  /// opened before this existed, which settle at the event's `platformBps` as they always did.
+  feeBps Int?
 
   network XrplNetwork
 
