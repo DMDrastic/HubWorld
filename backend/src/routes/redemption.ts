@@ -26,7 +26,7 @@ import { z } from 'zod'
 import { prisma } from '../prisma.js'
 import { NETWORK } from '../network.js'
 import { xamanMode } from '../env.js'
-import { tryGetPayload, xaman, SIGNIN_TTL_MINUTES } from '../xaman.js'
+import { tryGetPayload, signing, SIGNIN_TTL_MINUTES } from '../signing.js'
 import { issuesOf, slugSchema } from '../schemas.js'
 import { requireAuth } from '../session.js'
 import { checkDoorAccess } from '../door-access.js'
@@ -78,7 +78,7 @@ redemptionRouter.post('/events/:slug/checkin', requireAuth, async (req, res) => 
 
   // No force_network: SignIn is a pseudo-transaction, never submitted, so it
   // costs nothing and works for a holder whose wallet is unfunded.
-  const payload = await xaman.createSignInPayload({ flow: 'DOOR_CHECKIN' })
+  const payload = await signing.createSignInPayload({ flow: 'DOOR_CHECKIN' })
   const expiresAt = new Date(Date.now() + CHECKIN_TTL_MS)
 
   const redemption = await prisma.redemption.create({

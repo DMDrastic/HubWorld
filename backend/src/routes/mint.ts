@@ -18,7 +18,7 @@ import { z } from 'zod'
 import { prisma } from '../prisma.js'
 import { NETWORK } from '../network.js'
 import { brokerMode, xamanMode } from '../env.js'
-import { tryGetPayload, xaman, SIGNIN_TTL_MINUTES } from '../xaman.js'
+import { tryGetPayload, signing, SIGNIN_TTL_MINUTES } from '../signing.js'
 import { issuesOf, slugSchema } from '../schemas.js'
 import { requireAuth, requireOrganizer } from '../session.js'
 import {
@@ -156,7 +156,7 @@ mintRouter.post('/events/:slug/mint', requireAuth, requireOrganizer, async (req,
     return
   }
 
-  const payload = await xaman.createPayload(txjson as unknown as Record<string, unknown>, {
+  const payload = await signing.createPayload(txjson as unknown as Record<string, unknown>, {
     flow: 'MINT',
     userId: req.userId!,
     expireMinutes: MINT_TTL_MINUTES,

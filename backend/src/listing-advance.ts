@@ -16,7 +16,7 @@
 import { prisma } from './prisma.js'
 import { NETWORK } from './network.js'
 import { withLock } from './job-lock.js'
-import { tryGetPayload } from './xaman.js'
+import { tryGetPayload } from './signing.js'
 import { brokerSale, offerIndexFromTx, spendableDrops, txSucceeded } from './ledger.js'
 import { releaseHold } from './primary-sale.js'
 import { defaultPrimarySaleLedger } from './primary-sale-ledger.js'

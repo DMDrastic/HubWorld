@@ -19,7 +19,7 @@ import { z } from 'zod'
 import { prisma } from '../prisma.js'
 import { NETWORK } from '../network.js'
 import { xamanMode } from '../env.js'
-import { tryGetPayload, xaman, SIGNIN_TTL_MINUTES } from '../xaman.js'
+import { tryGetPayload, signing, SIGNIN_TTL_MINUTES } from '../signing.js'
 import { issuesOf, usernameSchema } from '../schemas.js'
 import { requireAuth } from '../session.js'
 import { ON_LEDGER_STATES, mayExpire } from '../gift-policy.js'
@@ -150,7 +150,7 @@ giftsRouter.post('/tickets/:nfTokenId/gift', requireAuth, async (req, res) => {
     return
   }
 
-  const payload = await xaman.createPayload(txjson as unknown as Record<string, unknown>, {
+  const payload = await signing.createPayload(txjson as unknown as Record<string, unknown>, {
     flow: 'GIFT_OFFER',
     userId: me.id,
     expireMinutes: GIFT_TTL_MINUTES,
@@ -212,7 +212,7 @@ giftsRouter.post('/gifts/:id/accept', requireAuth, async (req, res) => {
   // here would only push the recipient to accept in Xaman instead, where we
   // would never observe it.
 
-  const payload = await xaman.createPayload(
+  const payload = await signing.createPayload(
     buildAcceptOfferTx({
       accepterAddress: gift.toAddress,
       offerIndex: gift.offerIndex,
@@ -283,7 +283,7 @@ giftsRouter.post('/gifts/:id/cancel', requireAuth, async (req, res) => {
     return
   }
 
-  const payload = await xaman.createPayload(
+  const payload = await signing.createPayload(
     buildCancelOfferTx({
       ownerAddress: gift.fromAddress,
       offerIndex: gift.offerIndex,

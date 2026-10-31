@@ -28,7 +28,8 @@
 import { prisma } from './prisma.js'
 import { webhookMode } from './env.js'
 import { NETWORK } from './network.js'
-import { XamanRateLimited, xaman, type PayloadStatus } from './xaman.js'
+import { XamanRateLimited } from './xaman.js'
+import { signing, type PayloadStatus } from './signing.js'
 
 /**
  * What every create branch below has to supply, because both columns are
@@ -41,7 +42,7 @@ import { XamanRateLimited, xaman, type PayloadStatus } from './xaman.js'
  * a signal, and a fabricated one is noise in the exact figure this is for.
  */
 function provenance() {
-  return { network: NETWORK, signer: xaman.mode === 'live' ? 'xaman' : 'stub' }
+  return { network: NETWORK, signer: signing.mode === 'live' ? 'xaman' : 'stub' }
 }
 
 /** A payload in a final state can never change, so it is safe to serve forever. */
@@ -61,7 +62,7 @@ export async function refreshPayload(
 ): Promise<PayloadStatus | null | 'unavailable'> {
   let status: PayloadStatus | null
   try {
-    status = await xaman.getPayload(uuid)
+    status = await signing.getPayload(uuid)
   } catch (err) {
     if (err instanceof XamanRateLimited) return 'unavailable'
     throw err
@@ -317,7 +318,7 @@ export async function cancelAbandonedPayloads(limit = 50, force = false): Promis
   for (const uuid of uuids) {
     if (resolved.has(uuid)) continue
     try {
-      if (await xaman.cancelPayload(uuid)) cancelled += 1
+      if (await signing.cancelPayload(uuid)) cancelled += 1
       // Record it as terminal either way: it is over, and a future poll should
       // not go asking Xaman about it.
       await prisma.xamanPayload.upsert({

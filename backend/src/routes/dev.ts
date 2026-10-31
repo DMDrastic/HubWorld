@@ -13,7 +13,7 @@
 import { Router } from 'express'
 import { z } from 'zod'
 import { env } from '../env.js'
-import { asStub, xaman } from '../xaman.js'
+import { asStub, signing } from '../signing.js'
 import { issuesOf, xrplAddressSchema } from '../schemas.js'
 
 export const devRouter = Router()
@@ -32,7 +32,7 @@ const SimulateBody = z.object({
  * money and identity check in the product if it ever ships live.
  */
 devRouter.post('/dev/payloads/:uuid/simulate', async (req, res) => {
-  const stub = asStub(xaman)
+  const stub = asStub(signing)
   if (!stub || env.NODE_ENV === 'production') {
     res.status(404).json({ error: 'Not found' })
     return
