@@ -16,6 +16,7 @@ import { delegationRouter } from './routes/delegation.js'
 import { bulkMintRouter } from './routes/bulk-mint.js'
 import { checkoutRouter } from './routes/checkout.js'
 import { claimRouter } from './routes/claim.js'
+import { walletRouter } from './routes/wallet.js'
 import { giftsRouter } from './routes/gifts.js'
 import { ticketsRouter } from './routes/tickets.js'
 import { listingsRouter } from './routes/listings.js'
@@ -139,6 +140,7 @@ export function createApp() {
   app.use('/api', delegationRouter)
   app.use('/api', bulkMintRouter)
   app.use('/api', checkoutRouter)
+  app.use('/api', walletRouter)
   // Not even registered unless switched on, so a disabled claim route is a path that does not exist.
   if (claimsEnabled) app.use('/api', claimRouter)
   app.use('/api', giftsRouter)

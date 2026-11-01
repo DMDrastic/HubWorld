@@ -10,9 +10,12 @@
  */
 import { StrictMode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { CheckoutDialog } from '@/components/CheckoutDialog'
-import type { EventSummary } from '@/lib/api'
+import { PolicyContext } from '@/lib/policy-context'
+import { reviewer } from '@/lib/sign-review-loader'
+import type { EventSummary, Policy } from '@/lib/api'
+import { WALLET, WithRuntime, fakeRuntime } from './fakeRuntime'
 
 const EVENT: EventSummary = {
   slug: 'neon-rooftop-session',
@@ -49,10 +52,10 @@ const listing = (state: string, extra: object = {}) => ({
   ...extra,
 })
 
-type Calls = { checkouts: number; polls: number }
+type Calls = { checkouts: number; polls: number; signatures: unknown[] }
 
-function mockApi(opts: { checkout?: unknown; checkoutStatus?: number; polls?: unknown[] }): Calls {
-  const c: Calls = { checkouts: 0, polls: 0 }
+function mockApi(opts: { checkout?: unknown; checkoutStatus?: number; polls?: unknown[]; checkouts?: Array<{ body: unknown; status: number }> }): Calls {
+  const c: Calls = { checkouts: 0, polls: 0, signatures: [] }
   vi.stubGlobal(
     'fetch',
     vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -61,8 +64,14 @@ function mockApi(opts: { checkout?: unknown; checkoutStatus?: number; polls?: un
       const json = (body: unknown, status = 200) =>
         new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
 
+      if (url.includes('/signatures/') && method === 'POST') {
+        c.signatures.push(JSON.parse(String(init?.body)))
+        return json({ txid: 'T'.repeat(64), replay: false }, 202)
+      }
       if (url.endsWith('/checkout') && method === 'POST') {
         c.checkouts += 1
+        const queued = opts.checkouts?.[Math.min(c.checkouts - 1, opts.checkouts.length - 1)]
+        if (queued) return json(queued.body, queued.status)
         return json(opts.checkout ?? CREATED, opts.checkoutStatus ?? 201)
       }
       if (method === 'GET' && /\/listings\/[^/]+$/.test(url)) {
@@ -220,5 +229,117 @@ describe('CheckoutDialog', () => {
     await vi.advanceTimersByTimeAsync(2600)
 
     expect(await screen.findByText(/the ledger rejected the bid/i)).toBeTruthy()
+  })
+})
+
+
+// ------------------------------------------------- a wallet the person owns --
+
+const BROKER = 'rBrokerAddress0000000000000000'
+const OWN_SIGN = { tx: { TransactionType: 'NFTokenCreateOffer', Account: WALLET.address }, hash: 'AB'.repeat(32), account: WALLET.address }
+const OWN_CREATED = { ...CREATED, qrPng: '', next: '', sign: OWN_SIGN }
+const review = vi.fn()
+
+function renderOwn(over: { onSold?: () => void } = {}) {
+  const runtime = fakeRuntime()
+  render(
+    <StrictMode>
+      <PolicyContext.Provider value={{ platformBps: 250, maxRoyaltyBps: 2000, brokerAddress: BROKER } as Policy}>
+        <WithRuntime runtime={runtime}>
+          <CheckoutDialog event={EVENT} open signedIn onOpenChange={vi.fn()} onSold={over.onSold ?? vi.fn()} />
+        </WithRuntime>
+      </PolicyContext.Provider>
+    </StrictMode>,
+  )
+  return runtime
+}
+
+describe('CheckoutDialog with a wallet the person owns', () => {
+  beforeEach(() => {
+    vi.spyOn(reviewer, 'load').mockResolvedValue({ reviewSignRequest: (...a: unknown[]) => review(...a) } as never)
+    review.mockResolvedValue({ ok: true, title: 'Buy 1 ticket to Neon Rooftop Session for 25.625 XRP', lines: ['You pay 25.625 XRP.'] })
+  })
+  afterEach(() => review.mockReset())
+
+  it('shows the plain-words approval instead of a QR, checked against the price the buyer was shown', async () => {
+    mockApi({ checkout: OWN_CREATED })
+    renderOwn()
+    await press()
+
+    expect(await screen.findByText('Buy 1 ticket to Neon Rooftop Session for 25.625 XRP')).toBeTruthy()
+    expect(screen.queryByAltText(/purchase qr/i)).toBeNull()
+    expect(screen.queryByText(/scan in xaman/i)).toBeNull()
+    // The review was told exactly what this page showed: the all-in amount from the checkout, and the event.
+    expect(review).toHaveBeenCalledWith(
+      OWN_SIGN,
+      expect.objectContaining({ broker: BROKER, action: { kind: 'buy', amountDrops: '25625000', label: 'Neon Rooftop Session' } }),
+    )
+  })
+
+  it('approving sends the signature, waits for the network, and then walks to sold like any purchase', async () => {
+    const onSold = vi.fn()
+    const calls = mockApi({ checkout: OWN_CREATED, polls: [listing('buyer_pending'), listing('sold')] })
+    const runtime = renderOwn({ onSold })
+    await press()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Approve' }))
+    await waitFor(() => expect(calls.signatures).toEqual([{ signature: 'ab'.repeat(64) }]))
+    expect(runtime.calls.signHash).toEqual([[WALLET.address, OWN_SIGN.hash]])
+    expect(await screen.findByText(/approved\. waiting for the network/i)).toBeTruthy()
+
+    await vi.advanceTimersByTimeAsync(2600)
+    await vi.advanceTimersByTimeAsync(2600)
+    expect(await screen.findByText(/the ticket is yours/i)).toBeTruthy()
+    await waitFor(() => expect(onSold).toHaveBeenCalled())
+  })
+
+  it('a refused review leaves no way to approve', async () => {
+    review.mockResolvedValue({ ok: false, reason: 'The amount is not what was shown to you, so we won’t ask you to approve it.' })
+    const calls = mockApi({ checkout: OWN_CREATED })
+    renderOwn()
+    await press()
+    expect(await screen.findByText(/not what was shown to you/i)).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Approve' })).toBeNull()
+    expect(calls.signatures).toHaveLength(0)
+  })
+})
+
+describe('CheckoutDialog when the wallet cannot pay', () => {
+  const NEEDS = {
+    error: 'Your wallet needs more XRP before it can pay for this.',
+    code: 'WALLET_NEEDS_FUNDS',
+    address: 'rEmptyWallet000000000000000000',
+    network: 'testnet',
+    neededDrops: '27175000',
+    haveDrops: '0',
+    canFund: true,
+  }
+
+  it('shows the wallet\'s address and what it needs, instead of a bare error, and offers test XRP on testnet', async () => {
+    const calls = mockApi({ checkouts: [{ body: NEEDS, status: 409 }] })
+    renderDialog()
+    await press()
+
+    expect(await screen.findByText('rEmptyWallet000000000000000000')).toBeTruthy()
+    expect(screen.getByText(/needs about 27\.175 XRP/i)).toBeTruthy()
+    expect(screen.getByRole('button', { name: /get test xrp/i })).toBeTruthy()
+    expect(calls.checkouts).toBe(1)
+  })
+
+  it('on mainnet there is no test XRP button, only the instruction', async () => {
+    mockApi({ checkouts: [{ body: { ...NEEDS, network: 'mainnet', canFund: false }, status: 409 }] })
+    renderDialog()
+    await press()
+    expect(await screen.findByText(/send at least 27\.175 XRP to this address/i)).toBeTruthy()
+    expect(screen.queryByRole('button', { name: /get test xrp/i })).toBeNull()
+  })
+
+  it('"check again" starts the purchase again, and this time it goes through', async () => {
+    const calls = mockApi({ checkouts: [{ body: { ...NEEDS, network: 'mainnet', canFund: false }, status: 409 }, { body: CREATED, status: 201 }] })
+    renderDialog()
+    await press()
+    fireEvent.click(await screen.findByRole('button', { name: /check again/i }))
+    expect(await screen.findByAltText(/purchase qr/i)).toBeTruthy()
+    expect(calls.checkouts).toBe(2)
   })
 })

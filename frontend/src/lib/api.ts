@@ -74,12 +74,15 @@ export class ApiError extends Error {
   readonly code: string | undefined
   /** Set when the refusal points at something already under way (`IN_PROGRESS`). */
   readonly listingId: string | undefined
+  /** Everything else the server said about the refusal (e.g. which address to fund and how much). */
+  readonly details: Record<string, unknown> | undefined
 
-  constructor(message: string, status?: number, extra?: { code?: string; listingId?: string }) {
+  constructor(message: string, status?: number, extra?: { code?: string; listingId?: string; details?: Record<string, unknown> }) {
     super(message)
     this.status = status
     this.code = extra?.code
     this.listingId = extra?.listingId
+    this.details = extra?.details
   }
 }
 
@@ -150,14 +153,15 @@ async function request<T>(
     // even where the caller swallows the error.
     if (res.status === 401) reportAuthLost()
     // The API reports failures as { error, details? } — surface that, not a bare code.
-    const body = (await res.json().catch(() => null)) as {
+    const body = (await res.json().catch(() => null)) as ({
       error?: string
       code?: string
       listingId?: string
-    } | null
+    } & Record<string, unknown>) | null
     throw new ApiError(body?.error ?? `Backend returned ${res.status}`, res.status, {
       code: body?.code,
       listingId: body?.listingId,
+      details: body ?? undefined,
     })
   }
 
@@ -188,6 +192,13 @@ export const AuthUserSchema = z.object({
   displayName: z.string().nullable(),
   xrplAddress: z.string(),
 })
+
+export const SignBlockSchema = z.object({
+  tx: z.record(z.string(), z.unknown()),
+  hash: z.string(),
+  account: z.string(),
+})
+export type SignBlock = z.infer<typeof SignBlockSchema>
 
 export const SignInCreatedSchema = z.object({
   uuid: z.string(),
@@ -300,12 +311,6 @@ export function simulateSign(uuid: string, outcome: 'sign' | 'reject' = 'sign') 
  * carries the whole transaction so the page can show what is being approved, decode it, and work
  * out the hash for itself rather than trusting the one it is handed (see `lib/sign-review.ts`).
  */
-export const SignBlockSchema = z.object({
-  tx: z.record(z.string(), z.unknown()),
-  hash: z.string(),
-  account: z.string(),
-})
-export type SignBlock = z.infer<typeof SignBlockSchema>
 
 export const MintCreatedSchema = z.object({
   uuid: z.string(),
@@ -707,6 +712,8 @@ export const ListingCreatedSchema = z.object({
   uuid: z.string(),
   next: z.string(),
   qrPng: z.string(),
+  /** For a wallet the person owns: the transaction to approve in the browser, instead of a QR. */
+  sign: SignBlockSchema.optional(),
   mode: z.enum(['live', 'stub']),
   priceDrops: z.string().optional(),
   platformFeeDrops: z.string().optional(),
@@ -750,6 +757,8 @@ export const CheckoutCreatedSchema = z.object({
   uuid: z.string(),
   next: z.string(),
   qrPng: z.string(),
+  /** For a wallet the person owns: the transaction to approve in the browser, instead of a QR. */
+  sign: SignBlockSchema.optional(),
   mode: z.enum(['live', 'stub']),
   /** What the buyer signs for: the price plus the platform fee, in drops. */
   paysDrops: z.string(),
@@ -861,6 +870,8 @@ export const BidCreatedSchema = z.object({
   uuid: z.string(),
   next: z.string(),
   qrPng: z.string(),
+  /** For a wallet the person owns: the transaction to approve in the browser, instead of a QR. */
+  sign: SignBlockSchema.optional(),
   mode: z.enum(['live', 'stub']),
   amountDrops: z.string(),
   // What the bid leaves spendable, once the reserve its own offer locks is
@@ -903,6 +914,8 @@ export const AuctionOpenedSchema = z.object({
   uuid: z.string(),
   next: z.string(),
   qrPng: z.string(),
+  /** For a wallet the person owns: the transaction to approve in the browser, instead of a QR. */
+  sign: SignBlockSchema.optional(),
   mode: z.enum(['live', 'stub']),
   reserveDrops: z.string(),
   sellOfferDrops: z.string(),
@@ -1061,6 +1074,11 @@ export const PolicySchema = z.object({
   signers: z.array(z.enum(['xaman', 'privy'])).optional(),
   /** Public. Present only when Privy is switched on. */
   privyAppId: z.string().optional(),
+  /** HubWorld's broker account: the only one an offer may be restricted to. The signing review checks against it. */
+  brokerAddress: z.string().optional(),
+  /** The US$5 resale floor in drops at today's XRP price; absent while no usable price exists. */
+  minResaleDrops: z.string().optional(),
+  resaleFloorAvailable: z.boolean().optional(),
   /** Which fee model new sales use. Absent from a server that predates it, which behaves as v1. */
   feeModel: z.enum(['v1', 'v2']).optional(),
   /**
@@ -1281,4 +1299,51 @@ export function purgeLegacyToken(): void {
   } catch {
     // Private-mode browsers can throw on storage access; nothing to do.
   }
+}
+
+// ----------------------------------------------------------------- wallet --
+
+export const WalletStatusSchema = z.object({
+  address: z.string(),
+  network: z.string(),
+  /** Null: the ledger could not be read. That is not the same as "empty". */
+  exists: z.boolean().nullable(),
+  balanceDrops: z.string().optional(),
+  spendableDrops: z.string().optional(),
+  /** The least a wallet must hold for its account to exist at all. */
+  activationDrops: z.string(),
+  /** Free test XRP is offered here. True on the test network only. */
+  canFund: z.boolean(),
+  signer: z.enum(['PRIVY', 'XAMAN']),
+})
+export type WalletStatus = z.infer<typeof WalletStatusSchema>
+
+export function fetchWalletStatus(): Promise<WalletStatus> {
+  return request('/wallet/status', WalletStatusSchema)
+}
+
+export const FaucetResultSchema = z.object({ ok: z.literal(true), amountXrp: z.number() })
+
+/** Ask for free test XRP for the signed-in wallet. Test network only; the server decides, not this page. */
+export function fundWallet(): Promise<z.infer<typeof FaucetResultSchema>> {
+  return request('/wallet/fund', FaucetResultSchema, { method: 'POST' })
+}
+
+/** What a refusal for "your wallet needs XRP" carries, read from the error. Null if it is some other refusal. */
+export type WalletNeedsFunds = {
+  address: string
+  network: string
+  neededDrops: string
+  haveDrops: string
+  canFund: boolean
+}
+export function walletNeedsFunds(err: unknown): WalletNeedsFunds | null {
+  if (!(err instanceof ApiError) || err.code !== 'WALLET_NEEDS_FUNDS') return null
+  const d = err.details ?? {}
+  const str = (v: unknown) => (typeof v === 'string' ? v : null)
+  const address = str(d.address)
+  const neededDrops = str(d.neededDrops)
+  const haveDrops = str(d.haveDrops)
+  if (!address || !neededDrops || !haveDrops) return null
+  return { address, network: str(d.network) ?? '', neededDrops, haveDrops, canFund: d.canFund === true }
 }

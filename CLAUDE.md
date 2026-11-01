@@ -990,6 +990,35 @@ signing. That endpoint is double-guarded (stub-mode only, and never when
 `NODE_ENV=production`); the server refuses to boot at all in stub mode under
 production. Going live is only setting the two env vars.
 
+## Privy signs every holder action
+
+A wallet the person owns (Privy) is the default signer for everything a ticket holder does on the ledger: buying at the box
+office, listing, withdrawing, opening an auction, bidding and buying a resale. Xaman stays as "connect your own wallet". The
+server decides which by the user's wallet (`signingFor`), never by a global setting, and a Privy user is never silently handed a
+Xaman request.
+
+- **One list.** `src/privy-flows.ts` is the only place that says what a Privy wallet may be asked to sign: each action is pinned to
+  its transaction type, and each offer to its side (a listing or auction opening is a SELL offer; a purchase or bid is a BUY offer
+  and the amount must be positive drops; every offer must name HubWorld's broker, so none can be taken directly). `signing.ts`
+  routes by it and `privy-signing.ts` checks every request against it, so the two cannot drift. Gifts, the door and sign-in are not
+  on it and say so rather than falling back to Xaman.
+- **Same custody rule as the organizer flow.** The server builds and stores the unsigned transaction with a bounded
+  `LastLedgerSequence`; the browser returns only a signature; the server checks the key is the user's own wallet and equals the
+  transaction's `Account`, then submits once.
+- **The browser reads what it signs.** `lib/sign-review.ts` decodes the transaction, recomputes the hash itself and refuses on
+  mismatch, and checks it against what the PAGE asked for: the amount of a purchase or bid must equal the price shown or the number
+  typed, a listing may keep back a fee of at most a tenth but never ask for more than the price, and the destination must be the
+  broker as `/api/policy` reports it (never the request's word). A reply from the server is never what a review is checked against.
+- **A wallet starts empty.** Buying checks the wallet first (`wallet-funds.ts`): price + the offer's own reserve + fee headroom
+  (+ the 1 XRP base reserve if the account does not exist yet), and answers `409 WALLET_NEEDS_FUNDS` with the address and the amount,
+  before anything is held or signed. `POST /api/wallet/fund` gives free test XRP on **testnet only** (the route does not exist
+  elsewhere; limited per person per day under a lock). On mainnet the screen shows the address and the amount and no button.
+- **The Privy host sits beside the page.** `WithSigner` loads it lazily and it reports its runtime upward, so loading it never
+  remounts the app. Email sign-in is offered wherever a visitor can sign in, and nothing is drawn when the deployment has it off.
+
+Verified on the real testnet by `scripts/privy-actions-check.ts`: a list, a buy and a withdrawal signed by a key the server never
+holds, a brokered sale paid out to the drop, and the refusals.
+
 ## Sessions
 
 Session tokens are SHA-256 hashed at rest with a 7-day expiry, and are delivered

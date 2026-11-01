@@ -392,7 +392,8 @@ describe('choosing the signer', () => {
 
   it('refuses, in words, what a Privy user cannot do yet, rather than asking Xaman', async () => {
     const who = await privyUser('s')
-    for (const flow of ['LISTING_CREATE', 'LISTING_BUY', 'GIFT_OFFER', 'AUCTION_BID', 'AUCTION_OPEN'] as const) {
+    // Listing, buying and bidding are built now (see privy-actions.test.ts); gifts are not.
+    for (const flow of ['GIFT_OFFER', 'GIFT_ACCEPT', 'GIFT_CANCEL'] as const) {
       await expect(signingFor(who.id, flow)).rejects.toBeInstanceOf(SignerNotSupported)
     }
   })

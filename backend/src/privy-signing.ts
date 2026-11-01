@@ -21,6 +21,7 @@ import { deriveAddress, encode, encodeForSigning, verifySignature } from 'xrpl'
 import { prisma } from './prisma.js'
 import { NETWORK } from './network.js'
 import { ledger } from './ledger.js'
+import { checkFlowTx } from './privy-flows.js'
 import type { CreatedPayload, PayloadAttribution, PayloadOptions, PayloadStatus, SigningProvider } from './signing.js'
 
 /**
@@ -134,6 +135,10 @@ async function createRequest(txjson: Record<string, unknown>, opts: PayloadOptio
   if (txjson.Account !== wallet.xrplAddress) {
     throw new SigningRequestRefused('That transaction is not for your account.')
   }
+  // And it must be the kind of transaction THIS action is for, on the right side of an offer: a bid that is secretly a
+  // sell offer would give a ticket away for the amount. The routes build these correctly; this is the second lock.
+  const wrong = checkFlowTx(opts.flow, txjson)
+  if (wrong) throw new SigningRequestRefused(wrong)
   for (const forbidden of ['TxnSignature', 'Signers', 'Delegate'] as const) {
     if (forbidden in txjson) throw new SigningRequestRefused(`A transaction to sign cannot already contain ${forbidden}.`)
   }

@@ -3,16 +3,19 @@
  *
  * Only ever imported through `React.lazy` (see `WithSigner`), so Privy and its dependencies are
  * a separate chunk fetched on demand. Do not import this file from anywhere else.
+ *
+ * It does not wrap the page: it is loaded beside it and reports the runtime upward (see `WithSigner`).
  */
-import { useCallback, useLayoutEffect, useMemo, useRef, type ReactNode } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from 'react'
 import { PrivyProvider, getIdentityToken, usePrivy } from '@privy-io/react-auth'
 import { useCreateWallet, useSignRawHash } from '@privy-io/react-auth/extended-chains'
-import { SignerRuntimeContext, type SignerRuntime } from '@/lib/signer-runtime'
+import type { SignerRuntime } from '@/lib/signer-runtime'
 import { findOrCreateWallet, firstXrplWallet as xrplWalletOf } from '@/lib/wallet-lookup'
 
 type LinkedWallet = { type?: string; chainType?: string; address?: string; publicKey?: string; public_key?: string }
 
-function Bridge({ children }: { children: ReactNode }) {
+/** Reads the Privy hooks and reports the app-facing runtime upward. Draws nothing. */
+function Bridge({ onRuntime }: { onRuntime: (r: SignerRuntime) => void }) {
   const { ready, authenticated, login, logout, user, getAccessToken } = usePrivy()
   const { createWallet } = useCreateWallet()
   const { signRawHash } = useSignRawHash()
@@ -65,10 +68,14 @@ function Bridge({ children }: { children: ReactNode }) {
     [ready, authenticated, walletAddress, login, getTokens, ensureWallet, signHash, logout],
   )
 
-  return <SignerRuntimeContext.Provider value={runtime}>{children}</SignerRuntimeContext.Provider>
+  useEffect(() => {
+    onRuntime(runtime)
+  }, [runtime, onRuntime])
+
+  return null
 }
 
-export default function PrivyRuntime({ appId, children }: { appId: string; children: ReactNode }) {
+export default function PrivyRuntime({ appId, onRuntime }: { appId: string; onRuntime: (r: SignerRuntime) => void }) {
   return (
     <PrivyProvider
       appId={appId}
@@ -78,7 +85,7 @@ export default function PrivyRuntime({ appId, children }: { appId: string; child
         embeddedWallets: { ethereum: { createOnLogin: 'off' }, solana: { createOnLogin: 'off' } },
       }}
     >
-      <Bridge>{children}</Bridge>
+      <Bridge onRuntime={onRuntime} />
     </PrivyProvider>
   )
 }

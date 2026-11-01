@@ -1,13 +1,18 @@
 /**
- * Loads the Privy runtime around its children, only when it is both switched on and wanted here.
+ * Loads the Privy host beside the page, only when it is both switched on and wanted.
  *
- * `enabled` is decided by the caller from the server's policy and from who is looking: it is true
- * on the organizer area, and only when the deployment offers email sign-in. When it is false this
- * is a pass-through and the Privy chunk is never requested.
+ * `enabled` is decided by the caller from the server's policy. When it is false this is a pass-through and the Privy chunk is
+ * never requested.
+ *
+ * The host is a SIBLING, not a wrapper. It reports its runtime upward into the context the rest of the app reads, so the page's
+ * own tree is the same one before and after the chunk arrives: nothing under it remounts, and whatever a person had typed or
+ * opened is kept. (A provider that wraps the page changes the page's parent when it loads, and React treats a new parent as a
+ * new tree.) Until the host reports, the page simply sees no runtime and does not offer the email option.
  */
-import { lazy, Suspense, type ReactNode } from 'react'
+import { lazy, Suspense, useState, type ReactNode } from 'react'
+import { SignerRuntimeContext, type SignerRuntime } from '@/lib/signer-runtime'
 
-const PrivyRuntime = lazy(() => import('@/components/PrivyRuntime'))
+const PrivyHost = lazy(() => import('@/components/PrivyRuntime'))
 
 export function WithSigner({
   enabled,
@@ -18,12 +23,15 @@ export function WithSigner({
   appId: string | undefined
   children: ReactNode
 }) {
-  if (!enabled || !appId) return <>{children}</>
-  // Until the chunk arrives the children render without a runtime, so the email option simply is
-  // not there yet rather than the page waiting on it.
+  const [runtime, setRuntime] = useState<SignerRuntime | null>(null)
   return (
-    <Suspense fallback={children}>
-      <PrivyRuntime appId={appId}>{children}</PrivyRuntime>
-    </Suspense>
+    <SignerRuntimeContext.Provider value={runtime}>
+      {children}
+      {enabled && appId && (
+        <Suspense fallback={null}>
+          <PrivyHost appId={appId} onRuntime={setRuntime} />
+        </Suspense>
+      )}
+    </SignerRuntimeContext.Provider>
   )
 }

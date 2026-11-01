@@ -16,7 +16,8 @@ import { Router } from 'express'
 import { z } from 'zod'
 import { prisma } from '../prisma.js'
 import { NETWORK } from '../network.js'
-import { env, doorTokenMode, feeModelV2, looseResalePolicies, privyMode, signersEnabled } from '../env.js'
+import { brokerMode, env, doorTokenMode, feeModelV2, looseResalePolicies, privyMode, signersEnabled } from '../env.js'
+import { platformAddress } from '../ledger.js'
 import { currentMinimumResaleDrops } from '../listing-terms.js'
 import { issuesOf, slugSchema } from '../schemas.js'
 import { requireAdmin, requireAuth, requireOrganizer } from '../session.js'
@@ -482,6 +483,15 @@ organizersRouter.post('/events', requireAuth, requireOrganizer, async (req, res)
 })
 
 /** GET /api/policy — the terms a would-be organizer needs to see up front. */
+function brokerOrUndefined(): string | undefined {
+  if (brokerMode !== 'live') return undefined
+  try {
+    return platformAddress()
+  } catch {
+    return undefined
+  }
+}
+
 organizersRouter.get('/policy', async (_req, res) => {
   // Only under the new model, which is the only one with a floor. `null`: there is no usable XRP price right now.
   const floor = feeModelV2 ? await currentMinimumResaleDrops() : undefined
@@ -496,6 +506,10 @@ organizersRouter.get('/policy', async (_req, res) => {
     // Privy is actually on, so a deploy with the flag off reveals nothing and offers nothing.
     signers: [...signersEnabled],
     privyAppId: privyMode === 'live' ? env.PRIVY_APP_ID : undefined,
+    // HubWorld's broker: the only account an offer may be restricted to. Public (every offer on the ledger names it); the
+    // browser checks what it is asked to sign against it, so a server that was wrong or hostile about it could not slip an
+    // offer to someone else past the review.
+    brokerAddress: brokerOrUndefined(),
     // Which fee model new sales use, and whether the resale policies that allow more than was paid are still
     // offered, so the organizer form shows only choices that will be honoured.
     feeModel: feeModelV2 ? 'v2' : 'v1',

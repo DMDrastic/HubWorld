@@ -28,8 +28,9 @@ import { brokerMode, xamanMode } from './env.js'
 import { currentDelegate } from './delegate-account.js'
 import { buildBuyOfferTx, buildSellOfferTx, platformAddress, platformFeeDrops, XAMAN_NETWORK } from './ledger.js'
 import { firstSaleQuote } from './listing-terms.js'
-import { tryGetPayload, signing, signingFor } from './signing.js'
+import { tryGetPayload, signing, signingFor, type CreatedPayload } from './signing.js'
 import { evaluateSoldOut } from './auction-policy.js'
+import { privyBuyerShortfall } from './wallet-funds.js'
 import { withOrganizerLease } from './organizer-lease.js'
 import type { PrimarySaleLedger, DelegatedOffer } from './primary-sale-ledger.js'
 import { HOLD_MS, checkSellOffer, checkoutRoom, holdReclaimable } from './primary-sale-policy.js'
@@ -52,11 +53,13 @@ export type CheckoutOutcome =
       uuid: string
       next: string
       qrPng: string
+      /** For a wallet the buyer owns: the transaction to approve in their browser, instead of a QR. */
+      sign?: CreatedPayload['sign']
       mode: 'live' | 'stub'
       paysDrops: string
       expiresAt: string
     }
-  | { kind: 'refused'; status: number; error: string; code?: string; listingId?: string }
+  | { kind: 'refused'; status: number; error: string; code?: string; listingId?: string; details?: Record<string, unknown> }
 
 const refuse = (status: number, error: string, code?: string, listingId?: string): CheckoutOutcome => ({
   kind: 'refused',
@@ -266,6 +269,15 @@ export async function startCheckout(input: {
   const quote = firstSaleQuote({ priceDrops: event.primaryPriceDrops, event, organizerFounding: event.organizer.foundingOrganizer })
   const feeDrops = quote.feeDrops
 
+  // A Privy wallet starts empty, and an account does not even exist until it holds the base reserve. Say so now, in words
+  // and with the address to fill, BEFORE a ticket is held or an offer made, rather than after the person has approved a
+  // payment that cannot go through. (A Xaman buyer sees their own balance in Xaman and is not asked here.)
+  const short = await privyBuyerShortfall(buyer.id, event.primaryPriceDrops + feeDrops)
+  if (short) {
+    const { error, code, ...details } = short
+    return { kind: 'refused', status: 409, error, code, details }
+  }
+
   // ---- claim a ticket the organizer really still holds --------------------
   let claim: Awaited<ReturnType<typeof claimTicket>> = null
   for (let attempt = 0; attempt < CLAIM_ATTEMPTS; attempt++) {
@@ -411,6 +423,7 @@ export async function startCheckout(input: {
     uuid: payload.uuid,
     next: payload.next,
     qrPng: payload.qrPng,
+    sign: payload.sign,
     mode: xamanMode,
     paysDrops: owed.toString(),
     expiresAt: expiresAt.toISOString(),

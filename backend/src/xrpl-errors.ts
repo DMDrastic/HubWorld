@@ -24,6 +24,16 @@ export function isEntryNotFound(err: unknown): boolean {
   return code === 'entryNotFound' || /entryNotFound|entry not found/i.test(err.message)
 }
 
+/**
+ * Whether a failed `account_info` means "this account does not exist (yet)", as opposed to the node being unreachable.
+ * A brand-new wallet has no account on the ledger until it holds the base reserve, which is normal, not a failure.
+ */
+export function isAccountNotFound(err: unknown): boolean {
+  if (!(err instanceof Error)) return false
+  const code = (err as { data?: { error?: unknown } }).data?.error
+  return code === 'actNotFound' || /actNotFound|account not found/i.test(err.message)
+}
+
 /** A public node refusing us for asking too much, which is a reason to wait, not to fail. */
 export function isRateLimited(err: unknown): boolean {
   if (!(err instanceof Error)) return false
