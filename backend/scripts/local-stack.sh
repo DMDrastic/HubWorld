@@ -5,8 +5,8 @@
 #   scripts/local-stack.sh start     start both, in the background (logs in ~/.hubworld-local/)
 #   scripts/local-stack.sh stop      stop both (only the processes this script started)
 #   scripts/local-stack.sh status    what is running, and the backend's health
-#   scripts/local-stack.sh event     create an event you can buy a ticket to: 5 real tickets at 10 XRP
-#                                    (--tickets N --price X to change)
+#   scripts/local-stack.sh event     create an event you can buy a ticket to: 5 real tickets at US$12.50
+#                                    (--tickets N --price X to change; X in US$)
 #   scripts/local-stack.sh recipient create|accept   a stand-in gift recipient for the Privy end-to-end test
 #
 # Run from backend/. What it reads, none of it in the repo:

@@ -346,6 +346,12 @@ const CreateEventBody = z
       .string()
       .regex(/^[1-9][0-9]{0,17}$/, 'primaryPriceDrops must be a positive integer string of drops')
       .optional(),
+    // The box-office price in US cents: the canonical price since 2026-11-01 (XRP is worked out only when someone pays).
+    // One currency or the other, never both.
+    primaryPriceUsdCents: z
+      .string()
+      .regex(/^[1-9][0-9]{0,11}$/, 'primaryPriceUsdCents must be a positive whole number of US cents')
+      .optional(),
     // How people are let in. Absent: the Xaman signature door, always. The code
     // door is faster but proves less (a session, not a wallet key), so an
     // organizer opts into it knowingly; it is never what an event drifts into.
@@ -358,6 +364,17 @@ const CreateEventBody = z
       .optional(),
   })
   .superRefine((data, ctx) => {
+    if (data.primaryPriceUsdCents !== undefined && data.primaryPriceDrops !== undefined) {
+      ctx.addIssue({ code: 'custom', path: ['primaryPriceUsdCents'], message: 'Set the price in US$ or in XRP, not both' })
+    }
+    // A fixed cap is still a number of XRP, and a US$ price cannot be compared with it until resale is priced in US$.
+    if (data.primaryPriceUsdCents !== undefined && data.resalePolicy === 'FIXED_CAP') {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['resalePolicy'],
+        message: 'A fixed resale cap is not available with a US$ price yet. Use a percentage cap (100% = face value).',
+      })
+    }
     const needs = { PERCENTAGE_CAP: 'resaleCapBps', FIXED_CAP: 'resaleCapDrops' } as const
     for (const [policy, field] of Object.entries(needs)) {
       const has = field === 'resaleCapBps' ? data.resaleCapBps !== undefined : data.resaleCapDrops !== undefined
@@ -462,6 +479,9 @@ organizersRouter.post('/events', requireAuth, requireOrganizer, async (req, res)
       resaleCapBps: data.resaleCapBps ?? null,
       resaleCapDrops: data.resaleCapDrops ? BigInt(data.resaleCapDrops) : null,
       primaryPriceDrops: data.primaryPriceDrops ? BigInt(data.primaryPriceDrops) : null,
+      ...(data.primaryPriceUsdCents
+        ? { primaryPriceMinor: BigInt(data.primaryPriceUsdCents), primaryPriceCurrency: 'USD' as const }
+        : {}),
       doorMode,
       // Left to the column defaults (the pilot's zone and region) when the organizer says nothing.
       ...(data.timeZone ? { timeZone: data.timeZone } : {}),
@@ -482,6 +502,8 @@ organizersRouter.post('/events', requireAuth, requireOrganizer, async (req, res)
     resaleCapBps: event.resaleCapBps,
     resaleCapDrops: event.resaleCapDrops?.toString() ?? null,
     primaryPriceDrops: event.primaryPriceDrops?.toString() ?? null,
+    primaryPriceMinor: event.primaryPriceMinor?.toString() ?? null,
+    primaryPriceCurrency: event.primaryPriceCurrency,
   })
 })
 

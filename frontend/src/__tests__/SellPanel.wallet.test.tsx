@@ -14,6 +14,7 @@ import { PolicyContext } from '@/lib/policy-context'
 import { reviewer } from '@/lib/sign-review-loader'
 import type { Policy } from '@/lib/api'
 import { WALLET, WithRuntime, fakeRuntime, json } from './fakeRuntime'
+import { priced } from './usd'
 
 const BROKER = 'rBrokerAddress0000000000000000'
 const NFT = '2222222222222222222222222222222222222222222222222222222222222222'
@@ -25,7 +26,8 @@ const TICKET = {
   canAuction: true, auctionBlockedReason: null, faceValueDrops: null, resaleAllowed: true,
   maxListingPriceDrops: null, maxAuctionReserveDrops: null, resaleBlockedReason: null,
 }
-const listing = (over: Record<string, unknown> = {}) => ({
+// US$ beside each amount, as the server sends it with a fresh price: fans see US$ only.
+const listing = (over: Record<string, unknown> = {}) => priced({
   listingId: 'cccccccc-1111-4222-8333-444444444444', state: 'active',
   priceDrops: '10000000', platformFeeDrops: '500000', buyerPaysDrops: '10000000', feeModel: 'SELLER_PAYS_V2',
   seller: '@ayo', buyer: null,
@@ -152,7 +154,7 @@ describe('buying from the marketplace', () => {
     // The server's reply claims a different "paysDrops": it is never what the review is told.
     mockApi({ 'POST .*/buy$': () => json(created({ paysDrops: '99000000' }), 201) }, { market: [listing()] })
     mount()
-    fireEvent.click(await screen.findByRole('button', { name: /^Buy Neon Rooftop Session for 10 XRP$/ }))
+    fireEvent.click(await screen.findByRole('button', { name: /^Buy Neon Rooftop Session for US\$10\.00$/ }))
     expect(await screen.findByText('A plain summary')).toBeTruthy()
     expect(review).toHaveBeenCalledWith(
       SIGN(),
@@ -169,7 +171,7 @@ describe('buying from the marketplace', () => {
       { market: [listing()] },
     )
     mount()
-    fireEvent.click(await screen.findByRole('button', { name: /^Buy Neon Rooftop Session for 10 XRP$/ }))
+    fireEvent.click(await screen.findByRole('button', { name: /^Buy Neon Rooftop Session for US\$10\.00$/ }))
     expect(await screen.findByText('rEmptyWallet000000000000000000')).toBeTruthy()
     expect(screen.getByText(/needs about 11\.3 XRP/i)).toBeTruthy()
     expect(screen.getByRole('button', { name: /get test xrp/i })).toBeTruthy()
@@ -189,7 +191,7 @@ describe('buying from the marketplace', () => {
       { market: [listing()] },
     )
     mount()
-    fireEvent.click(await screen.findByRole('button', { name: /^Buy Neon Rooftop Session for 10 XRP$/ }))
+    fireEvent.click(await screen.findByRole('button', { name: /^Buy Neon Rooftop Session for US\$10\.00$/ }))
     fireEvent.click(await screen.findByRole('button', { name: /check again/i }))
     expect(await screen.findByText('A plain summary')).toBeTruthy()
     expect(calls.filter((c) => c.includes('/buy'))).toHaveLength(2)

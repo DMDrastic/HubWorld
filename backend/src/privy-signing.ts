@@ -145,7 +145,10 @@ async function createRequest(txjson: Record<string, unknown>, opts: PayloadOptio
 
   const prepared = await port.autofill({ ...txjson, SigningPubKey: wallet.publicKey })
   // Set explicitly, always: this is what makes a stale approval expire rather than wait.
-  prepared.LastLedgerSequence = (await port.currentLedger()) + SIGN_WINDOW_LEDGERS
+  // A shorter deadline when the caller has one (a quoted XRP price stands for two minutes): about three seconds a ledger,
+  // never longer than the usual window. The request's own expiry below ends with it too.
+  const window = opts.expireMinutes ? Math.min(SIGN_WINDOW_LEDGERS, Math.ceil((opts.expireMinutes * 60) / 3)) : SIGN_WINDOW_LEDGERS
+  prepared.LastLedgerSequence = (await port.currentLedger()) + window
   const hash = signingHash(prepared)
 
   const uuid = randomUUID()
@@ -158,7 +161,7 @@ async function createRequest(txjson: Record<string, unknown>, opts: PayloadOptio
       userId: opts.userId,
       unsignedTx: prepared as Prisma.InputJsonValue,
       expectedAccount: wallet.xrplAddress,
-      expiresAt: new Date(Date.now() + REQUEST_TTL_MS),
+      expiresAt: new Date(Date.now() + Math.min(REQUEST_TTL_MS, (opts.expireMinutes ?? Infinity) * 60_000)),
       source: 'create',
     },
   })
