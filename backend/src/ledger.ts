@@ -21,7 +21,7 @@ import {
   type NFTokenAcceptOffer,
   type NFTokenCancelOffer,
 } from 'xrpl'
-import { env, xamanMode } from './env.js'
+import { env, ledgerMode } from './env.js'
 import * as stubLedger from './stub-ledger.js'
 import { isEntryNotFound } from './xrpl-errors.js'
 
@@ -140,7 +140,7 @@ export function buildMintTx(params: {
  * Returns null while the transaction is still unvalidated.
  */
 export async function nftokenIdFromTx(txHash: string): Promise<string | null> {
-  if (xamanMode === 'stub') return stubLedger.nftokenIdFromTx(txHash)
+  if (ledgerMode === 'stub') return stubLedger.nftokenIdFromTx(txHash)
   const c = await ledger()
 
   const res = await c.request({
@@ -209,7 +209,7 @@ export function delegateWallet(): Wallet {
  * refuses to boot in production. Anywhere else a missing seed is an error.
  */
 export function delegateAddress(): string {
-  if (!env.DELEGATE_SEED && xamanMode === 'stub') {
+  if (!env.DELEGATE_SEED && ledgerMode === 'stub') {
     stubDelegate ??= Wallet.generate()
     return stubDelegate.classicAddress
   }
@@ -326,7 +326,7 @@ export async function brokerSale(params: {
   buyOfferIndex: string
   brokerFeeDrops: bigint
 }): Promise<{ hash: string; succeeded: boolean; result: string }> {
-  if (xamanMode === 'stub') return stubLedger.brokerSale(params)
+  if (ledgerMode === 'stub') return stubLedger.brokerSale(params)
   return brokerSaleOnLedger(params)
 }
 
@@ -392,7 +392,7 @@ export async function spendableDrops(address: string): Promise<bigint> {
 export async function accountFunding(
   address: string,
 ): Promise<{ spendableDrops: bigint; reserveIncDrops: bigint }> {
-  if (xamanMode === 'stub') return stubLedger.accountFunding(address)
+  if (ledgerMode === 'stub') return stubLedger.accountFunding(address)
   return accountFundingOnLedger(address)
 }
 
@@ -401,7 +401,7 @@ export async function accountFunding(
  * Throws if the account does not exist (see `isAccountNotFound`) or the ledger cannot be read.
  */
 export async function accountBalanceDrops(address: string): Promise<bigint> {
-  if (xamanMode === 'stub') return (await stubLedger.accountFunding(address)).spendableDrops
+  if (ledgerMode === 'stub') return (await stubLedger.accountFunding(address)).spendableDrops
   const c = await ledger()
   const info = await c.request({ command: 'account_info', account: address, ledger_index: 'validated' })
   return BigInt(info.result.account_data.Balance)
@@ -551,7 +551,7 @@ export async function brokerCancelOffers(
   offerIndexes: string[],
 ): Promise<{ hash: string; succeeded: boolean; result: string } | null> {
   if (offerIndexes.length === 0) return null
-  if (xamanMode === 'stub') return stubLedger.brokerCancelOffers(offerIndexes)
+  if (ledgerMode === 'stub') return stubLedger.brokerCancelOffers(offerIndexes)
   return brokerCancelOffersOnLedger(offerIndexes)
 }
 
@@ -609,7 +609,7 @@ export function buildCancelOfferTx(params: {
 export async function readNftOffer(
   offerIndex: string,
 ): Promise<{ amountDrops: bigint; destination: string | null; owner: string } | null> {
-  if (xamanMode === 'stub') return stubLedger.readNftOffer(offerIndex)
+  if (ledgerMode === 'stub') return stubLedger.readNftOffer(offerIndex)
   const c = await ledger()
   try {
     const res = await c.request({
@@ -644,7 +644,7 @@ export async function readNftOffer(
 export type OfferState = 'present' | 'gone' | 'unknown'
 
 export async function offerOnLedgerState(offerIndex: string): Promise<OfferState> {
-  if (xamanMode === 'stub') return (await stubLedger.readNftOffer(offerIndex)) ? 'present' : 'gone'
+  if (ledgerMode === 'stub') return (await stubLedger.readNftOffer(offerIndex)) ? 'present' : 'gone'
   return offerStateOnLedger(offerIndex)
 }
 
@@ -660,7 +660,7 @@ export async function offerStateOnLedger(offerIndex: string): Promise<OfferState
 }
 
 export async function offerIndexFromTx(txHash: string): Promise<string | null> {
-  if (xamanMode === 'stub') return stubLedger.offerIndexFromTx(txHash)
+  if (ledgerMode === 'stub') return stubLedger.offerIndexFromTx(txHash)
   const c = await ledger()
   const res = await c.request({ command: 'tx', transaction: txHash })
 
@@ -679,7 +679,7 @@ export async function offerIndexFromTx(txHash: string): Promise<string | null> {
 
 /** Whether a validated transaction succeeded. Null while unvalidated. */
 export async function txSucceeded(txHash: string): Promise<boolean | null> {
-  if (xamanMode === 'stub') return stubLedger.txSucceeded(txHash)
+  if (ledgerMode === 'stub') return stubLedger.txSucceeded(txHash)
   const c = await ledger()
   const res = await c.request({ command: 'tx', transaction: txHash })
 
@@ -702,7 +702,7 @@ export async function txSucceeded(txHash: string): Promise<boolean | null> {
  * they never did).
  */
 export async function holdsNft(address: string, nfTokenId: string): Promise<boolean> {
-  if (xamanMode === 'stub') return stubLedger.holdsNft(address, nfTokenId)
+  if (ledgerMode === 'stub') return stubLedger.holdsNft(address, nfTokenId)
   return holdsNftOnLedger(address, nfTokenId)
 }
 

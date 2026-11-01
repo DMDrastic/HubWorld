@@ -4,13 +4,12 @@
  * The checkout's job is deciding what to do — which ticket, whether the offer is
  * the one asked for, what a failure means — and none of it needs a network. This
  * is also where "which ledger answers" is decided, by which implementation the
- * caller builds rather than by a global mode: `xamanMode === 'stub'` only means
- * "no Xaman credentials", which is equally true of a script driving devnet, and
- * letting a mode switch pick the ledger answered the first real devnet run of the
- * mint worker with the fake one.
+ * caller builds rather than by a global mode: a mode switch once picked the ledger
+ * for a script driving devnet, and answered the first real devnet run of the mint
+ * worker with the fake one. The app's default comes from the `LEDGER` setting.
  */
 import type { NFTokenCreateOffer } from 'xrpl'
-import { xamanMode } from './env.js'
+import { ledgerMode } from './env.js'
 import {
   accountFundingOnLedger,
   brokerCancelOffersOnLedger,
@@ -36,6 +35,8 @@ export type StartedOffer =
 export type PermissionReading = 'granted' | 'absent' | 'unknown'
 
 export interface PrimarySaleLedger {
+  /** Which ledger this is, for a reader that needs to know (tests, diagnostics). Fakes may omit it. */
+  readonly kind?: 'real' | 'stub'
   /** Does the organizer's offer grant to this delegate still stand? */
   readPermission(organizerAddress: string, delegateAddress: string): Promise<PermissionReading>
   /** Does the organizer still hold the ticket ON THE LEDGER? Null when it cannot be read. */
@@ -90,6 +91,7 @@ async function waitForSequenceToAdvance(c: Awaited<ReturnType<typeof ledger>>, a
 
 export function realPrimarySaleLedger(): PrimarySaleLedger {
   return {
+    kind: 'real',
     readPermission(organizerAddress, delegateAddress) {
       return readPermissionOnLedger({ organizerAddress, delegateAddress }, OFFER_PERMISSION)
     },
@@ -189,6 +191,7 @@ export function realPrimarySaleLedger(): PrimarySaleLedger {
  */
 export function stubPrimarySaleLedger(): PrimarySaleLedger {
   return {
+    kind: 'stub',
     async readPermission(organizerAddress, delegateAddress) {
       return stubLedger.hasDelegation(organizerAddress, delegateAddress, OFFER_PERMISSION) ? 'granted' : 'absent'
     },
@@ -212,5 +215,5 @@ export function stubPrimarySaleLedger(): PrimarySaleLedger {
 
 /** The ledger the app should use: the fake one only when Xaman itself is faked. */
 export function defaultPrimarySaleLedger(): PrimarySaleLedger {
-  return xamanMode === 'stub' ? stubPrimarySaleLedger() : realPrimarySaleLedger()
+  return ledgerMode === 'stub' ? stubPrimarySaleLedger() : realPrimarySaleLedger()
 }

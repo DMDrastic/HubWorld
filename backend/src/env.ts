@@ -83,6 +83,11 @@ const EnvSchema = z.object({
   XRP_USD_CENTS: emptyAsAbsent(z.coerce.number().int().min(1).max(100_000)),
   /** 'on': the XRP price is fetched hourly from public sources and stored, and sets the resale floor. Default off. */
   PRICE_FEED: emptyAsAbsent(z.enum(['on', 'off'])),
+  /**
+   * Which ledger the app talks to: the real network ('real') or an in-memory pretend one ('stub'). Unset, it follows the Xaman
+   * credentials as it always did. Set it to run against the real test network without Xaman (the local stack).
+   */
+  LEDGER: emptyAsAbsent(z.enum(['real', 'stub'])),
 
   // Ceiling on the royalty an organizer may set for themselves. The royalty is
   // theirs to choose, but an unbounded one makes resale pointless and the ticket
@@ -222,6 +227,35 @@ if (xamanMode === 'stub') {
 if (xamanMode === 'stub' && env.NODE_ENV === 'production') {
   console.error('Refusing to start: stub sign-in mode is not permitted in production.')
   process.exit(1)
+}
+
+/**
+ * Which ledger to talk to. Its own question, not "are there Xaman credentials": the two used to be one switch, so the only way to
+ * reach the real test network without Xaman was to fake Xaman credentials, which broke Xaman sign-in as a side effect. Unset, the
+ * answer is what it always was.
+ */
+export function resolveLedgerMode(input: { explicit: 'real' | 'stub' | undefined; xamanMode: 'live' | 'stub' }): 'real' | 'stub' {
+  return input.explicit ?? (input.xamanMode === 'live' ? 'real' : 'stub')
+}
+
+/** Why this process must not start with this ledger, or null. Production never runs on a pretend ledger. */
+export function ledgerModeRefusal(input: { ledgerMode: 'real' | 'stub'; nodeEnv: string }): string | null {
+  return input.ledgerMode === 'stub' && input.nodeEnv === 'production'
+    ? 'Refusing to start: the pretend (stub) ledger is not permitted in production.'
+    : null
+}
+
+export const ledgerMode: 'real' | 'stub' = resolveLedgerMode({ explicit: env.LEDGER, xamanMode })
+
+{
+  const refusal = ledgerModeRefusal({ ledgerMode, nodeEnv: env.NODE_ENV })
+  if (refusal) {
+    console.error(refusal)
+    process.exit(1)
+  }
+}
+if (ledgerMode === 'real' && xamanMode === 'stub') {
+  console.warn('LEDGER=real with Xaman stubbed: email (Privy) wallets work on the real network; Xaman signatures are pretend.')
 }
 
 /**

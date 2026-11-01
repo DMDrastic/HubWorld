@@ -32,7 +32,7 @@
  * mint as every organizer who ever granted".
  */
 import type { DelegateSet, NFTokenMint } from 'xrpl'
-import { xamanMode } from './env.js'
+import { ledgerMode } from './env.js'
 import { ledger } from './ledger.js'
 import * as stubLedger from './stub-ledger.js'
 
@@ -191,17 +191,17 @@ let availability: boolean | null = null
 export async function delegationAvailable(): Promise<boolean> {
   // The fake ledger supports everything HubWorld builds, and stub mode refuses
   // to boot in production, so this can never claim support on a real network.
-  if (xamanMode === 'stub') return true
+  if (ledgerMode === 'stub') return true
   return delegationAvailableOnLedger()
 }
 
 /**
  * The same question, always asked of the REAL ledger.
  *
- * `xamanMode === 'stub'` means "no Xaman credentials", which is also true of a
- * script talking to devnet or mainnet with throwaway wallets. Those must never
- * be answered by the fake ledger — a mainnet check that quietly read the stub
- * would report on nothing. Scripts use this; the app uses `delegationAvailable`.
+ * The app's ledger setting can be the pretend one, and a script talking to devnet or
+ * mainnet with throwaway wallets must never be answered by it: a mainnet check that
+ * quietly read the stub would report on nothing. Scripts use this; the app uses
+ * `delegationAvailable`.
  */
 export async function delegationAvailableOnLedger(): Promise<boolean> {
   if (availability !== null) return availability
@@ -296,7 +296,7 @@ export async function readPermissionSet(params: {
   organizerAddress: string
   delegateAddress: string
 }): Promise<string[] | 'unknown'> {
-  if (xamanMode === 'stub') {
+  if (ledgerMode === 'stub') {
     return stubLedger.delegationSet(params.organizerAddress, params.delegateAddress)
   }
   return readPermissionSetOnLedger(params)
