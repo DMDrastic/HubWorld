@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { RippledError } from 'xrpl'
-import { isTxNotFound } from '../src/xrpl-errors.js'
+import { isEntryNotFound, isTxNotFound } from '../src/xrpl-errors.js'
 
 describe('isTxNotFound', () => {
   it('recognises the error the way mainnet actually delivers it', () => {
@@ -69,5 +69,27 @@ describe('rate limits', () => {
       }, async () => {}),
     ).rejects.toThrow(/rate limit/)
     expect(calls).toBe(6)
+  })
+})
+
+describe('isEntryNotFound', () => {
+  it('recognises a missing ledger object the way the node delivers it (the code is on data.error)', () => {
+    const err = new RippledError('Entry not found.', { error: 'entryNotFound', error_code: 33 })
+    expect(isEntryNotFound(err)).toBe(true)
+  })
+
+  it('recognises it from the code alone', () => {
+    expect(isEntryNotFound(Object.assign(new Error('x'), { data: { error: 'entryNotFound' } }))).toBe(true)
+  })
+
+  it('is NOT fooled by a node that is busy, down or refusing: those say nothing about the offer', () => {
+    expect(isEntryNotFound(new RippledError('Too busy', { error: 'tooBusy' }))).toBe(false)
+    expect(isEntryNotFound(new Error('WebSocket is not open'))).toBe(false)
+    expect(isEntryNotFound(Object.assign(new Error('timeout'), { data: { error: 'slowDown' } }))).toBe(false)
+  })
+
+  it('is false for things that are not errors', () => {
+    expect(isEntryNotFound('entryNotFound')).toBe(false)
+    expect(isEntryNotFound(null)).toBe(false)
   })
 })

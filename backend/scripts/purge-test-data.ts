@@ -128,6 +128,11 @@ async function main() {
       where: { OR: [{ bidderId: { in: userIds } }, { auction: { ticket: ticketWhere } }] },
     })
     const auctions = await tx.auction.deleteMany({ where: { ticket: ticketWhere } })
+    // Records that point at a listing, a ticket or a person must go before them.
+    await tx.listingBuyerNotice.deleteMany({
+      where: { OR: [{ userId: { in: userIds } }, { listing: { OR: [{ sellerId: { in: userIds } }, { buyerId: { in: userIds } }, { ticket: ticketWhere }] } }] },
+    })
+    await tx.ticketClaim.deleteMany({ where: { OR: [{ holderId: { in: userIds } }, { ticket: ticketWhere }] } })
     const listings = await tx.listing.deleteMany({
       where: { OR: [{ sellerId: { in: userIds } }, { buyerId: { in: userIds } }, { ticket: ticketWhere }] },
     })

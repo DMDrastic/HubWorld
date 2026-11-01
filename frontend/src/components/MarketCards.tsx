@@ -265,6 +265,13 @@ export function MyListingRow({
           {listing.state.replace("_", " ")}
           {buying ? " · buying" : ""}
         </div>
+        {/* A bid that was let go: the server's own words, since the buyer is owed the reason. Shown only for a failure,
+            because a sale still waiting on funds also carries a reason that is not news of a failure. */}
+        {listing.state === "failed" && listing.reason && (
+          <p className="text-muted-foreground mt-1 text-xs leading-relaxed">
+            {listing.reason}
+          </p>
+        )}
       </div>
       <div className="ml-auto flex shrink-0 gap-2">
         <Button

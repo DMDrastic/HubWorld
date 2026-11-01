@@ -59,6 +59,7 @@ const flag = (name: string) => process.argv.includes(`--${name}`)
 async function clean() {
   const where = { event: { slug: SLUG } }
   await prisma.bid.deleteMany({ where: { auction: { ticket: where } } })
+  await prisma.listingBuyerNotice.deleteMany({ where: { listing: { ticket: where } } })
   await prisma.listing.deleteMany({ where: { ticket: where } })
   await prisma.auction.deleteMany({ where: { ticket: where } })
   await prisma.transfer.deleteMany({ where: { ticket: where } })

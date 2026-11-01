@@ -23,6 +23,7 @@ import {
 } from 'xrpl'
 import { env, xamanMode } from './env.js'
 import * as stubLedger from './stub-ledger.js'
+import { isEntryNotFound } from './xrpl-errors.js'
 
 const ENDPOINTS = {
   testnet: 'wss://s.altnet.rippletest.net:51233',
@@ -619,6 +620,31 @@ export async function readNftOffer(
   } catch {
     // Consumed or never existed. The caller decides what that means.
     return null
+  }
+}
+
+/**
+ * Is this offer on the ledger? Three answers, because two are not enough.
+ *
+ * `readNftOffer` returns null for ANY failure, which is right for a caller that only wants the details. A caller
+ * deciding whether to give up on someone's bid needs to tell "it is gone" from "I could not look": the first lets the
+ * sale go, the second must never.
+ */
+export type OfferState = 'present' | 'gone' | 'unknown'
+
+export async function offerOnLedgerState(offerIndex: string): Promise<OfferState> {
+  if (xamanMode === 'stub') return (await stubLedger.readNftOffer(offerIndex)) ? 'present' : 'gone'
+  return offerStateOnLedger(offerIndex)
+}
+
+/** `offerOnLedgerState` against the REAL ledger regardless of mode. */
+export async function offerStateOnLedger(offerIndex: string): Promise<OfferState> {
+  try {
+    const c = await ledger()
+    await c.request({ command: 'ledger_entry', index: offerIndex, ledger_index: 'validated' })
+    return 'present'
+  } catch (err) {
+    return isEntryNotFound(err) ? 'gone' : 'unknown'
   }
 }
 

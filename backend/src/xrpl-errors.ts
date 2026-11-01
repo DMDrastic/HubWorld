@@ -12,6 +12,18 @@ export function isTxNotFound(err: unknown): boolean {
   return code === 'txnNotFound' || /txnNotFound|transaction not found/i.test(err.message)
 }
 
+/**
+ * Whether a failed `ledger_entry` means "no such object", as opposed to the node being unreachable or refusing us.
+ *
+ * The distinction is the whole point: a vanished offer is a fact about the ledger, a blinking node is a fact about the
+ * network, and treating the second as the first would let go of a perfectly good sale.
+ */
+export function isEntryNotFound(err: unknown): boolean {
+  if (!(err instanceof Error)) return false
+  const code = (err as { data?: { error?: unknown } }).data?.error
+  return code === 'entryNotFound' || /entryNotFound|entry not found/i.test(err.message)
+}
+
 /** A public node refusing us for asking too much, which is a reason to wait, not to fail. */
 export function isRateLimited(err: unknown): boolean {
   if (!(err instanceof Error)) return false
