@@ -137,7 +137,9 @@ describe('CheckoutDialog', () => {
 
     expect(await screen.findByAltText(/purchase qr/i)).toBeTruthy()
     // 25 XRP + the 2.5% fee, in drops-exact terms.
-    expect(screen.getByText(/pay 25\.625 xrp/i)).toBeTruthy()
+    // Said twice now: once as what you pay (beside any estimate) and once in the QR hint. Both are the exact XRP.
+    expect(screen.getByText('You’ll pay 25.625 XRP')).toBeTruthy()
+    expect(screen.getByText(/scan in xaman to pay 25\.625 xrp/i)).toBeTruthy()
     expect(screen.getByText(/held for a few minutes/i)).toBeTruthy()
     expect(screen.getByText(/nothing is charged/i)).toBeTruthy()
   })

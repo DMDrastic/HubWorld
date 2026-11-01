@@ -67,7 +67,7 @@ export const listingInclude = {
   seller: { select: { username: true } },
   buyer: { select: { username: true } },
   ticket: {
-    include: { event: { select: { slug: true, title: true, platformBps: true } } },
+    include: { event: { select: { slug: true, title: true, platformBps: true, timeZone: true } } },
   },
 } as const
 

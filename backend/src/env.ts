@@ -83,6 +83,8 @@ const EnvSchema = z.object({
   XRP_USD_CENTS: emptyAsAbsent(z.coerce.number().int().min(1).max(100_000)),
   /** 'on': the XRP price is fetched hourly from public sources and stored, and sets the resale floor. Default off. */
   PRICE_FEED: emptyAsAbsent(z.enum(['on', 'off'])),
+  /** 'on': St. Lucia events show their estimate in EC$ (fixed at 2.70 per US$) instead of US$. Display only. Default off. */
+  DISPLAY_XCD: emptyAsAbsent(z.enum(['on', 'off'])),
   /**
    * Which ledger the app talks to: the real network ('real') or an in-memory pretend one ('stub'). Unset, it follows the Xaman
    * credentials as it always did. Set it to run against the real test network without Xaman (the local stack).

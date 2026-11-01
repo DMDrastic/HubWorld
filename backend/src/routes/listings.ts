@@ -28,6 +28,7 @@ import { advanceListing, listingInclude, listingView } from '../listing-advance.
 import { checkResalePrice, maxAskForCap, isPrimarySale } from '../resale-policy.js'
 import { paidCostOf } from '../paid-cost.js'
 import { privyBuyerShortfall } from '../wallet-funds.js'
+import { currentDisplayRate, displayCurrency, fiatOf } from '../fiat-display.js'
 import { PRICE_UNAVAILABLE, buyerPaysDrops, currentMinimumResaleDrops, primaryFeeDrops, resaleListingTerms } from '../listing-terms.js'
 import {
   buildBuyOfferTx,
@@ -300,6 +301,11 @@ listingsRouter.post('/tickets/:nfTokenId/list', requireAuth, async (req, res) =>
     })
   })
 
+  const created = {
+    priceDrops: priceDrops.toString(),
+    platformFeeDrops: fee.toString(),
+    buyerPaysDrops: (feeModel === 'SELLER_PAYS_V2' ? priceDrops : priceDrops + fee).toString(),
+  }
   res.status(201).json({
     listingId: listing.id,
     uuid: payload.uuid,
@@ -308,12 +314,21 @@ listingsRouter.post('/tickets/:nfTokenId/list', requireAuth, async (req, res) =>
     // A wallet the person owns signs in their browser: the transaction to approve, stored here as well.
     sign: payload.sign,
     mode: xamanMode,
-    priceDrops: priceDrops.toString(),
-    platformFeeDrops: fee.toString(),
+    ...created,
     feeModel,
-    buyerPaysDrops: (feeModel === 'SELLER_PAYS_V2' ? priceDrops : priceDrops + fee).toString(),
+    // Display only: the estimate beside each XRP amount, absent when the price is not fresh.
+    fiat: fiatOf(created, ['priceDrops', 'platformFeeDrops', 'buyerPaysDrops'], await currentDisplayRate(), displayCurrency(ticket.event)),
   })
 })
+
+/** A listing's view with the display estimate beside its three XRP amounts (computed AFTER any override of them). */
+function withFiat<V extends { priceDrops: string; platformFeeDrops: string; buyerPaysDrops: string }>(
+  view: V,
+  rate: Awaited<ReturnType<typeof currentDisplayRate>>,
+  event: { timeZone: string },
+) {
+  return { ...view, fiat: fiatOf(view, ['priceDrops', 'platformFeeDrops', 'buyerPaysDrops'], rate, displayCurrency(event)) }
+}
 
 /**
  * GET /api/listings — the marketplace. Only purchasable listings.
@@ -332,7 +347,8 @@ listingsRouter.get('/listings', async (_req, res) => {
     orderBy: { listedAt: 'desc' },
     take: 100,
   })
-  res.json({ listings: listings.map(listingView) })
+  const rate = await currentDisplayRate()
+  res.json({ listings: listings.map((l) => withFiat(listingView(l), rate, l.ticket.event)) })
 })
 
 /**
@@ -362,20 +378,26 @@ listingsRouter.get('/listings/mine', requireAuth, async (req, res) => {
     take: 20,
   })
 
+  const rate = await currentDisplayRate()
   res.json({
     listings: [
-      ...listings.map((l) => ({
-        ...listingView(l),
-        role: l.sellerId === req.userId ? 'seller' : 'buyer',
-      })),
-      ...notices.map((n) => ({
-        ...listingView(n.listing),
-        state: 'failed',
-        reason: n.reason,
-        // What THEY had offered, which is no longer what the listing asks.
-        buyerPaysDrops: n.amountDrops.toString(),
-        role: 'buyer',
-      })),
+      ...listings.map((l) =>
+        withFiat({ ...listingView(l), role: l.sellerId === req.userId ? 'seller' : 'buyer' }, rate, l.ticket.event),
+      ),
+      ...notices.map((n) =>
+        withFiat(
+          {
+            ...listingView(n.listing),
+            state: 'failed',
+            reason: n.reason,
+            // What THEY had offered, which is no longer what the listing asks.
+            buyerPaysDrops: n.amountDrops.toString(),
+            role: 'buyer',
+          },
+          rate,
+          n.listing.ticket.event,
+        ),
+      ),
     ],
   })
 })
@@ -513,6 +535,13 @@ listingsRouter.post('/listings/:id/buy', requireAuth, async (req, res) => {
     sign: payload.sign,
     mode: xamanMode,
     paysDrops: buyerPaysDrops(listing).toString(),
+    // Display only, and only beside the XRP figure: the signed amount above is always paysDrops.
+    fiat: fiatOf(
+      { paysDrops: buyerPaysDrops(listing) },
+      ['paysDrops'],
+      await currentDisplayRate(),
+      displayCurrency(await prisma.event.findUniqueOrThrow({ where: { id: ticket.eventId }, select: { timeZone: true } })),
+    ),
   })
 })
 

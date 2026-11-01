@@ -880,7 +880,7 @@ lands squarely in §6.
 USD amounts. Card buyers pay USD. When a ticket bought by card is resold on the ledger, that resale settles in **RLUSD**. XRP
 pricing stays for testnet demos and for optional crypto-native payers, and nowhere else is it the unit of account.
 
-**The current "show USD, charge XRP" display change is a bridge for the summit, not the end state.** It lets people read a USD price
+**The "show USD, charge XRP" display (built 2026-11-01: `fiat-display.ts`, display only, hidden when the price is over 2 hours old, EC$ hook `DISPLAY_XCD` off by default) is a bridge for the summit, not the end state.** True USD pricing (USD as the price organizers set, RLUSD settlement, card payments) stays Phase 3a and the card phase. It lets people read a USD price
 while the ledger still moves XRP. It must not grow into a second pricing model; Phase 3 replaces it.
 
 **This supersedes the "do not start yet" in 5c for the card and RLUSD path.** 5c measured that a brokered sale in an issued

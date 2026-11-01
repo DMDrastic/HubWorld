@@ -16,6 +16,7 @@ import { canAuction } from '../auction-policy.js'
 import { resaleCeiling, maxAskForCap, isPrimarySale, capSource } from '../resale-policy.js'
 import { paidCostOf } from '../paid-cost.js'
 import { feeModelV2 } from '../env.js'
+import { currentDisplayRate, displayCurrency, fiatOf } from '../fiat-display.js'
 
 export const ticketsRouter = Router()
 
@@ -56,6 +57,7 @@ ticketsRouter.get('/tickets/mine', requireAuth, async (req, res) => {
           resaleCapBps: true,
           resaleCapDrops: true,
           platformBps: true,
+          timeZone: true,
         },
       },
     },
@@ -90,6 +92,7 @@ ticketsRouter.get('/tickets/mine', requireAuth, async (req, res) => {
     }
   }
 
+  const rate = await currentDisplayRate()
   res.json({
     address: me.xrplAddress,
     verified: heldOnLedger !== null,
@@ -165,6 +168,10 @@ ticketsRouter.get('/tickets/mine', requireAuth, async (req, res) => {
               resaleCapSource: capSource(capInput),
             }
           })()),
+    })).map((view, i) => ({
+      ...view,
+      // Display only: the estimate beside each XRP amount, absent when the price is not fresh.
+      fiat: fiatOf(view, ['faceValueDrops', 'maxListingPriceDrops', 'maxAuctionReserveDrops'], rate, displayCurrency(tickets[i]!.event)),
     })),
   })
 })

@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { DoorGuide } from "@/components/DoorGuide";
 import { CalendarDays, MapPin } from "lucide-react";
-import { dropsToXrp, fetchInventory, type OwnedTicket } from "@/lib/api";
+import { dropsToXrp, fetchInventory, type Fiat, type OwnedTicket } from "@/lib/api";
+import { formatFiat } from "@/lib/fiat";
 import { groupTickets, relativeDay } from "@/lib/hub-tickets";
 import { hueFrom, posterUrl } from "@/lib/poster";
 import { useLinkHandler } from "@/lib/router";
@@ -166,13 +167,18 @@ function TicketList({
  * Only for a ticket you could actually sell, and only the parts that are known: a missing
  * face value or no limit is left out, never printed as zero.
  */
+/** "US$35.00 (≈ 28 XRP)" when the server had a fresh price, else "28 XRP". Display only. */
+function shown(drops: string, fiat: Fiat | undefined): string {
+  return fiat ? `${formatFiat(fiat)} (≈ ${dropsToXrp(drops)} XRP)` : `${dropsToXrp(drops)} XRP`;
+}
+
 function resaleLine(t: OwnedTicket): string | null {
   if (t.status !== "MINTED") return null;
   if (!t.resaleAllowed) return "Resale is not allowed for this event";
   const parts = [
-    t.faceValueDrops ? `Face value ${dropsToXrp(t.faceValueDrops)} XRP` : null,
+    t.faceValueDrops ? `Face value ${shown(t.faceValueDrops, t.fiat?.faceValueDrops)}` : null,
     t.maxListingPriceDrops
-      ? `resale up to ${dropsToXrp(t.maxListingPriceDrops)} XRP`
+      ? `resale up to ${shown(t.maxListingPriceDrops, t.fiat?.maxListingPriceDrops)}`
       : null,
   ].filter(Boolean);
   if (parts.length === 0) return null;

@@ -75,6 +75,13 @@ vi.mock('../src/xaman.js', async () => {
 // Same reasoning as routes.authorization.test.ts: brokerMode is read from
 // PLATFORM_SEED, and the routes under test answer 503 without it — before
 // ever reaching the cap check this suite exists to pin.
+// The display rate is controlled per test: the estimate must never reach what is signed, whatever it says.
+const display = vi.hoisted(() => ({ rate: null as { microUsdPerXrp: bigint } | null }))
+vi.mock('../src/fiat-display.js', async () => {
+  const actual = await vi.importActual<typeof import('../src/fiat-display.js')>('../src/fiat-display.js')
+  return { ...actual, currentDisplayRate: async () => display.rate }
+})
+
 vi.mock('../src/env.js', async () => {
   const actual = await vi.importActual<typeof import('../src/env.js')>('../src/env.js')
   return { ...actual, brokerMode: 'live' as const }
@@ -471,5 +478,90 @@ describe('gifts with a Privy wallet', () => {
     expect(res.status).toBe(201)
     expect(res.body.sign.tx).toMatchObject({ TransactionType: 'NFTokenCancelOffer', Account: holder.address, NFTokenOffers: ['AD'.repeat(32)] })
     expect((await rows(holder.id))[0]).toMatchObject({ signer: 'privy', flow: 'GIFT_CANCEL' })
+  })
+})
+
+describe('the US$ estimate is display only', () => {
+  afterEach(() => {
+    display.rate = null
+  })
+  const listed = async () => {
+    const { holder, event, ticket } = await fixture()
+    await prisma.ticket.update({ where: { id: ticket.id }, data: { status: 'LISTED' } })
+    const listing = await prisma.listing.create({
+      data: { network: NETWORK, ticketId: ticket.id, sellerId: holder.id, sellerAddress: holder.address, brokerAddress: BROKER_ADDR, priceDrops: 10n * XRP, platformFeeDrops: 500_000n, feeModel: 'SELLER_PAYS_V2', feeBps: 500, listPayloadUuid: `x:${uniq}`, offerIndex: 'AA'.repeat(32), status: 'ACTIVE', listedAt: new Date(), expiresAt: new Date(Date.now() + 1e6) },
+    })
+    return { holder, event, ticket, listing }
+  }
+
+  it('a buy signs exactly the XRP amount shown, whatever the dollar price is, and the estimate sits beside it', async () => {
+    const amounts: string[] = []
+    for (const micro of [1_250_000n, 900_000_000n]) {
+      await cleanup()
+      uniq = Math.random().toString(36).slice(2, 8)
+      display.rate = { microUsdPerXrp: micro }
+      const { listing } = await listed()
+      const res = await post(`/api/listings/${listing.id}/buy`, await privyActor('buyer'))
+      expect(res.status).toBe(201)
+      expect(res.body.sign.tx.Amount).toBe(res.body.paysDrops)
+      amounts.push(res.body.sign.tx.Amount)
+      expect(res.body.fiat.paysDrops.currency).toBe('USD')
+    }
+    // US$12.50 at one price, US$9,000 at the other: the signed XRP is the same.
+    expect(amounts).toEqual(['10000000', '10000000'])
+  })
+
+  it('with no fresh price there is no estimate at all, and the buy is unchanged', async () => {
+    display.rate = null
+    const { listing } = await listed()
+    const res = await post(`/api/listings/${listing.id}/buy`, await privyActor('buyer'))
+    expect(res.status).toBe(201)
+    expect(res.body.fiat).toEqual({})
+    expect(res.body.sign.tx.Amount).toBe('10000000')
+  })
+
+  it('a listing\'s sell offer is the XRP price minus the fee, whatever the dollar price is', async () => {
+    display.rate = { microUsdPerXrp: 900_000_000n }
+    const { holder, ticket } = await fixture()
+    const res = await post(`/api/tickets/${ticket.nfTokenId}/list`, holder, { priceDrops: (10n * XRP).toString() })
+    expect(res.status).toBe(201)
+    expect(res.body.sign.tx.Amount).toBe('9500000')
+    expect(res.body.fiat.priceDrops).toEqual({ currency: 'USD', minor: '900000' })
+  })
+
+  it('the marketplace, the event list, the inventory and the quote carry the estimate when fresh, and nothing when not', async () => {
+    const { holder, event, listing } = await listed()
+    const read = async () => ({
+      market: (await request(app).get('/api/listings')).body.listings.find((l: { listingId: string }) => l.listingId === listing.id),
+      ev: (await request(app).get(`/api/events/${event.slug}`)).body,
+      mine: (await request(app).get('/api/tickets/mine').set('Authorization', `Bearer ${holder.token}`)).body.tickets[0],
+      quote: (await request(app).get('/api/price/quote?drops=28000000,0')).body,
+    })
+
+    display.rate = { microUsdPerXrp: 1_250_000n }
+    const on = await read()
+    expect(on.market.fiat).toEqual({
+      priceDrops: { currency: 'USD', minor: '1250' },
+      platformFeeDrops: { currency: 'USD', minor: '63' },
+      buyerPaysDrops: { currency: 'USD', minor: '1250' },
+    })
+    expect(on.market.priceDrops).toBe('10000000')
+    expect(on.ev.fiat).toBeTypeOf('object')
+    expect(on.mine.fiat).toBeTypeOf('object')
+    expect(on.quote.fiat).toEqual({ '28000000': { currency: 'USD', minor: '3500' }, '0': { currency: 'USD', minor: '0' } })
+
+    display.rate = null
+    const off = await read()
+    expect(off.market.fiat).toEqual({})
+    expect(off.ev.fiat).toEqual({})
+    expect(off.mine.fiat).toEqual({})
+    expect(off.quote.fiat).toEqual({})
+    expect(off.market.priceDrops).toBe('10000000')
+  })
+
+  it('the quote refuses malformed amounts and more than ten at once', async () => {
+    expect((await request(app).get('/api/price/quote?drops=-5')).status).toBe(400)
+    expect((await request(app).get('/api/price/quote?drops=1.5')).status).toBe(400)
+    expect((await request(app).get(`/api/price/quote?drops=${Array(11).fill('1').join(',')}`)).status).toBe(400)
   })
 })

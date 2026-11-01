@@ -7,6 +7,7 @@ import { claimsEnabled, env } from './env.js'
 import { healthRouter } from './routes/health.js'
 import { usersRouter } from './routes/users.js'
 import { eventsRouter } from './routes/events.js'
+import { priceRouter } from './routes/price.js'
 import { eventImageRouter } from './routes/event-image.js'
 import { authRouter } from './routes/auth.js'
 import { privyAuthRouter } from './routes/privy-auth.js'
@@ -135,6 +136,7 @@ export function createApp() {
   app.use('/api', signaturesRouter)
   app.use('/api', usersRouter)
   app.use('/api', eventsRouter)
+  app.use('/api', priceRouter)
   app.use('/api', eventImageRouter)
   app.use('/api', mintRouter)
   app.use('/api', delegationRouter)
