@@ -1019,8 +1019,9 @@ pass, and both are currently unanswerable.
   price, its age and a `stale` / `unavailable` status, and a stale feed that cannot refresh logs an error every ten
   minutes. **Still to do before mainnet:** turn `PRICE_FEED=on` (testnet first, and watch `/api/health`'s `price` for a
   day), and decide who is told when it goes stale (today it is a log line and a health field, not a page).
-- **Gifts are not on Privy yet.** Offering, accepting and withdrawing a gift still need Xaman; a Privy user is told so. The
-  server side is one line in `privy-flows.ts` plus a review case for `NFTokenAcceptOffer`; the work is the review and `GiftPanel`.
+- ~~**Gifts are not on Privy yet.**~~ **Done 2026-11-01.** Giving, accepting and taking back a gift are signed in the browser, and
+  verified on the real test network (give, accept, take back: 21 of 21 with the rest of the holder actions). The door is now
+  the only signing action a Privy user still cannot do.
 - **Email sign-in is now open to every visitor, so it counts toward Privy's monthly active users.** The free plan is 500; watch it
   before a public launch (a Privy user who never signs in again after 30 days stops counting).
 - **Two frontend tests depend on the time of day** (`TicketWallet.test.tsx`, "tomorrow" vs "in 2 days" from real dates); they fail

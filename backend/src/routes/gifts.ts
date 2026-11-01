@@ -30,9 +30,12 @@ import {
   buildGiftOfferTx,
   holdsNft,
   offerIndexFromTx,
+  offerOnLedgerState,
+  readNftOffer,
   txSucceeded,
   XAMAN_NETWORK,
 } from '../ledger.js'
+import { privyBuyerShortfall } from '../wallet-funds.js'
 
 export const giftsRouter = Router()
 
@@ -138,6 +141,13 @@ giftsRouter.post('/tickets/:nfTokenId/gift', requireAuth, async (req, res) => {
     return
   }
 
+  // The offer is an owned object, so even a free one needs the reserve it locks.
+  const short = await privyBuyerShortfall(me.id, 0n)
+  if (short) {
+    res.status(409).json(short)
+    return
+  }
+
   let txjson
   try {
     txjson = buildGiftOfferTx({
@@ -178,6 +188,8 @@ giftsRouter.post('/tickets/:nfTokenId/gift', requireAuth, async (req, res) => {
     uuid: payload.uuid,
     next: payload.next,
     qrPng: payload.qrPng,
+    // A wallet the person owns signs in the browser: the transaction to approve.
+    sign: payload.sign,
     expiresAt: expiresAt.toISOString(),
     mode: xamanMode,
     to: { username: recipient.username, xrplAddress: recipient.xrplAddress },
@@ -212,6 +224,37 @@ giftsRouter.post('/gifts/:id/accept', requireAuth, async (req, res) => {
   // here would only push the recipient to accept in Xaman instead, where we
   // would never observe it.
 
+  // An accept transaction names an offer and nothing else: it does not say what the offer costs. So before anyone is asked to approve
+  // one, the offer is read from the LEDGER and must be what a gift is: free, for this recipient, from this sender. A sell offer for
+  // money with the recipient as its destination would otherwise charge them for "accepting a gift".
+  const state = await offerOnLedgerState(gift.offerIndex)
+  if (state === 'gone') {
+    res.status(409).json({ error: 'This gift is no longer on offer. The sender may have taken it back.' })
+    return
+  }
+  const wallet = await prisma.wallet.findUnique({ where: { userId: req.userId }, select: { signerKind: true } })
+  if (state === 'unknown') {
+    // A Privy approval screen cannot see the offer's amount, so it must not be asked to approve one nobody could check. Xaman shows
+    // the amount itself, so a Xaman recipient carries on, as an unreadable ledger is not a refusal.
+    if (wallet?.signerKind === 'PRIVY') {
+      res.status(503).json({ error: 'Could not confirm this gift on the ledger just now. Try again shortly.' })
+      return
+    }
+  } else {
+    const offer = await readNftOffer(gift.offerIndex)
+    if (!offer || offer.amountDrops !== 0n || offer.destination !== gift.toAddress || offer.owner !== gift.fromAddress) {
+      res.status(409).json({ error: 'This offer is not a free gift addressed to you, so it was not sent for approval.' })
+      return
+    }
+  }
+
+  // The recipient's wallet must be able to hold the ticket (and, if new, to exist at all).
+  const short = await privyBuyerShortfall(req.userId, 0n)
+  if (short) {
+    res.status(409).json(short)
+    return
+  }
+
   const payload = await (await signingFor(req.userId, 'GIFT_ACCEPT')).createPayload(
     buildAcceptOfferTx({
       accepterAddress: gift.toAddress,
@@ -235,6 +278,10 @@ giftsRouter.post('/gifts/:id/accept', requireAuth, async (req, res) => {
     uuid: payload.uuid,
     next: payload.next,
     qrPng: payload.qrPng,
+    // A wallet the person owns signs in the browser: the transaction to approve.
+    sign: payload.sign,
+    // Which offer is being accepted, so the approval screen can check the transaction names this one.
+    offer: { index: gift.offerIndex },
     mode: xamanMode,
   })
 })
@@ -304,6 +351,8 @@ giftsRouter.post('/gifts/:id/cancel', requireAuth, async (req, res) => {
     uuid: payload.uuid,
     next: payload.next,
     qrPng: payload.qrPng,
+    // A wallet the person owns signs in the browser: the transaction to approve.
+    sign: payload.sign,
     mode: xamanMode,
   })
 })

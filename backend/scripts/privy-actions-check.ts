@@ -16,7 +16,7 @@ import { prisma } from '../src/prisma.js'
 import { env } from '../src/env.js'
 import { assertSafeDatabase } from '../src/db-guard.js'
 import { NETWORK } from '../src/network.js'
-import { brokerSaleOnLedger, buildBuyOfferTx, buildCancelOfferTx, buildMintTx, buildSellOfferTx, disconnectLedger, ledger, platformWallet } from '../src/ledger.js'
+import { brokerSaleOnLedger, buildBuyOfferTx, buildCancelOfferTx, buildGiftOfferTx, buildMintTx, buildSellOfferTx, disconnectLedger, ledger, platformWallet } from '../src/ledger.js'
 import { privySigner, submitSignature } from '../src/privy-signing.js'
 import { buildAcceptOfferTx } from '../src/ledger.js'
 
@@ -96,16 +96,16 @@ async function main() {
     throw new Error(`${flow} did not validate`)
   }
 
-  head('2. Give the holder two tickets (the organizer mints and hands them over for free, signing for itself)')
+  head('2. Give the holder four tickets (the organizer mints and hands them over for free, signing for itself)')
   const nfts: string[] = []
-  for (let i = 0; i < 2; i++) {
+  for (let i = 0; i < 4; i++) {
     const m = await send(organizer, buildMintTx({ issuerAddress: organizer.classicAddress, taxon: 4_242, royaltyBps: 500, uri: 'ABCD' }) as never)
     const id = getNFTokenID(m.meta as never)!
     nfts.push(id)
     const gift = await send(organizer, { TransactionType: 'NFTokenCreateOffer', Account: organizer.classicAddress, NFTokenID: id, Amount: '0', Destination: holder.classicAddress, Flags: 1 })
     await send(holder, buildAcceptOfferTx({ accepterAddress: holder.classicAddress, offerIndex: offerIdx(gift.meta) }) as never)
   }
-  const [T1, T2] = nfts as [string, string]
+  const [T1, T2, T3, T4] = nfts as [string, string, string, string]
 
   head('3. LISTING_CREATE: the holder\'s wallet signs a sell offer to the broker (ask 10, fee 0.5, so the offer is 9.5)')
   const PRICE = 10_000_000n
@@ -143,6 +143,26 @@ async function main() {
   check(cancelled.code === 'tesSUCCESS', `the withdrawal validates (${cancelled.code})`)
   check(!(await offerExists(idx2)), 'the listing is gone from the ledger')
   check((await nft(holder.classicAddress)).result.account_nfts.some((n) => n.NFTokenID === T2), 'the ticket is still in the holder\'s wallet')
+
+  head('6b. GIFT_OFFER + GIFT_ACCEPT: the holder gives a ticket, the friend accepts it, both with their own wallets')
+  const gave = await approve(holderU.id, holder, 'GIFT_OFFER', buildGiftOfferTx({ ownerAddress: holder.classicAddress, nfTokenId: T3, destinationAddress: buyer.classicAddress }) as never)
+  check(gave.code === 'tesSUCCESS', `the free offer to the friend validates (${gave.code})`)
+  const giftIdx = offerIdx(gave.meta)
+  const offerNode = (await c.request({ command: 'ledger_entry', index: giftIdx, ledger_index: 'validated' } as never)) as unknown as { result: { node: { Amount: string; Destination: string } } }
+  check(offerNode.result.node.Amount === '0' && offerNode.result.node.Destination === buyer.classicAddress, 'on the ledger it is free and only the friend can take it')
+  const holderBefore = await bal(holder.classicAddress)
+  const accepted = await approve(buyerU.id, buyer, 'GIFT_ACCEPT', buildAcceptOfferTx({ accepterAddress: buyer.classicAddress, offerIndex: giftIdx }) as never)
+  check(accepted.code === 'tesSUCCESS', `the friend\'s accept validates (${accepted.code})`)
+  check((await nft(buyer.classicAddress)).result.account_nfts.some((n) => n.NFTokenID === T3), 'the ticket is in the friend\'s wallet')
+  check((await bal(holder.classicAddress)) - holderBefore >= 0n, 'no money left the giver on acceptance (only their reserve came back)')
+
+  head('6c. GIFT_CANCEL: offer the last ticket, then take the gift back')
+  const offered2 = await approve(holderU.id, holder, 'GIFT_OFFER', buildGiftOfferTx({ ownerAddress: holder.classicAddress, nfTokenId: T4, destinationAddress: buyer.classicAddress }) as never)
+  const giftIdx2 = offerIdx(offered2.meta)
+  const takenBack = await approve(holderU.id, holder, 'GIFT_CANCEL', buildCancelOfferTx({ ownerAddress: holder.classicAddress, offerIndex: giftIdx2 }) as never)
+  check(takenBack.code === 'tesSUCCESS', `taking the gift back validates (${takenBack.code})`)
+  check(!(await offerExists(giftIdx2)), 'the gift offer is gone from the ledger')
+  check((await nft(holder.classicAddress)).result.account_nfts.some((n) => n.NFTokenID === T4), 'the ticket is still the holder\'s')
 
   head('7. The server refuses what it should, on the real path')
   const wrong = await privySigner.createPayload(buildSellOfferTx({ ownerAddress: holder.classicAddress, nfTokenId: T2, amountDrops: 1_000_000n, brokerAddress: broker.classicAddress }) as never, { flow: 'LISTING_BUY', userId: holderU.id }).then(() => 'built', (e: Error) => e.message)

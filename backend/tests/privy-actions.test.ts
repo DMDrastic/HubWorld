@@ -25,7 +25,7 @@ const { createSession } = await import('../src/session.js')
 const signingMod = await import('../src/signing.js')
 const priv = await import('../src/privy-signing.js')
 const { PRIVY_FLOW_RULES } = await import('../src/privy-flows.js')
-const { buildBuyOfferTx, buildSellOfferTx, buildCancelOfferTx } = await import('../src/ledger.js')
+const { buildAcceptOfferTx, buildBuyOfferTx, buildCancelOfferTx, buildGiftOfferTx, buildSellOfferTx } = await import('../src/ledger.js')
 
 const app = createApp()
 const P = 'privyact_'
@@ -75,6 +75,7 @@ async function privyUser(name: string): Promise<Person> {
 const ISSUER = Wallet.generate(ECDSA.secp256k1).classicAddress
 const NFT = makeNftId(ISSUER, 4242, 1)
 const OFFER = 'AB'.repeat(32)
+const FRIEND = Wallet.generate(ECDSA.secp256k1).classicAddress
 
 /** The transaction each action builds, with the REAL builders the routes use. */
 const BUILD: Record<string, (who: Person) => Record<string, unknown>> = {
@@ -83,6 +84,9 @@ const BUILD: Record<string, (who: Person) => Record<string, unknown>> = {
   LISTING_BUY: (w) => buildBuyOfferTx({ buyerAddress: w.key.classicAddress, ownerAddress: ISSUER, nfTokenId: NFT, amountDrops: 10_000_000n, brokerAddress: BROKER }) as never,
   AUCTION_BID: (w) => buildBuyOfferTx({ buyerAddress: w.key.classicAddress, ownerAddress: ISSUER, nfTokenId: NFT, amountDrops: 30_000_000n, brokerAddress: BROKER }) as never,
   LISTING_CANCEL: (w) => buildCancelOfferTx({ ownerAddress: w.key.classicAddress, offerIndex: OFFER }) as never,
+  GIFT_OFFER: (w) => buildGiftOfferTx({ ownerAddress: w.key.classicAddress, nfTokenId: NFT, destinationAddress: FRIEND }) as never,
+  GIFT_ACCEPT: (w) => buildAcceptOfferTx({ accepterAddress: w.key.classicAddress, offerIndex: OFFER }) as never,
+  GIFT_CANCEL: (w) => buildCancelOfferTx({ ownerAddress: w.key.classicAddress, offerIndex: OFFER }) as never,
 }
 const ACTIONS = Object.keys(BUILD) as Array<keyof typeof BUILD & string>
 
@@ -91,9 +95,9 @@ const post = (who: Person, uuid: string, signature: string) => request(app).post
 const create = (who: Person, flow: string, tx = BUILD[flow]!(who)) => priv.privySigner.createPayload(tx, { flow: flow as never, userId: who.id })
 
 describe('the one list of what Privy may sign', () => {
-  it('names exactly the organizer actions and the five holder actions, and nothing else', () => {
+  it('names exactly the organizer actions, the five holder actions and the three gift actions, and nothing else', () => {
     expect([...signingMod.PRIVY_FLOWS].sort()).toEqual(
-      ['AUCTION_BID', 'AUCTION_OPEN', 'DELEGATE_GRANT', 'DELEGATE_REVOKE', 'LISTING_BUY', 'LISTING_CANCEL', 'LISTING_CREATE', 'MINT'].sort(),
+      ['AUCTION_BID', 'AUCTION_OPEN', 'DELEGATE_GRANT', 'DELEGATE_REVOKE', 'GIFT_ACCEPT', 'GIFT_CANCEL', 'GIFT_OFFER', 'LISTING_BUY', 'LISTING_CANCEL', 'LISTING_CREATE', 'MINT'].sort(),
     )
   })
 
@@ -101,9 +105,9 @@ describe('the one list of what Privy may sign', () => {
     expect([...signingMod.PRIVY_FLOWS].sort()).toEqual([...PRIVY_FLOW_RULES.keys()].sort())
   })
 
-  it('does not include actions that are not built yet (gifts, the door, sign-in)', async () => {
-    const who = await privyUser('nogift')
-    for (const flow of ['GIFT_OFFER', 'GIFT_ACCEPT', 'GIFT_CANCEL', 'DOOR_CHECKIN', 'SIGNIN'] as const) {
+  it('does not include actions that are not built for it (the door, sign-in)', async () => {
+    const who = await privyUser('nodoor')
+    for (const flow of ['DOOR_CHECKIN', 'SIGNIN'] as const) {
       await expect(signingMod.signingFor(who.id, flow)).rejects.toThrow(signingMod.SignerNotSupported)
     }
   })
@@ -175,7 +179,7 @@ describe.each(ACTIONS)('%s', (flow) => {
 describe('an action that is not on the list is refused outright', () => {
   it('even with a perfectly good offer: only listed actions can ask a wallet to sign', async () => {
     const who = await privyUser('unlisted')
-    for (const flow of ['GIFT_OFFER', 'GIFT_ACCEPT', 'GIFT_CANCEL', 'DOOR_CHECKIN', 'SIGNIN']) {
+    for (const flow of ['DOOR_CHECKIN', 'SIGNIN']) {
       await expect(create(who, flow, BUILD.LISTING_CREATE!(who))).rejects.toThrow(/not an action/i)
     }
     expect(await prisma.xamanPayload.count({ where: { userId: who.id } })).toBe(0)
@@ -224,4 +228,44 @@ describe('each action is held to its own SIDE of an offer', () => {
       await expect(create(who, flow, open)).rejects.toThrow(/broker|destination/i)
     }
   })
+})
+
+describe('gifts are held to their own shape', () => {
+  it('a gift is FREE: an offer for any money is refused (that would be a sale with nobody to collect the fee)', async () => {
+    const who = await privyUser('giftfree')
+    await expect(create(who, 'GIFT_OFFER', { ...BUILD.GIFT_OFFER!(who), Amount: '1' })).rejects.toThrow(/free/i)
+    await expect(create(who, 'GIFT_OFFER', { ...BUILD.GIFT_OFFER!(who), Amount: '25000000' })).rejects.toThrow(/free/i)
+  })
+
+  it('a gift names one person: an open offer (anyone could take it) is refused', async () => {
+    const who = await privyUser('giftopen')
+    const open = { ...BUILD.GIFT_OFFER!(who) }
+    delete open.Destination
+    await expect(create(who, 'GIFT_OFFER', open)).rejects.toThrow(/person|destination/i)
+  })
+
+  it('a gift to oneself is refused', async () => {
+    const who = await privyUser('giftself')
+    await expect(create(who, 'GIFT_OFFER', { ...BUILD.GIFT_OFFER!(who), Destination: who.key.classicAddress })).rejects.toThrow(/yourself/i)
+  })
+
+  it('a gift must be a sell offer: a "gift" that is a buy offer is refused', async () => {
+    const who = await privyUser('giftside')
+    await expect(create(who, 'GIFT_OFFER', { ...BUILD.GIFT_OFFER!(who), Flags: 0 })).rejects.toThrow(/sell offer/i)
+  })
+
+  it('accepting a gift takes exactly one SELL offer; a buy offer or a brokered accept is refused', async () => {
+    const who = await privyUser('giftaccept')
+    await expect(create(who, 'GIFT_ACCEPT', { ...BUILD.GIFT_ACCEPT!(who), NFTokenBuyOffer: OFFER })).rejects.toThrow(/gift/i)
+    await expect(create(who, 'GIFT_ACCEPT', { ...BUILD.GIFT_ACCEPT!(who), NFTokenBrokerFee: '1' })).rejects.toThrow(/gift/i)
+    const none = { ...BUILD.GIFT_ACCEPT!(who) }
+    delete none.NFTokenSellOffer
+    await expect(create(who, 'GIFT_ACCEPT', none)).rejects.toThrow(/gift/i)
+  })
+
+  it('taking a gift back cancels exactly one offer', async () => {
+    const who = await privyUser('giftcancel')
+    await expect(create(who, 'GIFT_CANCEL', { ...BUILD.GIFT_CANCEL!(who), NFTokenOffers: [OFFER, 'CD'.repeat(32)] })).rejects.toThrow(/exactly one/i)
+  })
+
 })

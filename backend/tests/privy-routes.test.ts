@@ -21,6 +21,8 @@ import { maxAskForCap } from '../src/resale-policy.js'
 const payloadTxs: Array<Record<string, unknown>> = []
 const holdsNft = vi.fn<(address: string, nfTokenId: string) => Promise<boolean>>()
 const accountNfts = vi.fn<(address: string) => Promise<{ NFTokenID: string }[]>>()
+const readNftOffer = vi.fn<(i: string) => Promise<{ amountDrops: bigint; destination: string | null; owner: string } | null>>()
+const offerOnLedgerState = vi.fn<(i: string) => Promise<'present' | 'gone' | 'unknown'>>()
 const accountFunding =
   vi.fn<(address: string) => Promise<{ spendableDrops: bigint; reserveIncDrops: bigint }>>()
 
@@ -31,6 +33,8 @@ vi.mock('../src/ledger.js', async () => {
     holdsNft: (...a: Parameters<typeof holdsNft>) => holdsNft(...a),
     accountNfts: (...a: Parameters<typeof accountNfts>) => accountNfts(...a),
     accountFunding: (...a: Parameters<typeof accountFunding>) => accountFunding(...a),
+    readNftOffer: (i: string) => readNftOffer(i),
+    offerOnLedgerState: (i: string) => offerOnLedgerState(i),
     // listings.ts/open-auction.ts resolve this for real (unconditionally) when
     // creating a listing/auction, and it throws without PLATFORM_SEED set —
     // which CI genuinely has unset. Forcing brokerMode live (below) gets past
@@ -162,6 +166,7 @@ const eventWhere = {
 }
 
 async function cleanup() {
+  await prisma.gift.deleteMany({ where: { from: { username: { startsWith: UTAG } } } })
   const byEvent = { ticket: { event: eventWhere } }
   await prisma.bid.deleteMany({ where: { auction: byEvent } })
   await prisma.listing.deleteMany({ where: { seller: { username: { startsWith: UTAG } } } })
@@ -312,14 +317,6 @@ describe('a Privy holder gets the transaction to approve, built by the same rout
     expect(res.body.qrPng).toMatch(/^https:/)
   })
 
-  it('gifting is still not built for Privy and says so, rather than asking Xaman', async () => {
-    const { holder, ticket } = await fixture()
-    const other = await mkUser('friend')
-    const res = await post(`/api/tickets/${ticket.nfTokenId}/gift`, holder, { to: other.username })
-    expect(res.status).toBeGreaterThanOrEqual(400)
-    expect(JSON.stringify(res.body)).toMatch(/not available|email sign-in/i)
-    expect(payloadTxs).toHaveLength(0)
-  })
 })
 
 import { RippledError } from 'xrpl'
@@ -372,5 +369,107 @@ describe('a Privy buyer whose wallet cannot pay is told so, with the address to 
   it('/api/policy tells the browser which account is HubWorld\'s broker, so it can check an offer is restricted to it', async () => {
     const res = await request(app).get('/api/policy')
     expect(res.body.brokerAddress).toBe(BROKER_ADDR)
+  })
+})
+
+describe('gifts with a Privy wallet', () => {
+  beforeEach(() => {
+    readNftOffer.mockReset()
+    offerOnLedgerState.mockReset().mockResolvedValue('present')
+  })
+
+  async function offered(opts: { recipient?: 'privy' | 'xaman' } = {}) {
+    const { holder, ticket } = await fixture()
+    const friend = opts.recipient === 'xaman' ? await mkUser('xfriend') : await privyActor('friend')
+    const gift = await prisma.gift.create({
+      data: {
+        network: NETWORK, ticketId: ticket.id, fromId: holder.id, toId: friend.id, fromAddress: holder.address, toAddress: friend.address,
+        status: 'OFFERED', offerPayloadUuid: `00000000-0000-4000-8000-${uniq.padEnd(12, '0').slice(0, 12).replace(/[^0-9a-f]/g, '0')}`,
+        offerIndex: 'AD'.repeat(32), expiresAt: new Date(Date.now() + 600_000),
+      },
+    })
+    return { holder, friend, ticket, gift }
+  }
+
+  it('GIFT_OFFER: a free sell offer to exactly the person named, to approve in the browser', async () => {
+    const { holder, ticket } = await fixture()
+    const friend = await privyActor('friend')
+    const res = await post(`/api/tickets/${ticket.nfTokenId}/gift`, holder, { to: friend.username })
+    expect(res.status).toBe(201)
+    expect(res.body.sign.tx).toMatchObject({ TransactionType: 'NFTokenCreateOffer', Account: holder.address, Amount: '0', Destination: friend.address, Flags: 1 })
+    expect(res.body.to).toEqual({ username: friend.username, xrplAddress: friend.address })
+    expect(payloadTxs).toHaveLength(0)
+    expect((await rows(holder.id))[0]).toMatchObject({ signer: 'privy', flow: 'GIFT_OFFER' })
+  })
+
+  it('GIFT_OFFER to HubWorld\'s broker is refused by the signer, whatever builds it', async () => {
+    const holder = await privyActor('tobroker')
+    const tx = { TransactionType: 'NFTokenCreateOffer', Account: holder.address, NFTokenID: 'AB'.repeat(32), Amount: '0', Destination: BROKER_ADDR, Flags: 1 }
+    await expect(priv.privySigner.createPayload(tx, { flow: 'GIFT_OFFER', userId: holder.id })).rejects.toThrow(/broker/i)
+  })
+
+  it('GIFT_ACCEPT: checks on the LEDGER that the gift is free, for them, from the sender, then hands back the accept to approve', async () => {
+    const { holder, friend, gift } = await offered()
+    readNftOffer.mockResolvedValue({ amountDrops: 0n, destination: friend.address, owner: holder.address })
+    const res = await post(`/api/gifts/${gift.id}/accept`, friend)
+    expect(res.status).toBe(201)
+    expect(res.body.sign.tx).toMatchObject({ TransactionType: 'NFTokenAcceptOffer', Account: friend.address, NFTokenSellOffer: 'AD'.repeat(32) })
+    expect(res.body.offer).toEqual({ index: 'AD'.repeat(32) })
+    expect((await rows(friend.id))[0]).toMatchObject({ signer: 'privy', flow: 'GIFT_ACCEPT' })
+  })
+
+  it.each([
+    ['is not free (accepting it would PAY for the ticket)', (h: string, f: string) => ({ amountDrops: 1_000_000n, destination: f, owner: h })],
+    ['is addressed to someone else', (h: string) => ({ amountDrops: 0n, destination: 'rSomeoneElse', owner: h })],
+    ['is open to anyone', (h: string) => ({ amountDrops: 0n, destination: null, owner: h })],
+    ['is from someone other than the sender', (_h: string, f: string) => ({ amountDrops: 0n, destination: f, owner: 'rSomeoneElse' })],
+  ])('GIFT_ACCEPT is REFUSED when the offer on the ledger %s, and nothing is created', async (_n, make) => {
+    const { holder, friend, gift } = await offered()
+    readNftOffer.mockResolvedValue(make(holder.address, friend.address))
+    const res = await post(`/api/gifts/${gift.id}/accept`, friend)
+    expect(res.status).toBe(409)
+    expect(await rows(friend.id)).toHaveLength(0)
+  })
+
+  it('GIFT_ACCEPT when the offer is gone says so, and creates nothing', async () => {
+    const { friend, gift } = await offered()
+    offerOnLedgerState.mockResolvedValue('gone')
+    const res = await post(`/api/gifts/${gift.id}/accept`, friend)
+    expect(res.status).toBe(409)
+    expect(res.body.error).toMatch(/no longer/i)
+    expect(await rows(friend.id)).toHaveLength(0)
+  })
+
+  it('GIFT_ACCEPT when the ledger cannot be read: a Privy wallet waits (its screen cannot see the amount), and nothing is created', async () => {
+    const { friend, gift } = await offered()
+    offerOnLedgerState.mockResolvedValue('unknown')
+    const res = await post(`/api/gifts/${gift.id}/accept`, friend)
+    expect(res.status).toBe(503)
+    expect(await rows(friend.id)).toHaveLength(0)
+  })
+
+  it('GIFT_ACCEPT when the ledger cannot be read: a Xaman wallet carries on (Xaman shows the amount itself)', async () => {
+    const { gift, friend } = await offered({ recipient: 'xaman' })
+    offerOnLedgerState.mockResolvedValue('unknown')
+    expect((await post(`/api/gifts/${gift.id}/accept`, friend)).status).toBe(201)
+  })
+
+  it('GIFT_ACCEPT by a Privy wallet that does not exist yet: WALLET_NEEDS_FUNDS (enough to exist and hold the ticket), nothing created', async () => {
+    const { holder, friend, gift } = await offered()
+    readNftOffer.mockResolvedValue({ amountDrops: 0n, destination: friend.address, owner: holder.address })
+    accountFunding.mockRejectedValue(new RippledError('Account not found.', { error: 'actNotFound' }))
+    const res = await post(`/api/gifts/${gift.id}/accept`, friend)
+    expect(res.status).toBe(409)
+    // nothing to pay + 0.2 for the page the ticket lands on + 0.1 fee headroom + 1 base reserve
+    expect(res.body).toMatchObject({ code: 'WALLET_NEEDS_FUNDS', address: friend.address, neededDrops: '1300000' })
+    expect(await rows(friend.id)).toHaveLength(0)
+  })
+
+  it('GIFT_CANCEL: a cancel of exactly that gift\'s offer', async () => {
+    const { holder, gift } = await offered()
+    const res = await post(`/api/gifts/${gift.id}/cancel`, holder)
+    expect(res.status).toBe(201)
+    expect(res.body.sign.tx).toMatchObject({ TransactionType: 'NFTokenCancelOffer', Account: holder.address, NFTokenOffers: ['AD'.repeat(32)] })
+    expect((await rows(holder.id))[0]).toMatchObject({ signer: 'privy', flow: 'GIFT_CANCEL' })
   })
 })

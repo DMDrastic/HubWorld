@@ -1021,9 +1021,9 @@ Xaman request.
 
 - **One list.** `src/privy-flows.ts` is the only place that says what a Privy wallet may be asked to sign: each action is pinned to
   its transaction type, and each offer to its side (a listing or auction opening is a SELL offer; a purchase or bid is a BUY offer
-  and the amount must be positive drops; every offer must name HubWorld's broker, so none can be taken directly). `signing.ts`
-  routes by it and `privy-signing.ts` checks every request against it, so the two cannot drift. Gifts, the door and sign-in are not
-  on it and say so rather than falling back to Xaman.
+  and the amount must be positive drops; every sale offer must name HubWorld's broker, so none can be taken directly; a gift is
+  the opposite, free and to one named person, see Gifting). `signing.ts` routes by it and `privy-signing.ts` checks every
+  request against it, so the two cannot drift. The door and sign-in are not on it and say so rather than falling back to Xaman.
 - **Same custody rule as the organizer flow.** The server builds and stores the unsigned transaction with a bounded
   `LastLedgerSequence`; the browser returns only a signature; the server checks the key is the user's own wallet and equals the
   transaction's `Account`, then submits once.
@@ -1730,6 +1730,26 @@ when it admits an attendee on a cached claim rather than turning away a real one
 disagrees with `Ticket.ownerAddress` the cache is cleared rather than trusted —
 the holder may have moved the ticket in Xaman without touching Hubworld.
 `GET /tickets/mine?verify=true` surfaces the same check per ticket as `onLedger`.
+
+
+**With a wallet the person owns (Privy), all three signatures happen in the browser**, and each is checked in two
+places, because a gift is the one offer that is FREE and so the one a hostile server would most like to redirect.
+
+- **Giving.** The server only allows a zero-amount sell offer with a `Destination` that is not the giver and not the
+  broker (`privy-flows.ts`, rule `offer: 'gift'`). The page then compares the recipient the server names with the
+  handle the giver TYPED, and refuses to show an approval if they differ or if the server names nobody; the review
+  checks the transaction's `Destination` against that recipient's wallet.
+- **Accepting is the dangerous one.** An `NFTokenAcceptOffer` names an offer and NOTHING about its price, so neither
+  the review nor the person can see what accepting costs. A sell offer for 1,000 XRP addressed to the recipient would
+  look identical. So the accept route reads the offer from the LEDGER first and refuses unless it is free, addressed
+  to the recipient and owned by the sender. If the ledger cannot be read, a Privy recipient is told to try again
+  (503) while a Xaman recipient carries on as before, because Xaman shows the amount itself. This is the one place
+  an unreadable ledger refuses, and the reason is that the approval screen is blind without it. The review says this
+  plainly ("HubWorld checked on the ledger") rather than claiming to have checked it.
+- **The accept can only take one sell offer, unbrokered.** A buy offer there would SELL the recipient's ticket, and
+  a broker fee would make them the broker of someone else's sale.
+- **A new wallet needs funds to receive a gift**: 1 XRP base reserve plus 0.2 for the page the ticket lands on, so the
+  accept answers `WALLET_NEEDS_FUNDS` like a purchase does, and a giver needs 0.2 for the offer.
 
 ## Selling (brokered)
 

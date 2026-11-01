@@ -43,6 +43,12 @@ export type ReviewAction =
   | { kind: 'auction'; reserveDrops: string; label?: string }
   /** Taking a listing off sale. */
   | { kind: 'withdraw'; label?: string }
+  /** Giving a ticket: a free offer to the person the giver chose (their handle as typed, their wallet as looked up). */
+  | { kind: 'gift'; recipientAddress: string; recipientHandle: string; label?: string }
+  /** Accepting a ticket someone gave you: the one offer the page was shown. */
+  | { kind: 'acceptGift'; offerIndex: string; fromHandle: string; label?: string }
+  /** Taking back a gift you offered and nobody has accepted yet. */
+  | { kind: 'cancelGift'; label?: string }
 
 export type ReviewContext = {
   /** The account the signed-in person's own wallet is. */
@@ -74,6 +80,7 @@ const FIELDS: Record<string, string[]> = {
   NFTokenMint: [...COMMON, 'NFTokenTaxon', 'TransferFee', 'URI', 'Amount', 'Destination'],
   NFTokenCreateOffer: [...COMMON, 'NFTokenID', 'Amount', 'Destination', 'Owner'],
   NFTokenCancelOffer: [...COMMON, 'NFTokenOffers'],
+  NFTokenAcceptOffer: [...COMMON, 'NFTokenSellOffer'],
 }
 
 const refuse = (reason: string): Review => ({ ok: false, reason })
@@ -210,6 +217,59 @@ function reviewAction(tx: Record<string, unknown>, ctx: ReviewContext): Review {
   if (!act) return refuse('This request was not expected here.')
   const type = tx.TransactionType
   const at = act.label ? ` to ${act.label}` : ''
+
+  if (act.kind === 'cancelGift') {
+    if (type !== 'NFTokenCancelOffer') return refuse('This is not taking back a gift, so we won’t ask you to approve it.')
+    const offers = tx.NFTokenOffers
+    if (!Array.isArray(offers) || offers.length !== 1 || typeof offers[0] !== 'string' || !/^[0-9A-Fa-f]{64}$/.test(offers[0])) {
+      return refuse('This would cancel something other than your one gift, so we won’t ask you to approve it.')
+    }
+    return {
+      ok: true,
+      title: `Take back your gift of a ticket${at}`,
+      lines: ['This withdraws the offer before anyone accepts it. The ticket stays in your wallet, and nothing is charged.'],
+    }
+  }
+
+  if (act.kind === 'acceptGift') {
+    if (type !== 'NFTokenAcceptOffer') return refuse('This is not accepting a gift, so we won’t ask you to approve it.')
+    if (tx.NFTokenSellOffer !== act.offerIndex) {
+      return refuse('This would accept something that is not the gift shown to you. Do not approve it.')
+    }
+    return {
+      ok: true,
+      title: `Accept the ticket${at} from ${act.fromHandle}`,
+      lines: [
+        'This takes the ticket into your wallet. Nothing is paid, apart from a tiny network fee.',
+        // Said as what it is: an accept does not carry the offer's amount, so this page cannot see it. The server reads the offer
+        // on the ledger and refuses to ask unless it is free and addressed to you.
+        'An accept does not show what the offer costs, so HubWorld checked on the ledger that this one is free and addressed to you before asking.',
+      ],
+    }
+  }
+
+  if (act.kind === 'gift') {
+    if (type !== 'NFTokenCreateOffer') return refuse('This is not a gift, so we won’t ask you to approve it.')
+    const giftFlags = typeof tx.Flags === 'number' ? tx.Flags : 0
+    if ((giftFlags & TF_SELL) !== TF_SELL || 'Owner' in tx) return refuse('This is not a gift, so we won’t ask you to approve it.')
+    if (tx.Amount !== '0') return refuse('A gift is free, and this asks for money. Do not approve it.')
+    if (tx.Destination === ctx.account) return refuse('This gives the ticket to yourself, which makes no sense.')
+    if (ctx.broker && tx.Destination === ctx.broker) return refuse('This would give your ticket to HubWorld’s own account. Do not approve it.')
+    if (tx.Destination !== act.recipientAddress) {
+      return refuse('This sends the ticket to someone who is not the person you chose. Do not approve it.')
+    }
+    const handle = act.recipientHandle.replace(/^@/, '')
+    return {
+      ok: true,
+      title: `Give your ticket${at} to @${handle}`,
+      lines: [
+        `It is free: @${handle} receives the ticket and nothing is paid either way.`,
+        'It stays yours until they accept it, and you can take it back until then.',
+        `Their wallet: ${String(tx.Destination)}`,
+        `Ticket ${short(tx.NFTokenID)}`,
+      ],
+    }
+  }
 
   if (act.kind === 'withdraw') {
     if (type !== 'NFTokenCancelOffer') return refuse('This is not a withdrawal, so we won’t ask you to approve it.')

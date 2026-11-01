@@ -108,7 +108,7 @@ export function SignStep({
         <h3 className="font-heading text-base font-semibold tracking-tight">{review.title}</h3>
         <ul className="text-muted-foreground mt-2 space-y-1.5 text-sm">
           {review.lines.map((line) => (
-            <li key={line} className={line.startsWith('Authorising') ? 'font-mono text-xs break-all' : undefined}>
+            <li key={line} className={line.startsWith('Authorising') || line.startsWith('Their wallet') ? 'font-mono text-xs break-all' : undefined}>
               {line}
             </li>
           ))}
