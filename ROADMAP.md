@@ -1025,6 +1025,4 @@ pass, and both are currently unanswerable.
   before a public launch (a Privy user who never signs in again after 30 days stops counting).
 - **Two frontend tests depend on the time of day** (`TicketWallet.test.tsx`, "tomorrow" vs "in 2 days" from real dates); they fail
   late in the evening. Not related to signing. Pin the clock in those fixtures.
-- **Signing out of HubWorld does not sign out of Privy.** A returning visitor goes straight on, which is what the email flow wants,
-  but a shared device keeps the Privy session. Decide before kiosk or shared-device use.
-
+- ~~**Signing out of HubWorld does not sign out of Privy.**~~ **Fixed 2026-11-01.** Sign-out now ends the email wallet's session too (`lib/sign-out.ts`), and a browser that still remembers one offers "Use a different email". Found when a tester could only ever sign in as the previous email.

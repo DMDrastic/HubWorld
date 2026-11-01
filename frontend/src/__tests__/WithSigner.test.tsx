@@ -104,6 +104,14 @@ describe('WithSigner', () => {
     expect(mounts).toBe(1)
   })
 
+  it('tells the app the runtime as well, so it can reach the wallet from outside the page (to sign it out)', async () => {
+    const seen: Array<SignerRuntime | null> = []
+    render(<WithSigner enabled appId="cmapp" onRuntime={(r) => seen.push(r)}><p>page</p></WithSigner>)
+    await screen.findByTestId('host')
+    await act(async () => loaded.report!(RUNTIME))
+    expect(seen[seen.length - 1]).toBe(RUNTIME)
+  })
+
   it('with the host switched off, the page sees no runtime at all', () => {
     render(<WithSigner enabled={false} appId="cmapp"><Probe /></WithSigner>)
     expect(screen.getByTestId('probe').textContent).toBe('no runtime')
