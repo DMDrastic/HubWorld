@@ -148,6 +148,9 @@ describe('accepting a ticket someone gave you', () => {
             : json(created({ sign: SIGN('NFTokenAcceptOffer'), offer: { index: OFFER } }), 201)
         },
         'POST .*/wallet/fund$': () => json({ ok: true, amountXrp: 100 }),
+        // The faucet's XRP has landed: the way on opens only once the ledger shows it.
+        'GET .*/wallet/status$': () =>
+          json({ address: 'rNewWallet0000000000000000000', network: 'testnet', exists: true, balanceDrops: '100000000', spendableDrops: '99000000', activationDrops: '1000000', canFund: true, signer: 'PRIVY' }),
       },
       { incoming: [item()] },
     )
@@ -155,7 +158,9 @@ describe('accepting a ticket someone gave you', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Accept' }))
     expect(await screen.findByText('rNewWallet0000000000000000000')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: /get test xrp/i }))
-    fireEvent.click(await screen.findByRole('button', { name: /try again/i }))
+    await screen.findByText(/on its way/i)
+    await vi.advanceTimersByTimeAsync(2_500)
+    fireEvent.click(await screen.findByRole('button', { name: /^continue$/i }))
     expect(await screen.findByText('A plain summary')).toBeTruthy()
     await waitFor(() => expect(n).toBe(2))
   })
