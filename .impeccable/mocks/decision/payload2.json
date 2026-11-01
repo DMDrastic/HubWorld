@@ -1,0 +1,46 @@
+{
+  "title": "A bolder hand for the landing page",
+  "question": "Three bolder structures for the same organizer, world and proof. The rail from the first hand is set aside; none of these is a repeat.",
+  "options": [
+    {
+      "id": "door",
+      "kind": "assigned",
+      "label": "The Door",
+      "kicker": "THE ROLL",
+      "lineage": "the staff phone at the entrance",
+      "thesis": "The first thing you see is a verdict, full width: the moment a ticket either works or doesn't.",
+      "palette": ["#3fb463", "#06140b", "#0e0e12", "#8b7cff"],
+      "materials": ["flat live-green field", "mono labels"],
+      "viewport": "A giant Admitted verdict with the guest's handle, the two other verdicts beneath, and the organizer pitch and action below.",
+      "risk": "Strong and unusual, but it leads with the door and not the money, so the royalty line has to land fast.",
+      "html": ".impeccable/mocks/decision/door.html"
+    },
+    {
+      "id": "statement",
+      "kind": "dealt",
+      "label": "The Statement",
+      "lineage": "an organizer's settlement statement",
+      "thesis": "The page opens as the organizer's own books: every line of an event's money, itemised, with the royalty line lit.",
+      "palette": ["#0e0e12", "#15151b", "#8b7cff", "#f2f2f5"],
+      "materials": ["ledger table", "tabular figures"],
+      "viewport": "A large headline and the action above a wide settlement table whose resale royalty row is the one highlighted.",
+      "risk": "Reads as an admin screen unless the headline does the persuading; its figures are synthetic and labelled so.",
+      "html": ".impeccable/mocks/decision/statement.html"
+    },
+    {
+      "id": "scrubber",
+      "kind": "dealt",
+      "label": "The Scrubber",
+      "lineage": "a timeline you can drag",
+      "thesis": "The sale ends, the page keeps going: drag from sale day to show night and watch resale, royalties and bids accumulate.",
+      "palette": ["#0e0e12", "#15151b", "#8b7cff", "#9b9aa7"],
+      "materials": ["time track", "live readout plates"],
+      "viewport": "An oversized headline, the action, then a draggable three-point time track with three readouts beneath.",
+      "risk": "Interactive and memorable, but every figure is synthetic, so it must be labelled and never read as a result.",
+      "html": ".impeccable/mocks/decision/scrubber.html"
+    }
+  ],
+  "reroll": { "registers": ["safer", "bolder"] },
+  "steer": true,
+  "buildPath": { "value": "code", "toggle": false }
+}

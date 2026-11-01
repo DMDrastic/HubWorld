@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0}
+html,body{width:1440px;height:900px;overflow:hidden}
+body{background:#0e0e12;color:#f2f2f5;font:400 16px/1.5 Geist,system-ui,sans-serif}
+nav{height:64px;border-bottom:1px solid rgba(255,255,255,.08);display:flex;align-items:center;padding:0 160px;gap:32px}
+nav b{font-weight:600}nav span{color:#9b9aa7;font-size:14px;font-weight:500}nav .r{margin-left:auto}
+.wrap{display:grid;grid-template-columns:520px 1fr;gap:96px;padding:88px 160px 0}
+h1{font-size:60px;line-height:1.02;letter-spacing:-.035em;font-weight:600;text-wrap:balance}
+p.lede{margin-top:24px;color:#9b9aa7;font-size:18px;max-width:440px}
+.cta{margin-top:36px;display:flex;gap:20px;align-items:center}
+.btn{background:#8b7cff;color:#0b0b0f;height:44px;padding:0 22px;border-radius:99px;font-weight:500;font-size:15px;display:flex;align-items:center}
+.cta a{color:#9b9aa7;font-size:15px}
+.note{margin-top:40px;color:#9b9aa7;font-size:13px;max-width:420px}
+.rail{position:relative;padding-left:44px}
+.rail:before{content:"";position:absolute;left:14px;top:20px;bottom:40px;width:1px;background:rgba(255,255,255,.12)}
+.stop{position:relative;margin-bottom:14px}
+.stop i{position:absolute;left:-36px;top:26px;width:12px;height:12px;border-radius:50%;background:#0e0e12;border:2px solid #8b7cff}
+.stop.live i{background:#3fb463;border-color:#3fb463;box-shadow:0 0 0 4px rgba(63,180,99,.3)}
+.plate{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:16px;padding:18px 22px;display:flex;justify-content:space-between;align-items:center}
+.stop.live .plate{border-color:rgba(63,180,99,.42)}
+.plate small{color:#9b9aa7;font-size:13px;display:block}
+.plate h3{font-size:20px;letter-spacing:-.02em;font-weight:600}
+.fig{font:400 15px Geist Mono,monospace;text-align:right;color:#f2f2f5}
+.fig small{font:400 12px Geist,sans-serif}
+</style></head><body>
+<nav><b>HubWorld</b><span>Events</span><span class="r">not signed in</span></nav>
+<div class="wrap">
+<div>
+<h1>When your ticket resells, you get paid.</h1>
+<p class="lede">HubWorld keeps organizers in the picture after the first sale: royalties, resale rules and auctions, all settled on the XRP Ledger.</p>
+<div class="cta"><span class="btn">Apply as an organizer</span><a>See an event</a></div>
+<p class="note">Figures on the right are measured on the live XRP Ledger, not projected.</p>
+</div>
+<div class="rail">
+<div class="stop"><i></i><div class="plate"><div><small>Mint</small><h3>1,000 tickets, one signature</h3></div><div class="fig">12 drops<small><br>each, paid by the delegate</small></div></div></div>
+<div class="stop"><i></i><div class="plate"><div><small>Sale</small><h3>The organizer is paid in full</h3></div><div class="fig">2.000 XRP<small><br>for two 1 XRP tickets</small></div></div></div>
+<div class="stop"><i></i><div class="plate"><div><small>Resale</small><h3>The organizer earns a royalty</h3></div><div class="fig">0.04875 XRP<small><br>of a 1 XRP resale</small></div></div></div>
+<div class="stop live"><i></i><div class="plate"><div><small>Auction</small><h3>Bids settle against live balances</h3></div><div class="fig">falls to the<small><br>runner-up if one can't pay</small></div></div></div>
+<div class="stop"><i></i><div class="plate"><div><small>Door</small><h3>One admit path, two ways in</h3></div><div class="fig">scan or sign<small><br>a ticket admits once</small></div></div></div>
+</div>
+</div></body></html>

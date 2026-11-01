@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0}
+html,body{width:1440px;height:900px;overflow:hidden}
+body{background:#0e0e12;color:#f2f2f5;font:400 16px/1.5 Geist,system-ui,sans-serif}
+nav{height:64px;border-bottom:1px solid rgba(255,255,255,.08);display:flex;align-items:center;padding:0 160px;gap:32px}
+nav b{font-weight:600}nav span{color:#9b9aa7;font-size:14px;font-weight:500}nav .r{margin-left:auto}
+.wrap{display:grid;grid-template-columns:1fr 560px;gap:120px;padding:120px 160px 0;align-items:start}
+h1{font-size:68px;line-height:1.0;letter-spacing:-.04em;font-weight:600;text-wrap:balance}
+p.lede{margin-top:24px;color:#9b9aa7;font-size:18px;max-width:460px}
+.cta{margin-top:36px;display:flex;gap:20px;align-items:center}
+.btn{background:#8b7cff;color:#0b0b0f;height:44px;padding:0 22px;border-radius:99px;font-weight:500;font-size:15px;display:flex;align-items:center}
+.cta a{color:#9b9aa7;font-size:15px}
+.rc{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:16px;padding:28px 30px}
+.rc .top{display:flex;justify-content:space-between;color:#9b9aa7;font-size:13px}
+.rc h3{font-size:20px;font-weight:600;letter-spacing:-.02em;margin:6px 0 22px}
+.bar{display:flex;height:14px;border-radius:99px;overflow:hidden;gap:3px}
+.bar i{display:block}
+.row{display:flex;justify-content:space-between;align-items:baseline;padding:14px 0;border-top:1px solid rgba(255,255,255,.08);font-size:15px}
+.row:first-of-type{margin-top:22px}
+.row span{display:flex;align-items:center;gap:10px}
+.row s{width:10px;height:10px;border-radius:50%;display:inline-block}
+.row b{font:500 17px Geist Mono,monospace;font-variant-numeric:tabular-nums}
+.rc .src{margin-top:8px;font-size:12px;color:#9b9aa7}
+</style></head><body>
+<nav><b>HubWorld</b><span>Events</span><span class="r">not signed in</span></nav>
+<div class="wrap">
+<div>
+<h1>When your ticket resells, you get paid.</h1>
+<p class="lede">The royalty is paid by the ledger in the same transaction as the sale. Nobody has to remember to send it.</p>
+<div class="cta"><span class="btn">Apply as an organizer</span><a>See an event</a></div>
+</div>
+<div class="rc">
+<div class="top"><span>One resale, 1 XRP</span><span>mainnet</span></div>
+<h3>Where the money went</h3>
+<div class="bar"><i style="width:92.6%;background:#f2f2f5"></i><i style="width:4.9%;background:#8b7cff"></i><i style="width:2.5%;background:#9b9aa7"></i></div>
+<div class="row"><span><s style="background:#f2f2f5"></s>Seller</span><b>0.926250</b></div>
+<div class="row"><span><s style="background:#8b7cff"></s>Organizer, royalty</span><b>0.048750</b></div>
+<div class="row"><span><s style="background:#9b9aa7"></s>Platform</span><b>0.024988</b></div>
+<p class="src">One measured sale, 13 Aug 2026, 5% royalty. Your figures depend on your fee and royalty settings.</p>
+</div>
+</div></body></html>

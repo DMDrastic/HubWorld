@@ -577,6 +577,10 @@ export const GiftCreatedSchema = z.object({
   qrPng: z.string(),
   mode: z.enum(['live', 'stub']),
   to: z.object({ username: z.string(), xrplAddress: z.string() }).optional(),
+  /** For a wallet the person owns: the transaction to approve in the browser, instead of a QR. */
+  sign: SignBlockSchema.optional(),
+  /** On an accept: which offer is being accepted, so the approval can check the transaction names this one. */
+  offer: z.object({ index: z.string() }).optional(),
 })
 
 const GiftTicketSchema = z.object({

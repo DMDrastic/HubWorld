@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
-import { QrCode } from '@/components/QrCode'
+import { SigningPrompt } from '@/components/SigningPrompt'
+import { WalletFunding } from '@/components/WalletFunding'
+import type { ReviewAction } from '@/lib/sign-review'
 import {
   ApiError,
   acceptGift,
@@ -12,6 +14,8 @@ import {
   type GiftListItem,
   type GiftState,
   type OwnedTicket,
+  type WalletNeedsFunds,
+  walletNeedsFunds,
 } from '@/lib/api'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -40,7 +44,9 @@ type Phase =
    * nothing left to scan anyway. Without this a gift whose poll was interrupted
    * would be unreachable from the UI and could never advance.
    */
-  | { kind: 'active'; giftId: string; payload: GiftCreated | null; label: string }
+  | { kind: 'active'; giftId: string; payload: GiftCreated | null; label: string; action: ReviewAction | null }
+  /** The wallet cannot carry this yet. `retry` does the same thing again. */
+  | { kind: 'needs-funds'; info: WalletNeedsFunds; retry: () => void }
   | { kind: 'failed'; reason: string }
 
 /** Which states still need the QR on screen. */
@@ -65,6 +71,8 @@ export function GiftPanel({
   const [nfTokenId, setNfTokenId] = useState('')
   const [recipient, setRecipient] = useState('')
   const [phase, setPhase] = useState<Phase>({ kind: 'idle' })
+  // The wallet's own approval has gone: the prompt gives way to the gift's progress.
+  const [approved, setApproved] = useState(false)
   // Held separately from `phase` on purpose. Folding the polled state into the
   // phase object meant every poll produced a new object, the effect's `phase`
   // dependency changed, and the effect re-ran — firing the next request
@@ -146,14 +154,44 @@ export function GiftPanel({
     setBusy(true)
     try {
       const payload = await createGift(nfTokenId, recipient)
+      const typed = recipient.trim().replace(/^@/, '').toLowerCase()
+      let action: ReviewAction | null = null
+      if (payload.sign) {
+        // The person the gift goes to is decided by what the giver TYPED. If the server came back naming someone else, or naming
+        // nobody, nothing is sent for approval: the review would only be checking the server against itself.
+        if (!payload.to) {
+          setPhase({ kind: 'failed', reason: 'Could not confirm who this gift is for, so it was not sent for approval. Nothing was signed.' })
+          return
+        }
+        if (payload.to.username.toLowerCase() !== typed) {
+          setPhase({
+            kind: 'failed',
+            reason: `The server named a different person (@${payload.to.username}) than you typed (@${typed}). Nothing was signed.`,
+          })
+          return
+        }
+        action = {
+          kind: 'gift',
+          recipientAddress: payload.to.xrplAddress,
+          recipientHandle: payload.to.username,
+          label: tickets.find((t) => t.nfTokenId === nfTokenId)?.event.title,
+        }
+      }
       setGiftState(null)
+      setApproved(false)
       setPhase({
         kind: 'active',
         giftId: payload.giftId,
         payload,
         label: `Gift to @${recipient.replace(/^@/, '')}`,
+        action,
       })
     } catch (err) {
+      const short = walletNeedsFunds(err)
+      if (short) {
+        setPhase({ kind: 'needs-funds', info: short, retry: () => void send() })
+        return
+      }
       setPhase({
         kind: 'failed',
         reason: err instanceof ApiError ? err.message : 'Could not start the gift',
@@ -163,13 +201,32 @@ export function GiftPanel({
     }
   }
 
-  async function accept(giftId: string) {
+  async function accept(g: GiftListItem) {
     setBusy(true)
     try {
-      const payload = await acceptGift(giftId)
+      const payload = await acceptGift(g.giftId)
+      if (payload.sign && !payload.offer) {
+        setPhase({ kind: 'failed', reason: 'Could not confirm which gift this accepts, so it was not sent for approval. Nothing was signed.' })
+        return
+      }
       setGiftState(null)
-      setPhase({ kind: 'active', giftId: payload.giftId, payload, label: 'Accept this gift' })
+      setApproved(false)
+      setPhase({
+        kind: 'active',
+        giftId: payload.giftId,
+        payload,
+        label: 'Accept this gift',
+        // THE gift the person pressed Accept on: who it is from and what it is for come from the list they were shown.
+        action: payload.offer
+          ? { kind: 'acceptGift', offerIndex: payload.offer.index, fromHandle: g.from, label: g.ticket.event.title }
+          : null,
+      })
     } catch (err) {
+      const short = walletNeedsFunds(err)
+      if (short) {
+        setPhase({ kind: 'needs-funds', info: short, retry: () => void accept(g) })
+        return
+      }
       setPhase({
         kind: 'failed',
         reason: err instanceof ApiError ? err.message : 'Could not accept',
@@ -189,11 +246,13 @@ export function GiftPanel({
       const result = await cancelGift(giftId)
       if ('uuid' in result) {
         setGiftState(null)
+        setApproved(false)
         setPhase({
           kind: 'active',
           giftId: result.giftId,
           payload: result,
           label: 'Withdraw this gift',
+          action: { kind: 'cancelGift', label: outgoing.find((o) => o.giftId === giftId)?.ticket.event.title },
         })
       } else {
         setPhase({ kind: 'idle' })
@@ -250,13 +309,14 @@ export function GiftPanel({
                         giftId: g.giftId,
                         payload: null,
                         label: `Gift from ${g.from}`,
+                        action: null,
                       })
                     }}
                   >
                     Check
                   </Button>
                 ) : (
-                  <Button size="sm" disabled={busy} onClick={() => void accept(g.giftId)}>
+                  <Button size="sm" disabled={busy} onClick={() => void accept(g)}>
                     Accept
                   </Button>
                 )}
@@ -293,6 +353,7 @@ export function GiftPanel({
                         giftId: g.giftId,
                         payload: null,
                         label: `Gift to ${g.to}`,
+                        action: null,
                       })
                     }}
                   >
@@ -362,18 +423,24 @@ export function GiftPanel({
           <div className="flex flex-col items-center gap-3">
             <div className="text-sm font-medium">{phase.label}</div>
 
-            {phase.payload !== null && (giftState === null || NEEDS_SIGNATURE.has(giftState.state)) && (
-              <>
-                <QrCode
-                  src={phase.payload!.qrPng}
-                  alt="Xaman signing QR code"
-                  next={phase.payload!.next}
-                  mode={phase.payload!.mode}
+            {phase.payload !== null &&
+              !approved &&
+              (giftState === null || NEEDS_SIGNATURE.has(giftState.state)) &&
+              (phase.payload.sign && phase.action === null ? (
+                // A request to approve with nothing to check it against is never shown as approvable.
+                <p className="text-destructive text-sm">Could not check this request, so it was not sent for approval.</p>
+              ) : (
+                <SigningPrompt
+                  payload={phase.payload}
+                  action={phase.action ?? { kind: 'cancelGift' }}
+                  qrAlt="Xaman signing QR code"
+                  qrHint="Scan in Xaman to sign."
+                  onSubmitted={() => setApproved(true)}
                 />
-                <p className="text-muted-foreground text-center text-sm">
-                  Scan in Xaman to sign.
-                </p>
-              </>
+              ))}
+
+            {approved && (giftState === null || giftState.state === 'pending_offer') && (
+              <p className="text-muted-foreground text-center text-sm">Approved. Waiting for the network to confirm…</p>
             )}
 
             {giftState && (
@@ -410,6 +477,8 @@ export function GiftPanel({
             </Button>
           </div>
         )}
+
+        {phase.kind === 'needs-funds' && <WalletFunding info={phase.info} onRetry={phase.retry} />}
 
         {phase.kind === 'failed' && (
           <div className="space-y-3">
