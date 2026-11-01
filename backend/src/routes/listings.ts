@@ -27,7 +27,7 @@ import { requireAuth } from '../session.js'
 import { advanceListing, listingInclude, listingView } from '../listing-advance.js'
 import { checkResalePrice, maxAskForCap, isPrimarySale } from '../resale-policy.js'
 import { paidCostOf } from '../paid-cost.js'
-import { buyerPaysDrops, configuredMinimumResaleDrops, primaryFeeDrops, resaleListingTerms } from '../listing-terms.js'
+import { PRICE_UNAVAILABLE, buyerPaysDrops, currentMinimumResaleDrops, primaryFeeDrops, resaleListingTerms } from '../listing-terms.js'
 import {
   buildBuyOfferTx,
   buildCancelOfferTx,
@@ -177,7 +177,13 @@ listingsRouter.post('/tickets/:nfTokenId/list', requireAuth, async (req, res) =>
     fee = f.feeDrops
     feeBps = f.feeBps
   } else {
-    const terms = resaleListingTerms({ priceDrops, minimumDrops: configuredMinimumResaleDrops() })
+    const minimumDrops = await currentMinimumResaleDrops()
+    if (minimumDrops === null) {
+      // No usable XRP price, so no floor can be worked out. Wait; do not guess.
+      res.status(503).json(PRICE_UNAVAILABLE)
+      return
+    }
+    const terms = resaleListingTerms({ priceDrops, minimumDrops })
     if (!terms.ok) {
       // The cap below is checked first for a ticket that cannot be sold for money at all; a price too small to
       // be worth listing is told so here.

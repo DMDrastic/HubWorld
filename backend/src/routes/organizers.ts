@@ -17,7 +17,7 @@ import { z } from 'zod'
 import { prisma } from '../prisma.js'
 import { NETWORK } from '../network.js'
 import { env, doorTokenMode, feeModelV2, looseResalePolicies, privyMode, signersEnabled } from '../env.js'
-import { configuredMinimumResaleDrops } from '../listing-terms.js'
+import { currentMinimumResaleDrops } from '../listing-terms.js'
 import { issuesOf, slugSchema } from '../schemas.js'
 import { requireAdmin, requireAuth, requireOrganizer } from '../session.js'
 import {
@@ -482,7 +482,9 @@ organizersRouter.post('/events', requireAuth, requireOrganizer, async (req, res)
 })
 
 /** GET /api/policy — the terms a would-be organizer needs to see up front. */
-organizersRouter.get('/policy', (_req, res) => {
+organizersRouter.get('/policy', async (_req, res) => {
+  // Only under the new model, which is the only one with a floor. `null`: there is no usable XRP price right now.
+  const floor = feeModelV2 ? await currentMinimumResaleDrops() : undefined
   res.json({
     platformBps: env.PLATFORM_FEE_BPS,
     maxRoyaltyBps: env.MAX_ROYALTY_BPS,
@@ -500,6 +502,7 @@ organizersRouter.get('/policy', (_req, res) => {
     looseResalePolicies,
     // The US$5 resale floor in drops at the configured XRP price, so a seller's form can show it. Only under the new
     // model: the old one has no floor.
-    ...(feeModelV2 ? { minResaleDrops: configuredMinimumResaleDrops().toString() } : {}),
+    ...(floor !== undefined ? { resaleFloorAvailable: floor !== null } : {}),
+    ...(floor ? { minResaleDrops: floor.toString() } : {}),
   })
 })

@@ -1315,3 +1315,20 @@ model ListingBuyerNotice {
 
   @@index([userId, createdAt])
 }
+
+/// One accepted reading of the XRP price, in millionths of a US dollar per XRP. Written hourly from several public
+/// sources when at least two agree; the newest one that is not too old sets the US$5 resale floor. Not tied to a ledger
+/// (a price is a price), so it carries no `network` column.
+model PriceReading {
+  id String @id @default(uuid())
+
+  pair     String @default("XRPUSD")
+  microUsd BigInt
+
+  /// Who was asked and what each said, and who was dropped as an outlier, for anyone asking later why the floor was what it was.
+  detail Json
+
+  createdAt DateTime @default(now())
+
+  @@index([pair, createdAt])
+}

@@ -1,5 +1,5 @@
 import { createApp } from './app.js'
-import { env, brokerMode } from './env.js'
+import { env, brokerMode, priceFeedOn } from './env.js'
 import { prisma } from './prisma.js'
 import { disconnectLedger } from './ledger.js'
 import { settleDueAuctions } from './settlement.js'
@@ -14,6 +14,7 @@ import { releaseExpiredHolds } from './primary-sale.js'
 import { expireClaims } from './claim.js'
 import { advanceStuckSales, reportStuckSettling } from './listing-advance.js'
 import { defaultPrimarySaleLedger } from './primary-sale-ledger.js'
+import { defaultFetchers, refreshIfDue } from './xrp-price-store.js'
 
 // Before anything is served. A process serving another ledger's rows is worse
 // than one that does not start: the failure is silent, and on mainnet it is
@@ -157,10 +158,26 @@ if (delegateConfigured) {
   console.warn('Bulk minting disabled: no DELEGATE_SEED configured.')
 }
 
+/**
+ * The XRP price behind the US$5 resale floor (`PRICE_FEED=on`). Checked every ten minutes and fetched when the newest
+ * reading is an hour old, so a failed fetch is retried in ten minutes rather than after another hour. A failure here must
+ * never take the server down: the floor simply waits on the last good reading, and says so in `/api/health`.
+ */
+const PRICE_CHECK_MS = 10 * 60_000
+let priceTimer: NodeJS.Timeout | null = null
+if (priceFeedOn) {
+  const priceTick = () =>
+    void refreshIfDue(defaultFetchers()).catch((err) => console.error('[price-feed] refresh failed:', err))
+  priceTick() // at start, so a fresh deploy has a price within seconds
+  priceTimer = setInterval(priceTick, PRICE_CHECK_MS)
+  priceTimer.unref()
+}
+
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {
   process.on(signal, () => {
     if (timer) clearInterval(timer)
     if (mintTimer) clearInterval(mintTimer)
+    if (priceTimer) clearInterval(priceTimer)
     server.close(() => {
       void Promise.allSettled([closeRealtime(), disconnectLedger(), prisma.$disconnect()]).then(() =>
         process.exit(0),

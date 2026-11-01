@@ -55,6 +55,13 @@ describe('GET /api/health', () => {
     expect(res.body.commit).toBe('unknown')
   })
 
+  it('reports the XRP price behind the resale floor, with a mode and a status', async () => {
+    const res = await request(app).get('/api/health')
+    expect(res.body.price).toBeDefined()
+    expect(['feed', 'manual', 'none']).toContain(res.body.price.mode)
+    expect(['ok', 'stale', 'unavailable', 'unknown']).toContain(res.body.price.status)
+  })
+
   it('still answers 200, the property the whole endpoint rests on', async () => {
     // Restated here because `commit` is new and must not have introduced a way
     // for this route to fail. The UI renders a status from this response even
