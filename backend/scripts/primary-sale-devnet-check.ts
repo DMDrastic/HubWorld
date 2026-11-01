@@ -228,6 +228,7 @@ async function main() {
   // network guard exists to refuse.
   await prisma.xamanPayload.deleteMany({ where: { userId: { in: buyerUsers.map((u) => u.id) } } })
   await prisma.transfer.deleteMany({ where: { ticket: { eventId: event.id } } })
+  await prisma.listingBuyerNotice.deleteMany({ where: { listing: { ticket: { eventId: event.id } } } })
   await prisma.listing.deleteMany({ where: { ticket: { eventId: event.id } } })
   await prisma.ticket.deleteMany({ where: { eventId: event.id } })
   await prisma.event.delete({ where: { id: event.id } })

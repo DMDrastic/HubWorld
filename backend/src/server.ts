@@ -12,7 +12,7 @@ import { defaultMintLedger } from './mint-ledger.js'
 import { delegateConfigured } from './delegate-account.js'
 import { releaseExpiredHolds } from './primary-sale.js'
 import { expireClaims } from './claim.js'
-import { advanceStuckSales } from './listing-advance.js'
+import { advanceStuckSales, reportStuckSettling } from './listing-advance.js'
 import { defaultPrimarySaleLedger } from './primary-sale-ledger.js'
 
 // Before anything is served. A process serving another ledger's rows is worse
@@ -85,6 +85,9 @@ const sweep = async () => {
     // paid-for ticket in limbo whenever the tab closed.
     const advanced = await advanceStuckSales()
     if (advanced > 0) console.log(`advanced ${advanced} sale(s) nobody was watching`)
+
+    // A sale that is still SETTLING after a quarter of an hour is not finishing by itself: say so, once.
+    await reportStuckSettling()
 
     // Checkouts nobody finished: give the ticket back and take its offer off the
     // ledger. Idempotent, so two instances doing it together is harmless.

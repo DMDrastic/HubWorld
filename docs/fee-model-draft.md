@@ -177,3 +177,19 @@ With `FEE_MODEL=v2` (which also requires `XRP_USD_CENTS`, or the server refuses 
 **Not switched on anywhere.** Before it is: (1) re-run the seller-pays resale on devnet through the shipped code; (2) the free claim-offer variant
 of `checkSellOffer` (destination = the named holder, amount 0) for lazy activation; (3) the card rail for the card-priced pieces (processing
 gross-up and the card `originalCostMinor`), which remain pure functions in `fees.ts`. Existing listings and auctions keep their frozen terms.
+
+## 11. The sweep finishes any sale, and lets go of one that cannot finish (built 2026-11-01)
+
+Found on devnet: the sweep drove only box-office sales, so an ordinary resale whose buyer signed and left sat in SETTLING until
+somebody polled it (true of v1 resales too). Now `advanceStuckSales` drives every sale in SETTLING and every ordinary resale
+whose bid is signed (read from our own payload record, so no Xaman call), v1 and v2, never auctions (`settleAuction` owns those).
+
+- **One match, enforced on the row.** Before brokering, a driver claims the attempt with a conditional update
+  (`settleClaimedUntil`); the in-process lease is a courtesy on top. Tested with three unleased drivers at once: one match.
+- **A bid that cannot settle is let go**, not retried for ever. The buyer's offer gone from the ledger: let go at once. The buyer
+  cannot pay (`tecINSUFFICIENT_FUNDS` or a short balance): up to 6 spaced strikes (30s, 1m, 2m, 5m, 10m), then let go. Letting go
+  returns the listing to ACTIVE (a box-office checkout is released instead), cancels the buyer's leftover offer, and leaves a
+  `ListingBuyerNotice` shown on the buyer's list for a week. Our own faults (`tecNO_PERMISSION`) are never blamed on a buyer.
+- **An unreadable ledger is not "gone".** `offerOnLedgerState` has three answers; only a definite "no such entry" lets go.
+- **Visibility.** A sale SETTLING for over 15 minutes is logged once as `[sale-stuck]`.
+

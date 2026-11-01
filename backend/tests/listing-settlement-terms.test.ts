@@ -28,6 +28,7 @@ const txSucceeded = vi.fn<(h: string) => Promise<boolean | null>>()
 const offerIndexFromTx = vi.fn<(h: string) => Promise<string | null>>()
 const spendableDrops = vi.fn<(a: string) => Promise<bigint>>()
 const cancelOffers = vi.fn<(i: string[]) => Promise<void>>()
+const offerOnLedgerState = vi.fn<(i: string) => Promise<'present' | 'gone' | 'unknown'>>()
 
 vi.mock('../src/ledger.js', async () => {
   const actual = await vi.importActual<typeof import('../src/ledger.js')>('../src/ledger.js')
@@ -37,6 +38,7 @@ vi.mock('../src/ledger.js', async () => {
     txSucceeded: (h: string) => txSucceeded(h),
     offerIndexFromTx: (h: string) => offerIndexFromTx(h),
     spendableDrops: (a: string) => spendableDrops(a),
+    offerOnLedgerState: (i: string) => offerOnLedgerState(i),
     platformAddress: () => BROKER,
   }
 })
@@ -154,6 +156,7 @@ beforeEach(async () => {
   offerIndexFromTx.mockReset().mockResolvedValue('BB'.repeat(32))
   spendableDrops.mockReset().mockResolvedValue(1_000_000_000n)
   cancelOffers.mockReset().mockResolvedValue(undefined)
+  offerOnLedgerState.mockReset().mockResolvedValue('present')
 })
 afterEach(cleanup)
 afterAll(async () => {

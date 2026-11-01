@@ -84,10 +84,11 @@ enum SignerKind {
 }
 
 model User {
+  buyerNotices ListingBuyerNotice[]
   ticketClaims TicketClaim[]
-  id           String        @id @default(uuid())
-  username     String        @unique // @handle, stored lowercase
-  xrplAddress  String        @unique // r-address. Never a seed — Xaman holds the keys.
+  id           String               @id @default(uuid())
+  username     String               @unique // @handle, stored lowercase
+  xrplAddress  String               @unique // r-address. Never a seed — Xaman holds the keys.
   displayName  String?
 
   /// What this account may do. Organizers issue tickets and run doors, which is
@@ -951,6 +952,20 @@ model Listing {
   status        ListingStatus @default(PENDING_OFFER)
   failureReason String?
 
+  /// When the sale entered SETTLING (a buyer's offer is on the ledger, the match not yet made). Null for rows from
+  /// before this existed, which fall back to `listedAt`.
+  settlingSince      DateTime?
+  /// Failed attempts to match because the buyer could not pay, spaced out by backoff. At the cap the sale is let go.
+  settleStrikes      Int       @default(0)
+  /// Do not count another strike before this. A funded pass is never held back by it.
+  settleNextAt       DateTime?
+  /// One driver owns a match attempt until this time (compare-and-set), so a poll and the sweep cannot both broker.
+  settleClaimedUntil DateTime?
+  /// When a stuck sale was last reported, so it is logged once rather than every sweep.
+  settleAlertedAt    DateTime?
+
+  notices ListingBuyerNotice[]
+
   createdAt DateTime  @default(now())
   expiresAt DateTime
   listedAt  DateTime?
@@ -1280,4 +1295,23 @@ model TicketClaim {
   updatedAt DateTime @updatedAt
 
   @@index([status, expiresAt])
+}
+
+/// Told to a buyer whose bid could not be settled and was let go, so the screen can say so after the fact. The sale
+/// itself returns to ACTIVE for the next buyer; this is the buyer's record of what happened to theirs.
+model ListingBuyerNotice {
+  id String @id @default(uuid())
+
+  listingId String
+  listing   Listing @relation(fields: [listingId], references: [id])
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+
+  reason      String
+  /// What they had offered, in drops.
+  amountDrops BigInt
+  createdAt   DateTime @default(now())
+
+  @@index([userId, createdAt])
 }

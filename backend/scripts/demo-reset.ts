@@ -67,10 +67,12 @@ async function main() {
     const removed = await prisma.$transaction(async (tx) => {
       const bids = await tx.bid.deleteMany({ where: { auction: ticketFilter } })
       const auctions = await tx.auction.deleteMany({ where: { ticket: { eventId } } })
+      await tx.listingBuyerNotice.deleteMany({ where: { listing: { ticket: { eventId } } } })
       const listings = await tx.listing.deleteMany({ where: { ticket: { eventId } } })
       const gifts = await tx.gift.deleteMany({ where: { ticket: { eventId } } })
       const redemptions = await tx.redemption.deleteMany({ where: { eventId } })
       const transfers = await tx.transfer.deleteMany({ where: { ticket: { eventId } } })
+      await tx.ticketClaim.deleteMany({ where: { ticket: { eventId } } })
       const tickets = await tx.ticket.deleteMany({ where: { eventId } })
       const mints = await tx.mintRequest.deleteMany({ where: { eventId } })
       const staff = await tx.eventStaff.deleteMany({ where: { eventId } })

@@ -17,10 +17,12 @@ import { prisma } from './prisma.js'
 import { NETWORK } from './network.js'
 import { withLock } from './job-lock.js'
 import { tryGetPayload } from './signing.js'
-import { brokerSale, offerIndexFromTx, spendableDrops, txSucceeded } from './ledger.js'
+import { brokerSale, offerIndexFromTx, offerOnLedgerState, spendableDrops, txSucceeded } from './ledger.js'
 import { releaseHold } from './primary-sale.js'
 import { buyerPaysDrops } from './listing-terms.js'
 import { defaultPrimarySaleLedger } from './primary-sale-ledger.js'
+import { classifyResult } from './tx-result.js'
+import { CLAIM_LEASE_MS, SWEEP_GRACE_MS, isFundsShortfall, settleStrike, stuckCutoff } from './settle-policy.js'
 
 // Used only to release a checkout's hold when its buyer backs out.
 const primaryLedger = defaultPrimarySaleLedger()
@@ -93,6 +95,21 @@ export async function advanceListing(id: string): Promise<ListingView | null> {
   // Another driver is mid-step on this sale. Reporting where it stands is right;
   // stepping alongside it is the double-broker.
   return advanced ?? { ...listingView(listing) }
+}
+
+/**
+ * `advanceListing` WITHOUT the in-process lease.
+ *
+ * The lease is a courtesy that keeps two drivers from queueing up behind each other; it is not what makes a double match
+ * impossible, because a lease can lapse under a slow driver and a second instance can race the first. What does is the
+ * compare-and-set on the row itself, inside `advance`. This exists so that guarantee can be tested on its own, with
+ * nothing in front of it.
+ */
+export async function advanceListingUnleased(id: string): Promise<ListingView | null> {
+  const listing = await load(id)
+  if (!listing) return null
+  if (TERMINAL.includes(listing.status)) return { ...listingView(listing) }
+  return advance(listing)
 }
 
 async function advance(listing: LoadedListing): Promise<ListingView> {
@@ -284,9 +301,10 @@ async function advance(listing: LoadedListing): Promise<ListingView> {
       return view({ signed: true })
     }
 
-    await prisma.listing.update({
-      where: { id: listing.id },
-      data: { status: 'SETTLING', buyTxHash: status.txid, buyOfferIndex },
+    // Compare-and-set: only one driver moves the sale on, and the clock for "stuck" starts here.
+    await prisma.listing.updateMany({
+      where: { id: listing.id, status: 'BUYER_PENDING' },
+      data: { status: 'SETTLING', buyTxHash: status.txid, buyOfferIndex, settlingSince: new Date() },
     })
     return { ...view(), state: 'settling' }
   }
@@ -295,6 +313,17 @@ async function advance(listing: LoadedListing): Promise<ListingView> {
   if (listing.status === 'SETTLING' && listing.offerIndex && listing.buyOfferIndex) {
     // What THIS listing's buyer must hold: the price plus the fee under the old terms, the price alone under the new.
     const owed = buyerPaysDrops(listing)
+    const buyOfferIndex = listing.buyOfferIndex
+    const sellOfferIndex = listing.offerIndex
+
+    // Is there still something to match? A buy offer is an object on the ledger like any other: the buyer can cancel
+    // it, or it can be consumed. Matching a vanished offer burns a fee to learn what a read tells us for free, and
+    // waiting on one is waiting for ever. Only a definite "gone" counts: a node that cannot be reached says nothing.
+    const [buyOffer, sellOffer] = await Promise.all([offerOnLedgerState(buyOfferIndex), offerOnLedgerState(sellOfferIndex)])
+    if (buyOffer === 'gone') {
+      return letGo(listing, owed, "Your offer is no longer on the ledger, so the sale could not be completed. Nothing was charged.", false, view)
+    }
+    if (sellOffer === 'gone') return sellerOfferGone(listing, owed, view)
 
     // Pre-flight the buyer's balance. A buy offer does not lock funds, so the
     // buyer can spend the money between committing and settling. Submitting
@@ -303,52 +332,68 @@ async function advance(listing: LoadedListing): Promise<ListingView> {
       try {
         const spendable = await spendableDrops(listing.buyerAddress)
         if (spendable < owed) {
-          await prisma.listing.update({
-            where: { id: listing.id },
-            data: {
-              failureReason: `Waiting for the buyer's balance: ${spendable.toString()} of ${owed.toString()} drops`,
-            },
-          })
-          return {
-            ...view(),
-            state: 'settling',
-            reason: "Waiting for the buyer's balance to cover the sale",
-          }
+          return buyerShort(listing, owed, `Waiting for the buyer's balance: ${spendable.toString()} of ${owed.toString()} drops`, view)
         }
       } catch {
         // Ledger unreachable — fall through and let the submission decide.
       }
     }
 
-    const result = await brokerSale({
-      sellOfferIndex: listing.offerIndex,
-      buyOfferIndex: listing.buyOfferIndex,
-      brokerFeeDrops: listing.platformFeeDrops,
+    // Claim this attempt on the ROW. The lease above keeps drivers out of each other's way; this is what makes a second
+    // match impossible when it fails to: the second would find the offers consumed (tecNO_ENTRY) and mark a sale that
+    // actually completed as FAILED. One update, conditional on nobody else holding an unexpired claim.
+    const now = new Date()
+    const claimed = await prisma.listing.updateMany({
+      where: {
+        id: listing.id,
+        status: 'SETTLING',
+        OR: [{ settleClaimedUntil: null }, { settleClaimedUntil: { lt: now } }],
+      },
+      data: { settleClaimedUntil: new Date(now.getTime() + CLAIM_LEASE_MS) },
     })
+    if (claimed.count === 0) return view()
+
+    let result: Awaited<ReturnType<typeof brokerSale>>
+    try {
+      result = await brokerSale({ sellOfferIndex, buyOfferIndex, brokerFeeDrops: listing.platformFeeDrops })
+    } catch (err) {
+      // Not an answer from the ledger: hand the attempt back so the next pass is not locked out for the lease.
+      await prisma.listing.updateMany({ where: { id: listing.id, status: 'SETTLING' }, data: { settleClaimedUntil: null } })
+      throw err
+    }
 
     if (!result.succeeded) {
       // A funding failure is NOT terminal, and treating it as such loses a real
       // sale: both offers stay live on-ledger, so the moment the buyer is paid
       // this settles. Observed for real — a listing closed as FAILED became
-      // settleable when its buyer was paid by an unrelated sale. Stay in
-      // SETTLING and let the next poll try again.
-      const retryable = result.result === 'tecINSUFFICIENT_FUNDS'
+      // settleable when its buyer was paid by an unrelated sale. So wait, with
+      // backoff and a cap, rather than either giving up at once or retrying for ever.
+      if (isFundsShortfall(result.result)) {
+        return buyerShort(listing, owed, `Buyer could not pay (${result.result}); will retry while the offers stand`, view, result.hash)
+      }
+
+      // The match found its objects missing. Work out whose is gone before deciding anything: an offer the buyer
+      // withdrew releases the sale for the next buyer, one the seller withdrew ends it.
+      if (classifyResult(result.result) === 'gone') {
+        const [b, s2] = await Promise.all([offerOnLedgerState(buyOfferIndex), offerOnLedgerState(sellOfferIndex)])
+        if (b === 'gone') {
+          return letGo(listing, owed, "Your offer is no longer on the ledger, so the sale could not be completed. Nothing was charged.", false, view)
+        }
+        if (s2 === 'gone') return sellerOfferGone(listing, owed, view)
+      }
+
       await prisma.listing.update({
         where: { id: listing.id },
         data: {
-          status: retryable ? 'SETTLING' : 'FAILED',
+          status: 'FAILED',
           brokerTxHash: result.hash,
-          failureReason: retryable
-            ? `Buyer could not pay (${result.result}); will retry while the offers stand`
-            : `Brokered settlement failed: ${result.result}`,
+          failureReason: `Brokered settlement failed: ${result.result}`,
         },
       })
       return {
         ...view(),
-        state: retryable ? 'settling' : 'failed',
-        reason: retryable
-          ? 'The buyer could not pay. This will settle if they fund the bid.'
-          : `Brokered settlement failed: ${result.result}`,
+        state: 'failed',
+        reason: `Brokered settlement failed: ${result.result}`,
       }
     }
 
@@ -407,33 +452,191 @@ async function advance(listing: LoadedListing): Promise<ListingView> {
 }
 
 /**
- * Drive the box-office sales nobody is watching.
+ * The buyer cannot pay right now. Wait, with backoff, up to a cap; past it, let the sale go.
  *
- * A reserved listing whose buyer has signed — or whose two offers are both on the
- * ledger — only needs the next step taken; it does not need the buyer. Anything
- * the buyer is actively polling is left to their poll for the first 45 seconds,
- * so this is a safety net rather than a second poller on every sale (each pending
- * step may ask Xaman, and a crowd would be a lot of asking).
+ * A pass that finds the money is never held back by this - only the COUNTING of strikes is spaced out, so a client
+ * polling every two seconds cannot burn through the cap in a few seconds, and a buyer who funds the bid is settled on
+ * the very next pass whatever the strikes so far.
+ */
+async function buyerShort(
+  listing: LoadedListing,
+  owed: bigint,
+  reason: string,
+  view: (extra?: Record<string, unknown>) => ListingView,
+  brokerTxHash?: string,
+): Promise<ListingView> {
+  const now = new Date()
+  const waiting = listing.settleNextAt && listing.settleNextAt.getTime() > now.getTime()
+  if (waiting && !brokerTxHash) {
+    return { ...view(), state: 'settling', reason: "Waiting for the buyer's balance to cover the sale" }
+  }
+
+  const strike = settleStrike(listing.settleStrikes, now)
+  if (strike.dead) {
+    return letGo(listing, owed, 'The bid could not be paid: the buyer did not have the funds when the sale was due. Nothing was charged.', true, view)
+  }
+
+  // The strike count is written as an absolute value, so two drivers striking together write the same one; what
+  // must not happen twice (letting the sale go) is guarded in `letGo` itself.
+  await prisma.listing.updateMany({
+    where: { id: listing.id, status: 'SETTLING' },
+    data: {
+      settleStrikes: strike.strikes,
+      settleNextAt: strike.nextAt,
+      settleClaimedUntil: null,
+      failureReason: reason,
+      ...(brokerTxHash ? { brokerTxHash } : {}),
+    },
+  })
+  return {
+    ...view(),
+    state: 'settling',
+    reason: brokerTxHash ? 'The buyer could not pay. This will settle if they fund the bid.' : "Waiting for the buyer's balance to cover the sale",
+  }
+}
+
+/**
+ * Let go of a bid that can never settle, and tell the buyer.
+ *
+ * The listing goes back on sale for the next buyer (a box-office checkout, which was only ever one person's, is
+ * released instead), the buyer's leftover offer is cancelled so it stops holding 0.2 XRP of their reserve, and a
+ * notice is left for them to find. Done in one conditional update, so two drivers letting go of the same sale leave
+ * one notice, not two.
+ */
+async function letGo(
+  listing: LoadedListing,
+  owed: bigint,
+  reason: string,
+  cancelBuyerOffer: boolean,
+  view: (extra?: Record<string, unknown>) => ListingView,
+): Promise<ListingView> {
+  const buyerOfferIndex = listing.buyOfferIndex
+  let released = false
+
+  if (listing.reservedForId) {
+    released = await releaseHold(listing.id, primaryLedger, reason)
+  } else {
+    released = await prisma.$transaction(async (tx) => {
+      const moved = await tx.listing.updateMany({
+        where: { id: listing.id, status: 'SETTLING', buyOfferIndex: buyerOfferIndex },
+        data: {
+          status: 'ACTIVE',
+          buyerId: null,
+          buyerAddress: null,
+          buyPayloadUuid: null,
+          buyTxHash: null,
+          buyOfferIndex: null,
+          settlingSince: null,
+          settleStrikes: 0,
+          settleNextAt: null,
+          settleClaimedUntil: null,
+          settleAlertedAt: null,
+          failureReason: null,
+        },
+      })
+      return moved.count === 1
+    })
+  }
+
+  if (!released) return view() // another driver got there first, and left the notice
+
+  if (listing.buyerId) {
+    await prisma.listingBuyerNotice.create({ data: { listingId: listing.id, userId: listing.buyerId, reason, amountDrops: owed } })
+  }
+  if (cancelBuyerOffer && buyerOfferIndex) {
+    // Best effort: the offer is inert (only the broker can match it) and merely holds the buyer's reserve.
+    await primaryLedger.cancelOffers([buyerOfferIndex]).catch(() => undefined)
+  }
+  return { ...view(), state: 'failed', reason }
+}
+
+/** The SELLER's offer is gone (they cancelled it, or moved the ticket): this sale cannot happen, for anyone. */
+async function sellerOfferGone(
+  listing: LoadedListing,
+  owed: bigint,
+  view: (extra?: Record<string, unknown>) => ListingView,
+): Promise<ListingView> {
+  const reason = 'The seller withdrew this ticket before the sale could complete. Nothing was charged.'
+  const moved = await prisma.listing.updateMany({
+    where: { id: listing.id, status: 'SETTLING' },
+    data: { status: 'FAILED', failureReason: reason, closedAt: new Date(), settleClaimedUntil: null },
+  })
+  if (moved.count === 0) return view()
+  if (listing.buyerId) {
+    await prisma.listingBuyerNotice.create({ data: { listingId: listing.id, userId: listing.buyerId, reason, amountDrops: owed } })
+  }
+  if (listing.buyOfferIndex) await primaryLedger.cancelOffers([listing.buyOfferIndex]).catch(() => undefined)
+  return { ...view(), state: 'failed', reason }
+}
+
+/**
+ * Drive the sales nobody is watching.
+ *
+ * A buyer signs on their phone; the page that was polling is a tab on a laptop they have since closed. Two kinds of
+ * sale are picked up here, and only these:
+ *
+ *   - anything in SETTLING (both offers are on the ledger; only the broker's match is missing), box-office or ordinary
+ *     resale. This used to cover box-office sales alone, so a resale whose buyer left sat in SETTLING until somebody
+ *     happened to poll it.
+ *   - a bid that is SIGNED but not yet seen (BUYER_PENDING), box-office or resale. Signed is read from our own record of
+ *     the payload, so the sweep never spends a Xaman call finding out.
+ *
+ * Auctions are left to `settleAuction`: their listing is a floor price, and matching it here would sell the ticket
+ * for the reserve. Anything the buyer's own client is actively polling is left alone for the first 45 seconds.
  */
 export async function advanceStuckSales(now = new Date(), limit = 20): Promise<number> {
-  const stuck = await prisma.listing.findMany({
+  const cut = new Date(now.getTime() - SWEEP_GRACE_MS)
+
+  const settling = await prisma.listing.findMany({
     where: {
       network: NETWORK,
-      reservedForId: { not: null },
-      status: { in: ['BUYER_PENDING', 'SETTLING'] },
-      // `listedAt` is set when the checkout's offer validates.
-      listedAt: { lt: new Date(now.getTime() - 45_000) },
+      status: 'SETTLING',
+      auctionId: null,
+      // `settlingSince` is the clock; rows from before it existed fall back to when they were listed.
+      OR: [{ settlingSince: { lt: cut } }, { settlingSince: null, listedAt: { lt: cut } }],
+      // A sale in backoff is not asked about again until its time is up.
+      AND: [{ OR: [{ settleNextAt: null }, { settleNextAt: { lte: now } }] }],
     },
     orderBy: { listedAt: 'asc' },
     take: limit,
     select: { id: true },
   })
 
+  // A checkout's hold that nobody finished: old rule, unchanged. It includes unsigned bids, because releasing an
+  // expired one is the point.
+  const reserved = await prisma.listing.findMany({
+    where: { network: NETWORK, reservedForId: { not: null }, status: 'BUYER_PENDING', listedAt: { lt: cut } },
+    orderBy: { listedAt: 'asc' },
+    take: limit,
+    select: { id: true },
+  })
+
+  // An ordinary resale whose buyer signed: known from the payload we already hold.
+  const pending = await prisma.listing.findMany({
+    where: { network: NETWORK, reservedForId: null, auctionId: null, status: 'BUYER_PENDING', buyPayloadUuid: { not: null } },
+    orderBy: { createdAt: 'asc' },
+    take: 100,
+    select: { id: true, buyPayloadUuid: true },
+  })
+  const signed = pending.length
+    ? await prisma.xamanPayload.findMany({
+        where: { uuid: { in: pending.map((p) => p.buyPayloadUuid!) }, signed: true, fetchedAt: { lt: cut } },
+        select: { uuid: true },
+      })
+    : []
+  const signedSet = new Set(signed.map((s) => s.uuid))
+  const resales = pending.filter((p) => signedSet.has(p.buyPayloadUuid!)).map((p) => ({ id: p.id }))
+
+  const ids = [...new Map([...settling, ...reserved, ...resales].map((l) => [l.id, l])).values()].slice(0, limit)
+
   let moved = 0
-  for (const { id } of stuck) {
+  for (const { id } of ids) {
     try {
       const before = await prisma.listing.findUnique({ where: { id }, select: { status: true } })
-      const after = await advanceListing(id)
+      let after = await advanceListing(id)
+      // The sale this pass just took from "signed" to SETTLING goes straight on to the match: its clock restarted at
+      // that moment, so waiting for the next pass would mean waiting for the courtesy window it just opened.
+      if (before?.status === 'BUYER_PENDING' && after?.state === 'settling') after = await advanceListing(id)
       if (after && before && after.state !== before.status.toLowerCase()) moved += 1
     } catch (err) {
       // One sale cannot be allowed to stop the others.
@@ -441,4 +644,39 @@ export async function advanceStuckSales(now = new Date(), limit = 20): Promise<n
     }
   }
   return moved
+}
+
+/**
+ * Report any sale that has been SETTLING too long.
+ *
+ * Waiting is bounded, so a sale should leave SETTLING by finishing or being let go. One that has not is stuck for a
+ * reason a person should look at (the broker unfunded, a ledger that will not answer, a bug), and nobody would
+ * otherwise notice: it makes no request fail. Logged once per sale, not on every sweep.
+ */
+export async function reportStuckSettling(now = new Date()): Promise<string[]> {
+  const cutoff = stuckCutoff(now)
+  const stuck = await prisma.listing.findMany({
+    where: {
+      network: NETWORK,
+      status: 'SETTLING',
+      auctionId: null,
+      settleAlertedAt: null,
+      OR: [{ settlingSince: { lt: cutoff } }, { settlingSince: null, listedAt: { lt: cutoff } }],
+    },
+    select: { id: true, settlingSince: true, listedAt: true, settleStrikes: true, failureReason: true },
+  })
+
+  const reported: string[] = []
+  for (const l of stuck) {
+    const mark = await prisma.listing.updateMany({ where: { id: l.id, settleAlertedAt: null }, data: { settleAlertedAt: now } })
+    if (mark.count === 0) continue // another instance reported it
+    const since = l.settlingSince ?? l.listedAt ?? now
+    const minutes = Math.round((now.getTime() - since.getTime()) / 60_000)
+    console.error(
+      `[sale-stuck] listing ${l.id.slice(0, 8)} has been SETTLING for ${minutes} min ` +
+        `(${l.settleStrikes} strike(s)${l.failureReason ? `; ${l.failureReason}` : ''}). It is not finishing by itself.`,
+    )
+    reported.push(l.id)
+  }
+  return reported
 }

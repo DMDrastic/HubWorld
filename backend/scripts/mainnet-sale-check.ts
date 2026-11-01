@@ -583,6 +583,7 @@ async function child() {
     head('Cleaning up the database rows (the tickets stay on the ledger)')
     await prisma.xamanPayload.deleteMany({ where: { userId: { in: ids } } })
     await prisma.transfer.deleteMany({ where: { ticket: { eventId: event.id } } })
+    await prisma.listingBuyerNotice.deleteMany({ where: { listing: { ticket: { eventId: event.id } } } })
     await prisma.listing.deleteMany({ where: { ticket: { eventId: event.id } } })
     await prisma.ticket.deleteMany({ where: { eventId: event.id } })
     await prisma.mintJob.deleteMany({ where: { eventId: event.id } })

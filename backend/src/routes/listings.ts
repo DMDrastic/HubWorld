@@ -329,6 +329,8 @@ listingsRouter.get('/listings', async (_req, res) => {
 /**
  * GET /api/listings/mine — what I am selling and what I am buying.
  */
+const NOTICE_DAYS = 7
+
 listingsRouter.get('/listings/mine', requireAuth, async (req, res) => {
   const listings = await prisma.listing.findMany({
     where: {
@@ -341,11 +343,31 @@ listingsRouter.get('/listings/mine', requireAuth, async (req, res) => {
     orderBy: { createdAt: 'desc' },
     take: 100,
   })
+
+  // Bids that were let go (the buyer could not pay, or their offer vanished). The sale went back on sale for the next
+  // buyer, so it is no longer theirs; this is the record of what happened to theirs, for a week.
+  const notices = await prisma.listingBuyerNotice.findMany({
+    where: { userId: req.userId!, createdAt: { gt: new Date(Date.now() - NOTICE_DAYS * 86_400_000) } },
+    include: { listing: { include: listingInclude } },
+    orderBy: { createdAt: 'desc' },
+    take: 20,
+  })
+
   res.json({
-    listings: listings.map((l) => ({
-      ...listingView(l),
-      role: l.sellerId === req.userId ? 'seller' : 'buyer',
-    })),
+    listings: [
+      ...listings.map((l) => ({
+        ...listingView(l),
+        role: l.sellerId === req.userId ? 'seller' : 'buyer',
+      })),
+      ...notices.map((n) => ({
+        ...listingView(n.listing),
+        state: 'failed',
+        reason: n.reason,
+        // What THEY had offered, which is no longer what the listing asks.
+        buyerPaysDrops: n.amountDrops.toString(),
+        role: 'buyer',
+      })),
+    ],
   })
 })
 

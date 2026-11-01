@@ -955,3 +955,10 @@ Not roadmap items so much as debts that should not be forgotten:
 The mainnet dress rehearsal, with payload counting instrumented first — because
 it answers the capacity question and the unit-economics question in a single
 pass, and both are currently unanswerable.
+- **`ledger()` can leave extra sockets open during an outage (low priority).** xrpl.js reconnects a dropped
+  connection by itself, and `ledger()` makes a new client whenever the cached one is not connected, so the app
+  recovers on its own. But a client that is mid-reconnect is not "connected", so concurrent callers during an
+  outage each make a new client and the one being reconnected is dropped without being closed. Sockets leak until
+  the outage ends. Found 2026-11-01 while answering whether the app survives a dropped connection; not urgent.
+  Fix when touched: keep one in-flight connect promise and reuse the client xrpl.js is already reconnecting.
+
