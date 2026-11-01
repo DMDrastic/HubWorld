@@ -74,7 +74,18 @@ test('email sign-in, box-office purchase, and a gift that the recipient accepts'
     await expect(approveButton.or(faucet).first()).toBeVisible({ timeout: 60_000 })
     if (await faucet.isVisible()) {
       await faucet.click()
-      await dialog.getByRole('button', { name: 'Try again' }).click({ timeout: 90_000 })
+      const retry = dialog.getByRole('button', { name: 'Try again' })
+      await expect(retry).toBeVisible({ timeout: 90_000 })
+      // "On its way" is not "arrived": wait until the ledger shows the money, or the retry finds 0 XRP and the screen
+      // goes back to the faucet button (pressing that again would spend another of the day's three).
+      await expect
+        .poll(async () => (await (await page.request.get('/api/wallet/status')).json()).spendableDrops ?? null, {
+          timeout: 90_000,
+          intervals: [2_000],
+          message: 'the test XRP never arrived in the wallet',
+        })
+        .not.toBeNull()
+      await retry.click()
     }
     await approve(page)
     await expect(dialog.getByText('The ticket is yours.')).toBeVisible({ timeout: 3 * 60_000 })
