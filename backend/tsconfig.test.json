@@ -24,6 +24,7 @@
     "scripts/demo-reset.ts",
     "scripts/fee-model-devnet-check.ts",
     "scripts/privy-actions-check.ts",
+    "scripts/local-box-office-demo.ts",
     "scripts/demo-seed.ts",
     "scripts/demo-flow.ts",
     "scripts/grant-role.ts",

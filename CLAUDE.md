@@ -658,6 +658,20 @@ SIZE, and the answer is outstanding with Xaman.
 
 ## Local environment
 
+- **Hands-on testing happens on the local stack, not on hubworld.app.** `npm run local -- start` (from `backend/`) runs this
+  checkout's backend and frontend against the **real test network** on ports that do not collide with an ordinary `npm run dev`:
+  open http://localhost:5175 (API on 4001). `npm run local -- event` creates an event you can buy a ticket to (5 real tickets at
+  10 XRP; `--tickets N --price X`); `status` and `stop` do what they say, and `stop` only ever stops what `start` started (it
+  never matches processes by name, which once killed an unrelated `npm run dev`). Purchases there really settle: a fresh email
+  wallet, the "needs XRP" screen, free test XRP, the approval, the brokered match.
+  - Reads `backend/.env` (or `$HUBWORLD_BASE_ENV`), whose `DATABASE_URL` must be local or it refuses to start;
+    `~/.hubworld-privy.env` for `PRIVY_APP_ID`; and `~/.hubworld-local-delegate.env`, a throwaway test-network delegate the first
+    `event` creates and funds (mode 600, never printed, never in the repo). After the FIRST event, restart once so the server signs
+    as that delegate.
+  - It sets placeholder Xaman credentials to switch the server off its pretend ledger, so **Xaman sign-in does not work there**;
+    use "Continue with email". Privy only accepts listed origins: `localhost:5175` and `localhost:5173` are on the list, another port
+    needs adding in the Privy dashboard (the symptom is a "Loading…" button and "Origin not allowed" in the console).
+
 - Postgres: Homebrew `postgresql@15` on `:5432`, database `hubworld_dev`.
   `postgresql@14` is also installed but stopped — both wanted `:5432` and `@14`
   crash-looped. Don't start it without moving it to another port first.
