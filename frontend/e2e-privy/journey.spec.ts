@@ -91,7 +91,9 @@ test('email sign-in, box-office purchase, and a gift that the recipient accepts'
     }
     await approve(page)
     await expect(dialog.getByText('The ticket is yours.')).toBeVisible({ timeout: 3 * 60_000 })
-    await dialog.getByRole('button', { name: 'Close' }).click()
+    // Two controls are named "Close" (the button and the corner ✕); Escape closes the dialog without choosing.
+    await page.keyboard.press('Escape')
+    await expect(dialog).toBeHidden()
   })
 
   await test.step(`give it to @${recipient.username}`, async () => {
