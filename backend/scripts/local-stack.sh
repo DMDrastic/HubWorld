@@ -7,6 +7,7 @@
 #   scripts/local-stack.sh status    what is running, and the backend's health
 #   scripts/local-stack.sh event     create an event you can buy a ticket to: 5 real tickets at 10 XRP
 #                                    (--tickets N --price X to change)
+#   scripts/local-stack.sh recipient create|accept   a stand-in gift recipient for the Privy end-to-end test
 #
 # Run from backend/. What it reads, none of it in the repo:
 #   backend/.env (or $HUBWORLD_BASE_ENV)   the usual local settings; its DATABASE_URL must be a LOCAL database
@@ -129,6 +130,12 @@ print("api: " + d["status"] + " on " + d["network"] + "; XRP price " + str(p.get
     shift
     with_env env DELEGATE_ENV_FILE="$DELEGATE_ENV" npx tsx scripts/local-box-office-demo.ts "$@"
     running backend && print -- "\nIf this was the first event (a new delegate), restart so the server signs as it: $0 stop && $0 start"
+    ;;
+  recipient)
+    # The stand-in gift recipient for the Privy end-to-end test (scripts/e2e-recipient.ts): create | accept.
+    check_env
+    shift
+    with_env npx tsx scripts/e2e-recipient.ts "$@"
     ;;
   *)
     sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'

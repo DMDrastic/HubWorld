@@ -236,6 +236,22 @@ intercept the sign-in response and hand back a LIVE payload. The component, CSS,
 browser and viewport are all real; only the response is faked.
 
 
+### The Privy journey: `npm run e2e:privy` (frontend)
+
+Sign in with email, buy at the box office, give the ticket away, and see it accepted, all on the **real test
+network** through the local stack (`scripts/local-stack.sh start`, and `event` for something to buy). Separate from
+`npm run e2e` because it signs in through Privy's real service and spends test-network XRP. Privy signing always submits to
+the real ledger, so the stub-mode suite cannot cover it.
+
+- **Privy's test account** (dashboard: User management > Authentication > Advanced > Enable test accounts) has a fixed
+  one-time code, so no inbox reader is needed. `PRIVY_TEST_EMAIL` and `PRIVY_TEST_OTP` live in `~/.hubworld-privy.env`,
+  are read by `playwright.privy.config.ts`, and are never printed. Toggling the setting again issues a new pair.
+- **The recipient is a stand-in** (`local-stack.sh recipient create|accept`, `scripts/e2e-recipient.ts`), because Privy
+  gives one test account per app. It accepts by signing a REAL `NFTokenAcceptOffer` with a throwaway key, then hands the
+  real hash to the dev-only simulate endpoint (`txid`). Without that hash the stub fabricates one on its own fake ledger,
+  the gift poll asks the real ledger about it, and the gift never resolves.
+- A failed run's trace records typed text, the one-time code included. Traces stay local (gitignored); never share one.
+
 ### Tests have their own database
 
 ```sh
