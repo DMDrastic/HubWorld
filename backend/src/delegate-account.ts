@@ -1,8 +1,8 @@
-import { delegateMode, xamanMode } from './env.js'
+import { delegateMode, ledgerMode } from './env.js'
 import { delegateAddress } from './ledger.js'
 
 /** Whether a signer exists to be authorised. Stub mode fabricates one. */
-export const delegateConfigured = delegateMode === 'live' || xamanMode === 'stub'
+export const delegateConfigured = delegateMode === 'live' || ledgerMode === 'stub'
 
 /**
  * The delegate account an organizer would authorise right now, or null when this

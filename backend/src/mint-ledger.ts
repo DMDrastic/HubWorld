@@ -10,7 +10,7 @@
 import { randomBytes } from 'node:crypto'
 import { getNFTokenID } from 'xrpl'
 import type { NFTokenMint } from 'xrpl'
-import { xamanMode } from './env.js'
+import { ledgerMode } from './env.js'
 import { delegateWallet, ledger } from './ledger.js'
 import { MINT_PERMISSION, readPermissionOnLedger } from './delegation.js'
 import * as stubLedger from './stub-ledger.js'
@@ -41,13 +41,14 @@ export class MintSubmitThrottled extends Error {
 export type PermissionReading = 'granted' | 'absent' | 'unknown'
 
 export interface MintLedger {
+  /** Which ledger this is, for a reader that needs to know (tests, diagnostics). Fakes may omit it. */
+  readonly kind?: 'real' | 'stub'
   /**
    * Does the organizer's grant to this delegate still stand, right now?
    *
-   * On the seam rather than read from a global mode: `xamanMode === 'stub'` only
-   * means "no Xaman credentials", which is equally true of a script driving a
-   * real devnet. Which ledger answers is decided by which MintLedger the caller
-   * built, so a real ledger can never be answered by the fake one.
+   * On the seam rather than read from a global mode: which ledger answers is
+   * decided by which MintLedger the caller built, so a script driving a real devnet
+   * can never be answered by the fake one, whatever the app's own setting is.
    */
   readPermission(organizerAddress: string, delegateAddress: string): Promise<PermissionReading>
   /** The organizer's NEXT sequence — it belongs to `Account`, not to the signer. */
@@ -67,6 +68,7 @@ const THROTTLE_HINTS = /slowDown|too busy|rate|noNetwork|noCurrent|overloaded/i
 
 export function realMintLedger(): MintLedger {
   return {
+    kind: 'real',
     readPermission(organizerAddress, delegateAddress) {
       return readPermissionOnLedger({ organizerAddress, delegateAddress }, MINT_PERMISSION)
     },
@@ -151,6 +153,7 @@ export function stubMintLedger(): MintLedger {
   let ledgerIndex = 1_000
 
   return {
+    kind: 'stub',
     async readPermission(organizerAddress, delegateAddress) {
       return stubLedger.hasDelegation(organizerAddress, delegateAddress, MINT_PERMISSION)
         ? 'granted'
@@ -192,5 +195,5 @@ export function stubMintLedger(): MintLedger {
 
 /** The ledger the app should use: the fake one only when Xaman itself is faked. */
 export function defaultMintLedger(): MintLedger {
-  return xamanMode === 'stub' ? stubMintLedger() : realMintLedger()
+  return ledgerMode === 'stub' ? stubMintLedger() : realMintLedger()
 }

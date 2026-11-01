@@ -1,7 +1,7 @@
 /**
  * Reading a delegation off the ledger, and the stub/real split.
  *
- * `xamanMode === 'stub'` only means "no Xaman credentials". A script pointed at
+ * The app's ledger setting can be the pretend one (by default, when there are no Xaman credentials). A script pointed at
  * devnet or mainnet with throwaway wallets is in stub mode too, and it must not
  * be answered by the in-memory fake: the first mainnet-style run of the shipped
  * code reported "not granted" for a grant that plainly existed, because the
@@ -18,7 +18,8 @@ const request = vi.fn<(req: Record<string, unknown>) => Promise<unknown>>()
 vi.mock('../src/ledger.js', () => ({
   ledger: async () => ({ request: (r: Record<string, unknown>) => request(r) }),
 }))
-vi.mock('../src/env.js', () => ({ xamanMode: 'stub' as const }))
+// The pretend ledger, chosen by the ledger setting (no longer by the Xaman one).
+vi.mock('../src/env.js', () => ({ xamanMode: 'stub' as const, ledgerMode: 'stub' as const }))
 
 const {
   delegationAvailable,

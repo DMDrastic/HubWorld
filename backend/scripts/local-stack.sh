@@ -13,9 +13,10 @@
 #   ~/.hubworld-privy.env                  PRIVY_APP_ID, for "Continue with email"
 #   ~/.hubworld-local-delegate.env         a throwaway test-network delegate, created by the first `event`
 #
-# Placeholder Xaman credentials switch the server from its pretend ledger to the real test network, so purchases really settle.
-# Email (Privy) wallets never call Xaman; Xaman sign-in does NOT work on this stack. The browser address must be one Privy allows
-# (localhost:5175 and localhost:5173 are on the list; another port needs adding in the Privy dashboard).
+# It has its OWN database, `hubworld_local` (created and migrated by `start`), so its events and purchases never appear in the
+# database an ordinary `npm run dev` uses. `LEDGER=real` points it at the real test network, so purchases really settle; Xaman stays
+# pretend (no Xaman credentials), so use "Continue with email". The browser address must be one Privy allows (localhost:5175 and
+# localhost:5173 are on the list; another port needs adding in the Privy dashboard).
 set -eu
 
 API_PORT=${API_PORT:-4001}
@@ -47,9 +48,21 @@ with_env() {
     set +a
     export DOTENV_CONFIG_PATH=$BASE_ENV XRPL_NETWORK=testnet PORT=$API_PORT
     export SIGNERS=xaman,privy FEE_MODEL=v2 PRICE_FEED=on XRP_USD_CENTS=${XRP_USD_CENTS:-125} CLAIMS_ENABLED=false
-    export XAMAN_API_KEY=local-placeholder XAMAN_API_SECRET=local-placeholder
+    # The real test network, without pretending to have Xaman credentials.
+    export LEDGER=real
+    # Its own database (written by `setup_db`); it overrides the dev one in backend/.env.
+    [[ -f $STATE/db.env ]] && { set -a; . "$STATE/db.env"; set +a }
     cd "$BACKEND"
     "$@"
+  )
+}
+
+# Create and migrate this stack's own database, and record its URL in $STATE/db.env (mode 600; the URL is never printed).
+setup_db() {
+  (
+    set -a; . "$BASE_ENV"; set +a
+    cd "$BACKEND"
+    npx tsx scripts/setup-local-db.ts --emit "$STATE/db.env" | grep -v '^$' || die "could not prepare the local database"
   )
 }
 
@@ -83,6 +96,7 @@ case ${1:-} in
     [[ -f $DELEGATE_ENV ]] || print -- "note: no delegate yet; run '$0 event' once to create one, then restart"
     lsof -iTCP:$API_PORT -sTCP:LISTEN >/dev/null 2>&1 && ! running backend && die "port $API_PORT is in use by something else"
     lsof -iTCP:$WEB_PORT -sTCP:LISTEN >/dev/null 2>&1 && ! running frontend && die "port $WEB_PORT is in use by something else"
+    setup_db
     if ! running backend; then
       with_env nohup npx tsx watch src/server.ts >"$STATE/backend.log" 2>&1 &
       print -- $! >"$STATE/backend.pid"
@@ -111,6 +125,7 @@ print("api: " + d["status"] + " on " + d["network"] + "; XRP price " + str(p.get
     ;;
   event)
     check_env
+    setup_db
     shift
     with_env env DELEGATE_ENV_FILE="$DELEGATE_ENV" npx tsx scripts/local-box-office-demo.ts "$@"
     running backend && print -- "\nIf this was the first event (a new delegate), restart so the server signs as it: $0 stop && $0 start"

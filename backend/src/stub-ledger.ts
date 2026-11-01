@@ -1,5 +1,6 @@
 /**
- * A fake XRP Ledger, in memory, used only when `xamanMode === 'stub'`.
+ * A fake XRP Ledger, in memory, used only when the ledger setting is 'stub' (`LEDGER`, which by default
+ * follows whether Xaman credentials are set).
  *
  * Every poll route in this codebase reads a REAL, validated transaction hash
  * off a signed payload (`txSucceeded`, `offerIndexFromTx`, `nftokenIdFromTx`
@@ -8,8 +9,8 @@
  * every flow past sign-in freezes at "signed, pending" forever in stub mode —
  * only the sign-in payload has ever had a fake-signing story.
  *
- * `ledger.ts` branches its exports here when `xamanMode === 'stub'` (which
- * already refuses to boot in production — see `env.ts` — so this file can
+ * `ledger.ts` branches its exports here when `ledgerMode === 'stub'` (which
+ * refuses to boot in production — see `env.ts` — so this file can
  * never run against real money). Routes are untouched; the seam is the same
  * one `CountingSigner` already uses to decorate `xaman.ts` without touching
  * callers.

@@ -664,12 +664,15 @@ SIZE, and the answer is outstanding with Xaman.
   10 XRP; `--tickets N --price X`); `status` and `stop` do what they say, and `stop` only ever stops what `start` started (it
   never matches processes by name, which once killed an unrelated `npm run dev`). Purchases there really settle: a fresh email
   wallet, the "needs XRP" screen, free test XRP, the approval, the brokered match.
+  - It has its **own database, `hubworld_local`**, created and migrated by `start` next to the dev one (its URL is derived from
+    the dev URL and written to `~/.hubworld-local/db.env`, never printed), so its events and purchases never show up in an ordinary
+    `npm run dev`.
   - Reads `backend/.env` (or `$HUBWORLD_BASE_ENV`), whose `DATABASE_URL` must be local or it refuses to start;
     `~/.hubworld-privy.env` for `PRIVY_APP_ID`; and `~/.hubworld-local-delegate.env`, a throwaway test-network delegate the first
     `event` creates and funds (mode 600, never printed, never in the repo). After the FIRST event, restart once so the server signs
     as that delegate.
-  - It sets placeholder Xaman credentials to switch the server off its pretend ledger, so **Xaman sign-in does not work there**;
-    use "Continue with email". Privy only accepts listed origins: `localhost:5175` and `localhost:5173` are on the list, another port
+  - It sets **`LEDGER=real`**, so the server talks to the real test network while Xaman stays pretend (no Xaman credentials); use
+    "Continue with email". Privy only accepts listed origins: `localhost:5175` and `localhost:5173` are on the list, another port
     needs adding in the Privy dashboard (the symptom is a "Loading…" button and "Origin not allowed" in the console).
 
 - Postgres: Homebrew `postgresql@15` on `:5432`, database `hubworld_dev`.
@@ -997,6 +1000,11 @@ poll behind Xaman's return, and `QrCode.test.tsx` pins that.
 Signing a `SignIn` payload is what proves wallet ownership — it is the only
 trustworthy way to bind an @handle to an r-address. A wallet with no account
 resolves to `needs_username`, and `POST /auth/claim` mints the `User`.
+
+**Which ledger is a separate setting: `LEDGER=real|stub`.** Unset, it follows the Xaman credentials exactly as before (credentials
+mean the real ledger, none mean the in-memory pretend one). It exists because those were one switch joined by accident: reaching the
+real test network without Xaman used to mean faking Xaman credentials, which broke Xaman sign-in. `LEDGER=stub` refuses to boot in
+production, and `ledger-mode.test.ts` fails if any ledger decision reads `xamanMode` again.
 
 **Stub mode.** With `XAMAN_API_KEY`/`SECRET` unset, `src/xaman.ts` swaps in an
 in-memory fake and `POST /api/auth/signin/simulate` stands in for a human
