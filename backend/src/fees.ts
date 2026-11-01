@@ -216,14 +216,24 @@ export function resaleTerms(
   return { ok: true, feeMinor, sellOfferMinor: input.priceMinor - feeMinor, buyerPaysMinor: input.priceMinor }
 }
 
-/** The US$5 floor in the sale's own currency, rounded UP so a borderline price is refused. */
+/**
+ * The US$5 floor in the sale's own currency, rounded UP so a borderline price is refused.
+ *
+ * XRP needs the XRP price. `xrpUsdMicro` is millionths of a dollar per XRP and is exact; `xrpUsdCents` is the older whole-cents
+ * form (a manually set number) and is kept for it. If both are given the precise one wins.
+ */
 export function minimumResaleMinor(
-  input: { currency: Currency; xrpUsdCents?: bigint },
+  input: { currency: Currency; xrpUsdCents?: bigint; xrpUsdMicro?: bigint },
   schedule: FeeSchedule = DEFAULT_SCHEDULE,
 ): bigint {
   const cents = schedule.minimumResaleUsdCents
   if (input.currency === 'USD') return cents
   if (input.currency === 'RLUSD') return cents * 10_000n
+  if (input.xrpUsdMicro !== undefined) {
+    if (input.xrpUsdMicro <= 0n) throw new Error('an XRP floor needs the current XRP price')
+    // cents -> millionths of a dollar, then millionths of a dollar per XRP -> drops (1 XRP = 1,000,000 drops).
+    return ceilDiv(cents * 10_000n * 1_000_000n, input.xrpUsdMicro)
+  }
   if (!input.xrpUsdCents || input.xrpUsdCents <= 0n) throw new Error('an XRP floor needs the current XRP price')
   return ceilDiv(cents * 1_000_000n, input.xrpUsdCents)
 }

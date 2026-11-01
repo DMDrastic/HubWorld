@@ -207,3 +207,20 @@ Every listing and auction records its own model, fee and rate when it is created
 - What is not undone: rows already written keep their v2 fields (`feeBps`, `originalCostMinor`, free-ticket cost 0). They are inert
   under v1 and take effect again if the model is turned back on.
 
+## 13. The XRP price is fetched, not typed (built 2026-11-01, off by default)
+
+The US$5 resale floor needs the XRP price. `PRICE_FEED=on` fetches it; with it off, `XRP_USD_CENTS` is used as before.
+
+- **Sources and agreement.** Kraken, Coinbase and Bitstamp, asked at once with a 5 second timeout, no redirects and a size limit.
+  A reading counts only if at least two sources are within 5% of the middle value; an outlier is dropped and named, and two
+  sources that disagree are refused rather than averaged. Prices are parsed from the sources' own decimal text into millionths
+  of a dollar, with no floating point, so the floor keeps its precision (US$5 at $1.2495 is 4,001,601 drops, rounded up).
+- **Storage.** `PriceReading`, one row per accepted reading with who said what; checked every 10 minutes, fetched when the newest
+  is an hour old, under a lease so instances do not all call the sources. A failed fetch stores nothing, so the last good reading
+  stays and simply ages. Rows older than 30 days are pruned only after a new good one is stored.
+- **Staleness.** A reading older than 24 hours is not used. New resale listings and auctions answer 503 `PRICE_UNAVAILABLE` ("try
+  again shortly"); a first sale by the organizer, gifting and everything already listed are unaffected. On a test network
+  `XRP_USD_CENTS` is the fallback; on mainnet there is none.
+- **Visibility.** `/api/health` has `price: { mode, status, usdPerXrp, ageMinutes }` (`ok` / `stale` / `unavailable`);
+  `/api/policy` gives `minResaleDrops` and `resaleFloorAvailable`; a stale feed that cannot refresh logs an error every ten minutes.
+

@@ -16,6 +16,7 @@ import type { ListingFeeModel } from '@prisma/client'
 import { env, feeModelV2 } from './env.js'
 import { platformFeeDrops } from './ledger.js'
 import { DEFAULT_SCHEDULE, minimumResaleMinor, primaryQuote, resaleFee, type Region } from './fees.js'
+import { currentXrpUsd } from './xrp-price-store.js'
 
 type Terms = { priceDrops: bigint; platformFeeDrops: bigint; feeModel: ListingFeeModel }
 
@@ -58,6 +59,23 @@ export function minimumResaleDrops(xrpUsdCents: bigint): bigint {
 }
 
 /** The floor for the XRP price this deployment is configured with. Required whenever the new model is on. */
+/**
+ * The US$5 floor in drops at the XRP price in force right now (fetched, or the manual number: see `xrp-price.ts`), or null
+ * when there is no usable price. A caller that gets null must WAIT, not guess: refusing a new resale for a few minutes is
+ * cheap, and a floor from an unchecked price is a wrong one that looks right.
+ */
+export async function currentMinimumResaleDrops(): Promise<bigint | null> {
+  const price = await currentXrpUsd()
+  return price.ok ? minimumResaleMinor({ currency: 'XRP', xrpUsdMicro: price.micro }) : null
+}
+
+/** What a client is told while there is no usable price. */
+export const PRICE_UNAVAILABLE = {
+  error: 'Resale pricing is temporarily unavailable. Please try again shortly.',
+  code: 'PRICE_UNAVAILABLE',
+} as const
+
+/** The floor from the MANUAL number only (`XRP_USD_CENTS`). Scripts that set it themselves use this; the app uses `currentMinimumResaleDrops`. */
 export function configuredMinimumResaleDrops(): bigint {
   return minimumResaleDrops(BigInt(env.XRP_USD_CENTS ?? 0))
 }

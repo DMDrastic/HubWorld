@@ -33,7 +33,7 @@ import { requireAuth } from '../session.js'
 import { canAuction } from '../auction-policy.js'
 import { checkResalePrice } from '../resale-policy.js'
 import { paidCostOf } from '../paid-cost.js'
-import { configuredMinimumResaleDrops, resaleListingTerms } from '../listing-terms.js'
+import { PRICE_UNAVAILABLE, currentMinimumResaleDrops, resaleListingTerms } from '../listing-terms.js'
 import {
   auctionSellAmountDrops,
   buildSellOfferTx,
@@ -189,7 +189,12 @@ openAuctionRouter.post('/tickets/:nfTokenId/auction', requireAuth, async (req, r
   let platformBps = ticket.event.platformBps
   let frozenFeeBps: number | null = null
   if (feeModelV2) {
-    const terms = resaleListingTerms({ priceDrops: reserveDrops, minimumDrops: configuredMinimumResaleDrops() })
+    const minimumDrops = await currentMinimumResaleDrops()
+    if (minimumDrops === null) {
+      res.status(503).json(PRICE_UNAVAILABLE)
+      return
+    }
+    const terms = resaleListingTerms({ priceDrops: reserveDrops, minimumDrops })
     if (!terms.ok) {
       res.status(400).json({ error: terms.reason })
       return

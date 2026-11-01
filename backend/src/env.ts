@@ -81,6 +81,8 @@ const EnvSchema = z.object({
   // quietly skipping the floor). Set by hand until there is a price feed; a stale value moves the floor, not any
   // amount anyone pays.
   XRP_USD_CENTS: emptyAsAbsent(z.coerce.number().int().min(1).max(100_000)),
+  /** 'on': the XRP price is fetched hourly from public sources and stored, and sets the resale floor. Default off. */
+  PRICE_FEED: emptyAsAbsent(z.enum(['on', 'off'])),
 
   // Ceiling on the royalty an organizer may set for themselves. The royalty is
   // theirs to choose, but an unbounded one makes resale pointless and the ticket
@@ -261,8 +263,11 @@ export const feeModelV2: boolean = env.FEE_MODEL === 'v2'
 
 // The resale floor is part of the new model, so a deploy that turns the model on without a price for it would either
 // skip the floor or invent one. Refuse at boot instead, where it is one line in a log.
-if (feeModelV2 && env.XRP_USD_CENTS === undefined) {
-  console.error('Refusing to start: FEE_MODEL=v2 needs XRP_USD_CENTS (the XRP price in US cents) for the US$5 resale floor.')
+/** Is the XRP price fetched automatically? Off unless 'on': merging the code changes nothing until it is switched on. */
+export const priceFeedOn: boolean = env.PRICE_FEED === 'on'
+
+if (feeModelV2 && env.XRP_USD_CENTS === undefined && !priceFeedOn) {
+  console.error('Refusing to start: FEE_MODEL=v2 needs an XRP price for the US$5 resale floor: set PRICE_FEED=on (fetched automatically) or XRP_USD_CENTS (the price in US cents, set by hand).')
   process.exit(1)
 }
 
