@@ -127,6 +127,10 @@ export function EventRow({
   const cancelled = event.status === 'CANCELLED'
   const organizer = event.organizer.displayName ?? `@${event.organizer.username}`
 
+  // What the buyer actually pays, as the server worked it out (the same figure the checkout charges). A server that
+  // sends no all-in price shows the ticket price, as it always did.
+  const buyPrice = event.primaryAllInDrops ?? event.primaryPriceDrops
+
   const buyable =
     onBuy !== undefined &&
     !live &&
@@ -247,10 +251,10 @@ export function EventRow({
                 <button
                   type="button"
                   onClick={() => onBuy(event)}
-                  aria-label={`Buy a ticket to ${event.title} for ${dropsToXrp(event.primaryPriceDrops!)} XRP`}
+                  aria-label={`Buy a ticket to ${event.title} for ${dropsToXrp(buyPrice!)} XRP`}
                   className="bg-primary text-primary-foreground focus-visible:ring-ring inline-flex h-11 items-center gap-3 rounded-full px-4 text-sm font-medium transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:outline-none sm:h-10"
                 >
-                  <span>Buy · {dropsToXrp(event.primaryPriceDrops!)} XRP</span>
+                  <span>Buy · {dropsToXrp(buyPrice!)} XRP</span>
                   <span className="opacity-75">{event.ticketsForSale} left</span>
                 </button>
               )}

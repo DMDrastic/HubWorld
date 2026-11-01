@@ -11,6 +11,7 @@ import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vites
 
 vi.hoisted(() => {
   process.env.FEE_MODEL = 'v2'
+  process.env.XRP_USD_CENTS = '134'
 })
 
 import request from 'supertest'
@@ -62,6 +63,11 @@ describe('with the new fee model on', () => {
   it('the policy endpoint says so, and that loose resale policies are off', async () => {
     const res = await request(app).get('/api/policy')
     expect(res.body).toMatchObject({ feeModel: 'v2', looseResalePolicies: false })
+  })
+
+  it('the policy endpoint gives the resale floor in drops, so the seller\'s form can show it (US$5 at 134 cents)', async () => {
+    const res = await request(app).get('/api/policy')
+    expect(res.body.minResaleDrops).toBe('3731344')
   })
 
   it('an event with no policy named gets face value only, not unrestricted', async () => {

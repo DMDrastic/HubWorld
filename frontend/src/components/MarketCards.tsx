@@ -24,7 +24,7 @@ import {
   type EventSummary,
   type Listing,
 } from "@/lib/api";
-import { faceDelta } from "@/lib/market";
+import { faceDelta, sellerReceivesDrops } from "@/lib/market";
 import { posterSrcSet, posterUrl } from "@/lib/poster";
 
 const dayFmt = new Intl.DateTimeFormat(undefined, {
@@ -90,6 +90,8 @@ export function ListingCard({
   const { ticket } = listing;
   const delta = faceDelta(listing.priceDrops, event?.primaryPriceDrops);
   const hasFee = listing.platformFeeDrops !== "0";
+  // Under the new terms the seller pays the fee out of the price, so the buyer pays exactly what is shown.
+  const sellerPays = listing.feeModel === "SELLER_PAYS_V2";
   const when = event ? new Date(event.startsAt) : null;
   const seat = [ticket.tier, ticket.seat].filter(Boolean).join(" · ");
 
@@ -128,9 +130,11 @@ export function ListingCard({
             <span className="text-muted-foreground text-sm">XRP</span>
           </div>
           <p className="text-muted-foreground mt-0.5 min-h-5 text-xs tabular-nums">
-            {hasFee
-              ? `${dropsToXrp(listing.priceDrops)} + ${dropsToXrp(listing.platformFeeDrops)} platform fee`
-              : "No platform fee"}
+            {sellerPays
+              ? "All fees included"
+              : hasFee
+                ? `${dropsToXrp(listing.priceDrops)} + ${dropsToXrp(listing.platformFeeDrops)} platform fee`
+                : "No platform fee"}
           </p>
           {delta && (
             <p className="mt-1 flex items-center gap-1 text-xs font-medium">
@@ -252,8 +256,11 @@ export function MyListingRow({
         </div>
         <div className="text-muted-foreground text-xs tabular-nums">
           {dropsToXrp(listing.priceDrops)} XRP
-          {listing.platformFeeDrops !== "0" &&
-            ` · buyer pays ${dropsToXrp(listing.buyerPaysDrops)}`}
+          {listing.feeModel === "SELLER_PAYS_V2"
+            ? !buying &&
+              ` · you receive ${dropsToXrp(sellerReceivesDrops(listing))} before royalty`
+            : listing.platformFeeDrops !== "0" &&
+              ` · buyer pays ${dropsToXrp(listing.buyerPaysDrops)}`}
           {" · "}
           {listing.state.replace("_", " ")}
           {buying ? " · buying" : ""}

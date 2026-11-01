@@ -902,6 +902,11 @@ model Listing {
   /// BUYER_PAYS_V1 rows, whose rate was the event's `platformBps` at the time.
   feeBps Int?
 
+  /// This listing is the FIRST sale of the ticket (the organizer selling it, or a box-office checkout). When it
+  /// sells, the all-in amount the buyer paid is recorded on the ticket as the resale cap. A resale never changes
+  /// that amount, so which kind of sale this is has to be known when it settles, not guessed from who sold it.
+  isPrimarySale Boolean @default(false)
+
   // Phase 1 — the seller's sell offer.
   listPayloadUuid String  @unique
   listTxHash      String?

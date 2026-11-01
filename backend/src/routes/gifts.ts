@@ -18,7 +18,7 @@ import { Router } from 'express'
 import { z } from 'zod'
 import { prisma } from '../prisma.js'
 import { NETWORK } from '../network.js'
-import { xamanMode } from '../env.js'
+import { xamanMode, feeModelV2 } from '../env.js'
 import { tryGetPayload, signing, SIGNIN_TTL_MINUTES, signingFor } from '../signing.js'
 import { issuesOf, usernameSchema } from '../schemas.js'
 import { requireAuth } from '../session.js'
@@ -591,6 +591,20 @@ giftsRouter.get('/gifts/:id', requireAuth, async (req, res) => {
         status: 'MINTED',
       },
     })
+
+    // Under the new fee model a ticket that was GIVEN before it was ever SOLD cost its holder nothing, so its cost is
+    // recorded as nothing: it is the resale cap, and a free ticket can be passed on but never sold for money.
+    // Only a ticket with no amount on file and no sale in its history: a sold one keeps what its buyer paid (or, if
+    // it predates the amount, keeps its old rules), and nothing already recorded is overwritten.
+    if (feeModelV2) {
+      const sold = await tx.transfer.findFirst({ where: { ticketId: gift.ticketId, kind: 'SALE' }, select: { id: true } })
+      if (!sold) {
+        await tx.ticket.updateMany({
+          where: { id: gift.ticketId, originalCostMinor: null },
+          data: { originalCostMinor: 0n, originalCostCurrency: 'XRP' },
+        })
+      }
+    }
 
     const already = await tx.transfer.findUnique({
       where: { network_txHash: { network: NETWORK, txHash: status.txid! } },

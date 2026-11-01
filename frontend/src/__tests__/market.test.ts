@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { cheapest, faceDelta, sortListings } from '@/lib/market'
+import { cheapest, faceDelta, sellerReceivesDrops, sortListings } from '@/lib/market'
 import type { EventSummary, Listing } from '@/lib/api'
 
 const XRP = (n: number) => String(n * 1_000_000)
@@ -89,5 +89,21 @@ describe('cheapest', () => {
   })
   it('is the lowest total a buyer pays', () => {
     expect(cheapest([listing('a', 'x', 5), listing('b', 'x', 2), listing('c', 'x', 9)])).toBe(XRP(2))
+  })
+})
+
+describe('sellerReceivesDrops (before royalty)', () => {
+  const l = (feeModel: Listing['feeModel']) => ({ priceDrops: XRP(10), platformFeeDrops: XRP(0.5), feeModel })
+
+  it('is the price less the fee when the seller pays it', () => {
+    expect(sellerReceivesDrops(l('SELLER_PAYS_V2'))).toBe(XRP(9.5))
+  })
+
+  it('is the whole price when the buyer paid the fee on top', () => {
+    expect(sellerReceivesDrops(l('BUYER_PAYS_V1'))).toBe(XRP(10))
+  })
+
+  it('treats a listing with no model as the old terms', () => {
+    expect(sellerReceivesDrops(l(undefined))).toBe(XRP(10))
   })
 })

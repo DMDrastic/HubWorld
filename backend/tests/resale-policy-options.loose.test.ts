@@ -3,6 +3,7 @@ import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vites
 
 vi.hoisted(() => {
   process.env.FEE_MODEL = 'v2'
+  process.env.XRP_USD_CENTS = '134'
   process.env.ALLOW_LOOSE_RESALE_POLICIES = 'true'
 })
 

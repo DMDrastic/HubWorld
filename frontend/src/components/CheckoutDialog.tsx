@@ -56,7 +56,11 @@ export function CheckoutDialog({
   onSold: () => void
 }) {
   const [phase, setPhase] = useState<Phase>({ kind: 'idle' })
-  const price = event.primaryPriceDrops ? dropsToXrp(event.primaryPriceDrops) : null
+  // The all-in amount from the server (the figure the checkout charges); the bare ticket price against a server that
+  // sends none. The fee inside it is named so the total is never a surprise at the signing screen.
+  const shown = event.primaryAllInDrops ?? event.primaryPriceDrops
+  const price = shown ? dropsToXrp(shown) : null
+  const fee = event.primaryAllInDrops && event.primaryFeeDrops ? dropsToXrp(event.primaryFeeDrops) : null
 
   async function start() {
     setPhase({ kind: 'reserving' })
@@ -138,7 +142,7 @@ export function CheckoutDialog({
         <DialogHeader>
           <DialogTitle>{event.title}</DialogTitle>
           <DialogDescription>
-            {price ? `${price} XRP per ticket.` : 'Tickets for this event.'}
+            {price ? `${price} XRP per ticket${fee ? `, fee included` : ''}.` : 'Tickets for this event.'}
           </DialogDescription>
         </DialogHeader>
 
@@ -146,8 +150,9 @@ export function CheckoutDialog({
           <div className="space-y-4">
             <p className="text-muted-foreground text-sm leading-relaxed">
               Pressing buy holds one ticket for you for a few minutes. You sign once in Xaman, and the
-              ticket goes into your wallet. A small HubWorld fee is added, and you'll see the exact
-              total before you sign.
+              ticket goes into your wallet. {fee
+                ? `That price includes a ${fee} XRP HubWorld fee.`
+                : "A small HubWorld fee is added, and you'll see the exact total before you sign."}
             </p>
             {signedIn ? (
               <Button onClick={() => void start()} className="w-full">

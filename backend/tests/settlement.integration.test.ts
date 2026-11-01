@@ -55,6 +55,8 @@ async function seed(opts: {
   bids: Array<{ amount: bigint; status?: 'COMMITTED' | 'OUTBID'; offerIndex?: string | null }>
   withSellOffer?: boolean
   platformBps?: number
+  /** The fee rate frozen on the auction when it opened; null/absent for one opened before it was recorded. */
+  auctionFeeBps?: number | null
 }): Promise<Ctx> {
   const uniq = Math.random().toString(36).slice(2, 8)
 
@@ -103,6 +105,7 @@ async function seed(opts: {
       endsAt: opts.endsAt,
       reserveDrops: opts.reserveDrops,
       status: 'LIVE',
+      feeBps: opts.auctionFeeBps ?? null,
     },
   })
 
@@ -633,5 +636,41 @@ describe('per-auction leasing', () => {
     const bids = await prisma.bid.findMany({ where: { auctionId: ctx.auctionId } })
     expect(bids.map((b) => b.status).sort()).toEqual(['COMMITTED', 'OUTBID'])
     await releaseAll(ctx.auctionId)
+  })
+})
+
+describe('the fee rate an auction settles at', () => {
+  const closed = () => new Date(Date.now() - 60_000)
+  const seedWithBid = (extra: { platformBps?: number; auctionFeeBps?: number | null }) =>
+    seed({ reserveDrops: 10n * XRP, endsAt: closed(), bids: [{ amount: 20n * XRP, offerIndex: 'BUY-1' }], ...extra })
+  const ok = () => {
+    spendableDrops.mockResolvedValue(1_000n * XRP)
+    brokerSale.mockResolvedValue({ hash: 'H'.repeat(64), succeeded: true, result: 'tesSUCCESS' })
+    brokerCancelOffers.mockResolvedValue(null)
+  }
+
+  it('uses the rate frozen when the auction opened, not whatever the event says now', async () => {
+    ok()
+    // Opened under the new model at 5%; the event row still says 2.5%.
+    const ctx = await seedWithBid({ platformBps: 250, auctionFeeBps: 500 })
+    await settleAuction(ctx.auctionId)
+    // 5% of the 20 XRP winning bid = 1 XRP, not 0.5.
+    expect(brokerSale).toHaveBeenCalledWith(expect.objectContaining({ brokerFeeDrops: 1_000_000n }))
+  })
+
+  it('is not moved by a later change to the event\'s own rate', async () => {
+    ok()
+    const ctx = await seedWithBid({ platformBps: 250, auctionFeeBps: 500 })
+    await prisma.event.updateMany({ where: { tickets: { some: { id: ctx.ticketId } } }, data: { platformBps: 1000 } })
+    await settleAuction(ctx.auctionId)
+    expect(brokerSale).toHaveBeenCalledWith(expect.objectContaining({ brokerFeeDrops: 1_000_000n }))
+  })
+
+  it('an auction opened before the rate was recorded still charges the event\'s rate, exactly as it always did', async () => {
+    ok()
+    const ctx = await seedWithBid({ platformBps: 250, auctionFeeBps: null })
+    await settleAuction(ctx.auctionId)
+    // 2.5% of 20 XRP = 0.5 XRP.
+    expect(brokerSale).toHaveBeenCalledWith(expect.objectContaining({ brokerFeeDrops: 500_000n }))
   })
 })

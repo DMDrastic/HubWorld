@@ -18,6 +18,7 @@ import { z } from 'zod'
 import { prisma } from '../prisma.js'
 import { NETWORK } from '../network.js'
 import { brokerMode, xamanMode } from '../env.js'
+import { firstSaleQuote } from '../listing-terms.js'
 import { tryGetPayload, signing, SIGNIN_TTL_MINUTES, signingFor } from '../signing.js'
 import { issuesOf, slugSchema } from '../schemas.js'
 import { requireAuth, requireOrganizer } from '../session.js'
@@ -353,6 +354,10 @@ mintRouter.get('/mint/:uuid', requireAuth, async (req, res) => {
   // One transaction, so a Ticket never exists without its provenance row.
   // The unique nfTokenId also makes a duplicate poll a no-op rather than a
   // second ticket.
+  const firstSale = mintOffer
+    ? firstSaleQuote({ priceDrops: mintOffer.amountDrops, event: request.event, organizerFounding: issuer.foundingOrganizer })
+    : null
+
   const ticket = await prisma.$transaction(async (tx) => {
     const existing = await tx.ticket.findUnique({
       where: { network_nfTokenId: { network: NETWORK, nfTokenId: nfTokenId! } },
@@ -407,8 +412,12 @@ mintRouter.get('/mint/:uuid', requireAuth, async (req, res) => {
           sellerAddress: issuer.xrplAddress,
           brokerAddress: mintOffer.destination!,
           priceDrops: mintOffer.amountDrops,
-          // Frozen, exactly as a separate listing freezes it.
-          platformFeeDrops: platformFeeDrops(mintOffer.amountDrops, request.event.platformBps),
+          // Frozen, exactly as a separate listing freezes it. A mint's own sell offer is a FIRST sale, so under the new
+          // model it pays the first-sale fan fee (the event's own time zone decides the founding rate) and records the
+          // rate and the first-sale flag; otherwise it is the event's rate, as it always was.
+          platformFeeDrops: firstSale!.feeDrops,
+          feeBps: firstSale!.feeBps,
+          isPrimarySale: true,
           listPayloadUuid: request.payloadUuid,
           offerIndex: mintOffer.offerIndex,
           status: 'ACTIVE',

@@ -157,4 +157,23 @@ The effective cap is the **lower of** the organizer's policy and the all-in amou
   paths and every existing event are untouched. `ALLOW_LOOSE_RESALE_POLICIES=true` turns them back on (default: on under v1, off under v2).
 - **What people are told.** Organizers: "Resale is capped at what the buyer paid." Sellers: "Capped at what the buyer paid: list for up
   to X XRP" (or the organizer's wording when it is the policy that binds; a free ticket is told it can't be sold for money but can be given).
-- Not yet built: the fixed-price listing's TERMS (seller-pays) and recording the all-in amount on a first sale; those are the wiring step.
+
+## 10. Wired behind `FEE_MODEL` (built 2026-11-01; default `v1` = today's behaviour)
+
+With `FEE_MODEL=v2` (which also requires `XRP_USD_CENTS`, or the server refuses to boot), one function per question decides the money:
+
+- **First sale** (`firstSaleQuote` in `listing-terms.ts`): the box-office checkout, a mint's own sell offer and the event page all ask it. The
+  organizer is offered the full price; the buyer pays price + fan fee (3.5%, or 3% for a flagged founding organizer whose event starts before
+  2028-01-01 in its own time zone). The listing records the rate (`feeBps`) and `isPrimarySale`; on completion the ticket records what the buyer
+  paid (`originalCostMinor`), which is the resale cap.
+- **Resale** (`resaleListingTerms`): refused below the US$5 floor; `SELLER_PAYS_V2`: the buyer pays exactly the price, the sell offer is price - 5%,
+  the broker takes the 5%. Terms are frozen on the listing.
+- **Auctions**: the 5% is frozen on the auction and its listing at opening; settlement reads the frozen rate.
+- **Free tickets**: a ticket gifted before it was ever sold records cost 0 (can be given on, never sold for money). Sold tickets and tickets from
+  before the amount existed are untouched.
+- **Screens**: the server sends `primaryFeeDrops` / `primaryAllInDrops` on events and `feeModel` on listings; the event row, checkout dialog,
+  marketplace card, a seller's own listing and the sold summary show them. No fee arithmetic in the browser.
+
+**Not switched on anywhere.** Before it is: (1) re-run the seller-pays resale on devnet through the shipped code; (2) the free claim-offer variant
+of `checkSellOffer` (destination = the named holder, amount 0) for lazy activation; (3) the card rail for the card-priced pieces (processing
+gross-up and the card `originalCostMinor`), which remain pure functions in `fees.ts`. Existing listings and auctions keep their frozen terms.

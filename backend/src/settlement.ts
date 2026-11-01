@@ -158,8 +158,9 @@ export async function settleAuction(auctionId: string): Promise<SettlementOutcom
   for (const bid of auction.bids) {
     if (bid.amountDrops < reserve || !bid.buyOfferIndex) continue
 
-    // The fee is a share of what actually won, not of the reserve.
-    const fee = platformFeeDrops(bid.amountDrops, platformBps)
+    // The fee is a share of what actually won, not of the reserve, at the rate frozen when the auction opened.
+    // An auction opened before that rate was recorded has none and uses the event's, as it always did.
+    const fee = platformFeeDrops(bid.amountDrops, auction.feeBps ?? platformBps)
 
     // Read before submitting: funds are not locked, so the winner may have spent
     // them. Cheaper to check than to burn a transaction fee finding out.

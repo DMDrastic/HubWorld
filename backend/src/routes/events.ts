@@ -2,6 +2,7 @@ import { Router } from 'express'
 import { z } from 'zod'
 import { prisma } from '../prisma.js'
 import { issuesOf, slugSchema } from '../schemas.js'
+import { firstSaleQuote } from '../listing-terms.js'
 
 import { ticketMetadata } from '../nft-metadata.js'
 
@@ -35,16 +36,21 @@ eventsRouter.get('/events', async (req, res) => {
       status: true,
       ticketCount: true,
       primaryPriceDrops: true,
+      timeZone: true,
+      feeRegion: true,
+      platformBps: true,
       organizerId: true,
-      organizer: { select: { username: true, displayName: true } },
+      organizer: { select: { username: true, displayName: true, foundingOrganizer: true } },
       _count: { select: { tickets: true } },
     },
   })
 
   const forSale = await ticketsForSale(events)
   res.json({
-    events: events.map(({ _count, organizerId, ...e }) => ({
+    events: events.map(({ _count, organizerId, timeZone, feeRegion, platformBps, organizer, ...e }) => ({
       ...e,
+      organizer: { username: organizer.username, displayName: organizer.displayName },
+      ...allIn(e, { timeZone, feeRegion, platformBps }, organizer.foundingOrganizer),
       ticketsMinted: _count.tickets,
       ticketsForSale: forSale.get(e.slug) ?? 0,
     })),
@@ -83,6 +89,20 @@ async function ticketsForSale(
   return out
 }
 
+/**
+ * What a buyer pays at the box office, worked out by the same function the checkout uses. Null when the event has no
+ * box-office price. The page shows these and does no fee arithmetic of its own.
+ */
+function allIn(
+  e: { startsAt: Date; primaryPriceDrops: bigint | null },
+  fee: { timeZone: string; feeRegion: 'CARIBBEAN' | 'CANADA'; platformBps: number },
+  founding: boolean,
+) {
+  if (e.primaryPriceDrops === null) return { primaryFeeDrops: null, primaryAllInDrops: null }
+  const q = firstSaleQuote({ priceDrops: e.primaryPriceDrops, event: { startsAt: e.startsAt, ...fee }, organizerFounding: founding })
+  return { primaryFeeDrops: q.feeDrops, primaryAllInDrops: e.primaryPriceDrops + q.feeDrops }
+}
+
 const SlugParams = z.object({ slug: slugSchema })
 
 /** GET /api/events/:slug */
@@ -108,8 +128,10 @@ eventsRouter.get('/events/:slug', async (req, res) => {
       royaltyBps: true,
       platformBps: true,
       primaryPriceDrops: true,
+      timeZone: true,
+      feeRegion: true,
       organizerId: true,
-      organizer: { select: { username: true, displayName: true, xrplAddress: true } },
+      organizer: { select: { username: true, displayName: true, xrplAddress: true, foundingOrganizer: true } },
       _count: { select: { tickets: true } },
     },
   })
@@ -119,9 +141,14 @@ eventsRouter.get('/events/:slug', async (req, res) => {
     return
   }
 
-  const { _count, organizerId, ...rest } = event
+  const { _count, organizerId, timeZone, feeRegion, organizer, ...rest } = event
   const forSale = await ticketsForSale([{ slug: event.slug, organizerId, primaryPriceDrops: event.primaryPriceDrops }])
-  res.json({ ...rest, ticketsMinted: _count.tickets, ticketsForSale: forSale.get(event.slug) ?? 0 })
+  res.json({
+    ...rest,
+    organizer: { username: organizer.username, displayName: organizer.displayName, xrplAddress: organizer.xrplAddress },
+    ...allIn(rest, { timeZone, feeRegion, platformBps: rest.platformBps }, organizer.foundingOrganizer),
+    ticketsMinted: _count.tickets, ticketsForSale: forSale.get(event.slug) ?? 0,
+  })
 })
 
 /**

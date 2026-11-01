@@ -19,6 +19,7 @@ import { withLock } from './job-lock.js'
 import { tryGetPayload } from './signing.js'
 import { brokerSale, offerIndexFromTx, spendableDrops, txSucceeded } from './ledger.js'
 import { releaseHold } from './primary-sale.js'
+import { buyerPaysDrops } from './listing-terms.js'
 import { defaultPrimarySaleLedger } from './primary-sale-ledger.js'
 
 // Used only to release a checkout's hold when its buyer backs out.
@@ -31,6 +32,7 @@ export function listingView(l: {
   id: string
   priceDrops: bigint
   platformFeeDrops: bigint
+  feeModel: 'BUYER_PAYS_V1' | 'SELLER_PAYS_V2'
   status: string
   seller: { username: string }
   buyer: { username: string } | null
@@ -40,10 +42,13 @@ export function listingView(l: {
   return {
     listingId: l.id,
     state: l.status.toLowerCase(),
-    // What the seller asks, what Hubworld takes, and what the buyer pays.
+    // What the seller asks, what Hubworld takes, and what the buyer pays. Which of the two models made the
+    // listing decides whether the fee is on top of the price (BUYER_PAYS_V1) or comes out of the seller's
+    // side (SELLER_PAYS_V2), so the screen is told which rather than left to guess.
     priceDrops: l.priceDrops.toString(),
     platformFeeDrops: l.platformFeeDrops.toString(),
-    buyerPaysDrops: (l.priceDrops + l.platformFeeDrops).toString(),
+    buyerPaysDrops: buyerPaysDrops(l).toString(),
+    feeModel: l.feeModel,
     seller: `@${l.seller.username}`,
     buyer: l.buyer ? `@${l.buyer.username}` : null,
     ticket: {
@@ -288,7 +293,8 @@ async function advance(listing: LoadedListing): Promise<ListingView> {
 
   // ---- phase 3: Hubworld brokers the match -------------------------------
   if (listing.status === 'SETTLING' && listing.offerIndex && listing.buyOfferIndex) {
-    const owed = listing.priceDrops + listing.platformFeeDrops
+    // What THIS listing's buyer must hold: the price plus the fee under the old terms, the price alone under the new.
+    const owed = buyerPaysDrops(listing)
 
     // Pre-flight the buyer's balance. A buy offer does not lock funds, so the
     // buyer can spend the money between committing and settling. Submitting
@@ -358,6 +364,18 @@ async function advance(listing: LoadedListing): Promise<ListingView> {
           status: 'MINTED',
         },
       })
+
+      // The first sale under the new model fixes what the ticket cost: the ALL-IN amount its buyer paid, which
+      // becomes the resale cap. Three guards, each for a different way to get it wrong:
+      //  - only a FIRST sale (a resale must never move the cap),
+      //  - only a listing made under the new model (`feeBps` is set only then; older listings keep old rules),
+      //  - only while nothing is recorded yet (a ticket the organizer bought back keeps its original amount).
+      if (listing.isPrimarySale && listing.feeBps !== null) {
+        await tx.ticket.updateMany({
+          where: { id: listing.ticketId, originalCostMinor: null },
+          data: { originalCostMinor: buyerPaysDrops(listing), originalCostCurrency: 'XRP' },
+        })
+      }
 
       const already = await tx.transfer.findUnique({
         where: { network_txHash: { network: NETWORK, txHash: result.hash } },

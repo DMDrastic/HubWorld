@@ -29,6 +29,9 @@ export const EventSummarySchema = z.object({
   ticketsMinted: z.number(),
   /** Box-office price in drops, a string like all money. Null: no checkout. */
   primaryPriceDrops: z.string().nullable().optional(),
+  /** What the buyer pays at the box office and the fee inside it, from the same function the checkout uses. */
+  primaryFeeDrops: z.string().nullable().optional(),
+  primaryAllInDrops: z.string().nullable().optional(),
   /** Tickets a buyer could take right now. Absent from a server that predates it. */
   ticketsForSale: z.number().optional(),
   organizer: z.object({
@@ -683,6 +686,8 @@ export const ListingSchema = z.object({
   priceDrops: z.string(),
   platformFeeDrops: z.string(),
   buyerPaysDrops: z.string(),
+  /** Who pays the fee. Absent from a server that predates the new terms, which means the buyer. */
+  feeModel: z.enum(['BUYER_PAYS_V1', 'SELLER_PAYS_V2']).optional(),
   seller: z.string(),
   buyer: z.string().nullable(),
   ticket: z.object({

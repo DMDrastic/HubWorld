@@ -26,13 +26,14 @@ import { Router } from 'express'
 import { z } from 'zod'
 import { prisma } from '../prisma.js'
 import { NETWORK } from '../network.js'
-import { brokerMode, xamanMode } from '../env.js'
+import { brokerMode, xamanMode, feeModelV2 } from '../env.js'
 import { signing, signingFor } from '../signing.js'
 import { issuesOf } from '../schemas.js'
 import { requireAuth } from '../session.js'
 import { canAuction } from '../auction-policy.js'
 import { checkResalePrice } from '../resale-policy.js'
 import { paidCostOf } from '../paid-cost.js'
+import { configuredMinimumResaleDrops, resaleListingTerms } from '../listing-terms.js'
 import {
   auctionSellAmountDrops,
   buildSellOfferTx,
@@ -181,7 +182,21 @@ openAuctionRouter.post('/tickets/:nfTokenId/auction', requireAuth, async (req, r
     return
   }
 
-  const platformBps = ticket.event.platformBps
+  // The fee rate this auction settles at, frozen on it. Under the new model it is the resale rate, charged to the
+  // seller (an auction already works that way: the sell offer sits below the reserve by the fee), and a reserve
+  // below the US$5 floor is refused. Under the old model it is the event's own rate and nothing is recorded, so
+  // such an auction settles exactly as it always did.
+  let platformBps = ticket.event.platformBps
+  let frozenFeeBps: number | null = null
+  if (feeModelV2) {
+    const terms = resaleListingTerms({ priceDrops: reserveDrops, minimumDrops: configuredMinimumResaleDrops() })
+    if (!terms.ok) {
+      res.status(400).json({ error: terms.reason })
+      return
+    }
+    platformBps = terms.feeBps
+    frozenFeeBps = terms.feeBps
+  }
   // Recorded on the Listing below: only this account can settle these offers.
   const brokerAddress = platformAddress()
 
@@ -222,6 +237,7 @@ openAuctionRouter.post('/tickets/:nfTokenId/auction', requireAuth, async (req, r
         startsAt: new Date(now),
         endsAt,
         reserveDrops,
+        feeBps: frozenFeeBps,
         // SCHEDULED until the sell offer is actually on-ledger; bidding opens
         // only when there is something for a winner to be matched against.
         status: 'SCHEDULED',
@@ -236,6 +252,7 @@ openAuctionRouter.post('/tickets/:nfTokenId/auction', requireAuth, async (req, r
         brokerAddress,
         priceDrops: sellAmount,
         platformFeeDrops: platformFeeDrops(reserveDrops, platformBps),
+        feeBps: frozenFeeBps,
         listPayloadUuid: payload.uuid,
         expiresAt: new Date(now + OFFER_TTL_MINUTES * 60_000),
         auctionId: auction.id,
