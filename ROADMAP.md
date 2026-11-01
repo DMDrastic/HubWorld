@@ -910,6 +910,22 @@ HubWorld funds about **1.5 XRP** per wallet:
   and should be re-checked (still not on mainnet when last looked, 2026-10-19).
 - Abuse rule from 5c holds: activation follows a completed purchase or a verified sign-in, never a bare request.
 
+**MAINNET BLOCKER (added 2026-11-01): platform-funded activation must be farm-resistant.** XRPL `AccountDelete` lets an
+account's owner delete it and reclaim most of its XRP. So a free activation can be harvested: buy one cheap ticket, gift it
+through dozens of new accounts, let HubWorld fund each recipient, then delete those accounts and collect roughly 1 XRP from
+each. The gift flow on testnet answers a new recipient with "add funds" and the faucet, which is fine there. On mainnet,
+asking someone who received a gift to go and buy XRP is a bad first experience, so HubWorld will fund them, as planned for
+claims, and that is exactly the opening. No platform-funded activation ships on mainnet without all of these:
+
+- **At most one funded activation per verified identity, ever** (email plus phone, or similar). Not per account, not per day.
+- **A ticket can trigger at most one funded activation in its whole life**: its first claim or gift recipient. After that,
+  recipients fund themselves or wait for sponsorship.
+- **A daily cap on total funded activations platform-wide**, with an alert when it is hit.
+- **Track funded accounts that later delete themselves** (`AccountDelete` with HubWorld's funding still in it), and flag and
+  block repeat patterns.
+- **Revisit once XLS-68 sponsored reserves (`Sponsor`) are live on mainnet.** A sponsored reserve is never the user's XRP to
+  reclaim, so sponsorship may remove the farming risk entirely.
+
 **Blocking open question: how does a card buyer turn RLUSD resale proceeds into cash?** Nothing in the design answers it. Until it
 is answered, a card-bought ticket can be **claimed or gifted but not resold for money**. This must be a **policy flag, not
 hard-coded**: suggested name `CARD_TICKET_RESALE_FOR_MONEY`, default off, enforced on the server where a listing or an auction is
