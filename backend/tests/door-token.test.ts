@@ -25,12 +25,12 @@ describe('door tokens', () => {
     expect(out).toEqual({ ok: true, claims: { ...claims, exp: NOW + DOOR_TOKEN_TTL_MS } })
   })
 
-  it('lives for 45 seconds and not a moment longer', () => {
+  it('lives for 30 seconds and not a moment longer', () => {
     const { token } = signDoorToken(claims, { secret: SECRET, now: NOW })
 
     expect(verifyDoorToken(token, { secret: SECRET, now: NOW + DOOR_TOKEN_TTL_MS - 1 }).ok).toBe(true)
     expect(verifyDoorToken(token, { secret: SECRET, now: NOW + DOOR_TOKEN_TTL_MS })).toEqual({ ok: false, reason: 'expired' })
-    expect(DOOR_TOKEN_TTL_MS).toBe(45_000)
+    expect(DOOR_TOKEN_TTL_MS).toBe(30_000)
   })
 
   it('rejects a code signed with a different secret', () => {

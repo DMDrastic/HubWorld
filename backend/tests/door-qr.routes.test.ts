@@ -144,8 +144,8 @@ describe('POST /tickets/:nfTokenId/door-token', () => {
     const res = await getCode(holder, ticket.nfTokenId)
 
     expect(res.status).toBe(200)
-    expect(res.body.refreshInSeconds).toBe(30)
-    expect(res.body.expiresInSeconds).toBe(45)
+    expect(res.body.refreshInSeconds).toBe(20)
+    expect(res.body.expiresInSeconds).toBe(30)
     const check = verifyDoorToken(res.body.token, { secret: SECRET })
     expect(check.ok && check.claims).toMatchObject({ t: ticket.nfTokenId, e: event.id, u: holder.id })
     expect(new Date(res.body.expiresAt).getTime()).toBeGreaterThan(Date.now())
@@ -388,20 +388,17 @@ describe('POST /events chooses the door mode', () => {
   const create = (org: Actor, extra: Record<string, unknown> = {}) =>
     request(app).post('/api/events').set('Authorization', as(org)).send(body(extra))
 
-  it('defaults to the Xaman signature door, whether or not the server can sign codes', async () => {
-    // The code door is faster but proves less, so an organizer opts into it; an
-    // event never drifts into it just because the server happens to support it.
+  it('defaults to the CODE door where this server can sign codes', async () => {
+    // Most attendees sign in with email (Privy), and an email wallet cannot do the signature door, so a signature
+    // default would lock them out. The signature door stays an organizer's choice for high-value tickets.
     const org = await mkUser('org', 'ORGANIZER')
-    expect((await create(org)).body.doorMode).toBe('SIGNATURE')
-
-    await prisma.event.deleteMany({ where: { slug: `${STAG}create-${uniq}` } })
-    state.mode = 'disabled'
-    expect((await create(org)).body.doorMode).toBe('SIGNATURE')
+    expect((await create(org)).body.doorMode).toBe('QR')
   })
 
-  it('gives the code door to an organizer who asks for it (positive control for the default)', async () => {
+  it('defaults to the signature door where this server CANNOT sign codes (a code door nobody could pass)', async () => {
     const org = await mkUser('org', 'ORGANIZER')
-    expect((await create(org, { doorMode: 'QR' })).body.doorMode).toBe('QR')
+    state.mode = 'disabled'
+    expect((await create(org)).body.doorMode).toBe('SIGNATURE')
   })
 
   it('honours an explicit choice, but not a QR door the server cannot run', async () => {

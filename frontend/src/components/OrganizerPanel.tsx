@@ -404,8 +404,9 @@ function CreateEventForm({ policy, onCreated }: { policy: Policy | null; onCreat
   const resalePolicy: ResalePolicyMode = !loose && chosenPolicy === 'UNRESTRICTED' ? 'FACE_VALUE_ONLY' : chosenPolicy
   const [resaleCapPct, setResaleCapPct] = useState('120')
   const [resaleCapXrp, setResaleCapXrp] = useState('')
-  // Offered only where this server can run the code door; otherwise the server's own default (Xaman) applies.
-  const [doorMode, setDoorMode] = useState<DoorMode>('SIGNATURE')
+  // Offered only where this server can run the code door; otherwise the server's own default (the signature door) applies.
+  // Code first: email attendees cannot sign at the door.
+  const [doorMode, setDoorMode] = useState<DoorMode>('QR')
   const offerDoorMode = policy?.doorCodes === true
   const [poster, setPoster] = useState<File | null>(null)
   const [busy, setBusy] = useState(false)
@@ -689,7 +690,7 @@ function CreateEventForm({ policy, onCreated }: { policy: Policy | null; onCreat
             <Option
               icon={DoorOpen}
               label="Door"
-              hint="Approving in Xaman proves the guest's own wallet is at the door. A code is faster, but only proves a logged-in HubWorld session. You can change this later."
+              hint="Guests show a code that changes every 20 seconds, and it works for every guest. Approving in Xaman proves the guest's own wallet is at the door, but guests who signed in with email cannot do it. You can change this later."
             >
               <select
                 value={doorMode}
@@ -697,8 +698,8 @@ function CreateEventForm({ policy, onCreated }: { policy: Policy | null; onCreat
                 aria-label="how guests get in"
                 className={VALUE_SELECT}
               >
-                <option value="SIGNATURE">Xaman (recommended)</option>
-                <option value="QR">Code (faster)</option>
+                <option value="QR">Code (recommended)</option>
+                <option value="SIGNATURE">Xaman approval (crypto wallets only)</option>
               </select>
             </Option>
           )}

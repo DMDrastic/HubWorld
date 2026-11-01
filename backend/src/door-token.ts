@@ -1,7 +1,7 @@
 /**
  * The short-lived code an attendee shows at the door.
  *
- * A code names one ticket, one event and one person, and stops working 45
+ * A code names one ticket, one event and one person, and stops working 30
  * seconds after it was made. The page showing it makes a fresh one before then.
  *
  * What makes this safe to display on a phone, where a static QR would not be:
@@ -30,14 +30,14 @@
  * tidiness: a QR's density grows with its length, and a dense code is slow to
  * read off a phone held up in a queue. As JSON this was about 300 characters and
  * a code too fine for a camera at arm's length; 128 bits of MAC is ample for
- * something that lives 45 seconds.
+ * something that lives 30 seconds.
  */
 import { createHmac, timingSafeEqual } from 'node:crypto'
 
-export const DOOR_TOKEN_TTL_MS = 45_000
+export const DOOR_TOKEN_TTL_MS = 30_000
 export const DOOR_TOKEN_PREFIX = 'HWD1'
 
-/** Bytes of HMAC kept. 128 bits: far beyond guessable inside a 45 second life. */
+/** Bytes of HMAC kept. 128 bits: far beyond guessable inside a 30 second life. */
 const MAC_BYTES = 16
 const PAYLOAD_BYTES = 32 + 16 + 16 + 6
 

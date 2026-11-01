@@ -439,7 +439,10 @@ organizersRouter.post('/events', requireAuth, requireOrganizer, async (req, res)
     select: { nftTaxon: true },
   })
 
-  const doorMode = data.doorMode ?? 'SIGNATURE'
+  // The code door by default: most attendees sign in with email, and an email wallet cannot sign at the door, so a
+  // signature default would lock them out. A server that cannot sign codes falls back to the signature door, because a
+  // code door it cannot run admits nobody. The signature door stays the organizer's choice for high-value tickets.
+  const doorMode = data.doorMode ?? (doorTokenMode === 'live' ? 'QR' : 'SIGNATURE')
   const event = await prisma.event.create({
     data: {
       slug,

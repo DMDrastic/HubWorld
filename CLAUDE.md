@@ -949,7 +949,7 @@ Hubworld out of the funds-custody path. Changing this changes who mints.
 | `GET /api/auctions` | events with a live auction |
 | `POST /api/events/:slug/checkin` | organizer-only; start a door check-in |
 | `GET /api/checkin/:uuid` | the verdict, on the staff device |
-| `POST /api/tickets/:nfTokenId/door-token` | holder-only; a 45-second signed code to show at the door (QR-mode events) |
+| `POST /api/tickets/:nfTokenId/door-token` | holder-only; a 30-second signed code to show at the door (QR-mode events) |
 | `POST /api/events/:slug/checkin/scan` | door staff; submit a scanned code, answers with a verdict (QR-mode events) |
 | `POST /api/events/:slug/door-mode` | organizer-only; switch an event between `QR` and `SIGNATURE` |
 | `GET /api/events/:slug/door` | admitted/issued counts + recent entries |
@@ -1841,13 +1841,17 @@ ticket rather than a collectible.
 switchable after creation because nothing about a ticket depends on it):
 
 - **`SIGNATURE`** — staff show a code, the attendee signs it in Xaman. The strongest
-  proof, the only one that existed before 2026-10-20, **and the default for every event**.
+  proof, the only one that existed before 2026-10-20. Now the organizer's choice for high-value
+  tickets, and the fallback default on a server that cannot sign codes.
   The attendee does not need to open Xaman's scanner first: the QR is a link, so pointing
   the phone's own camera at it opens Xaman at the request (confirmed on a real phone
   2026-10-20; Xaman's docs describe the same).
 - **`QR`** — the attendee shows a short-lived code and staff scan it with their phone
-  camera. Faster, and it uses no Xaman payload, but it proves less, so an organizer
-  **opts in** to it; no event drifts into it because the server happens to support it.
+  camera. Faster, and it uses no Xaman payload, but it proves less. **The default for new
+  events since 2026-11-01** wherever the server can sign codes: email (Privy) is now the
+  default signer and an email wallet cannot sign at the door, so a signature default would
+  lock most attendees out. The database's own default is still `SIGNATURE`, so scripts that
+  create events without choosing get the door that needs no secret.
 
 **Why a second way exists.** Each signature check-in creates a Xaman payload per
 attendee (`DOOR_CHECKIN`, the vendor quota the roadmap names as the top risk) and
@@ -1867,7 +1871,7 @@ reserve, so an unfunded wallet can still be admitted.
 **What `QR` mode changes, stated plainly.** The code (`src/door-token.ts`,
 `HWD1.<payload>.<mac>`, about 120 characters, a QR of roughly 45 modules a side) names
 one ticket, one event and one person, is signed with an HMAC (`DOOR_TOKEN_SECRET`), and
-stops working 45 seconds after it was made; the page renews it every 30. A screenshot
+stops working 30 seconds after it was made; the page renews it every 20. A screenshot
 is dead within a minute, and a live forwarded code admits only the first person to
 present it. **It proves possession of a logged-in HubWorld session, not a wallet key at
 the door**: someone who hands over an unlocked phone, or screen-shares live, gets in.
@@ -1884,11 +1888,11 @@ never an admitted state".
   charged the second by a code for the first, and a code for another event is
   `no_ticket` here.
 - **The ledger is read twice.** Once when the holder asks for a code (a ticket gifted in
-  Xaman gets no working code) and again at the door (a ticket given away in the 45
+  Xaman gets no working code) and again at the door (a ticket given away in the 30
   seconds since). An unreadable ledger is never a refusal at either step.
 - **Off until configured.** `DOOR_TOKEN_SECRET` unset: the routes answer 503, the create
   form does not offer the choice (`GET /policy` carries
-  `doorCodes`). Replacing the secret is the whole rotation story: codes live 45 seconds.
+  `doorCodes`). Replacing the secret is the whole rotation story: codes live 30 seconds.
 - **Every scan leaves an audit row** (`Redemption.method = QR`), junk included — a
   disputed entry is exactly when "what did staff scan at 9:42" matters. A QR that is not a
   HubWorld code is refused on the phone without asking the server.

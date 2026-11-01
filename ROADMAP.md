@@ -970,6 +970,28 @@ off-platform payment, which is a resale that skips the royalty and the fee:
 Together, these rules make farming cost more than it returns. Every funded step needs a resale paying the 5% fee, the royalty
 and the minimum, and each ticket is still capped at one funded activation.
 
+**BLOCKER BEFORE THE FIRST REAL ST. LUCIA EVENT, not just mainnet (added 2026-11-01): the offline door.** Today nothing at the
+door works without signal. The attendee's phone fetches each code from the server, and the scanner asks the server for every
+verdict. A venue with no signal, or one that drops it when the crowd arrives, admits nobody. The design:
+
+- **The scanner checks a signed code itself.** Codes are signed with a key whose PUBLIC half the scanner holds, replacing today's
+  HMAC, which only the server can check. A scanner then needs no server to say whether a code is genuine.
+- **A manifest downloaded before doors open**: every valid ticket for the event and its holder, signed by HubWorld, so the
+  scanner can answer `no_ticket` offline.
+- **Repeat scans flagged locally**, and synced between scanners and to the server when signal returns. Two offline scanners
+  cannot know about each other's admissions, so a ticket admitted twice must be flagged at sync, with both scans in the audit
+  trail. Decide whether that is acceptable or whether each lane must own a slice of the tickets.
+- **The attendee's code must be made on the phone**, not fetched, so an attendee without signal can still show one. That means a
+  per-ticket key on the device, which is a design question of its own.
+
+**Phase 3, with lazy activation: tickets held for their owner cannot get a door code today.** The code route and the door both
+match the wallet holding the ticket on the ledger, which for a held ticket is the organizer's. The door must accept the database
+owner for these. A `todo` in `tests/door-qr.routes.test.ts` records it.
+
+**Door code timing, changed 2026-11-01**: a new code every 20 seconds, each valid for 30 (was 30 and 45). New events default to
+the code door wherever the server can sign codes, because email (Privy) attendees cannot sign at the door. The signature door
+remains the organizer's choice for high-value tickets.
+
 **Blocking open question: how does a card buyer turn RLUSD resale proceeds into cash?** Nothing in the design answers it. Until it
 is answered, a card-bought ticket can be **claimed or gifted but not resold for money**. This must be a **policy flag, not
 hard-coded**: suggested name `CARD_TICKET_RESALE_FOR_MONEY`, default off, enforced on the server where a listing or an auction is
