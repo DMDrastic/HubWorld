@@ -544,6 +544,8 @@ describe('the US$ estimate is display only', () => {
       priceDrops: { currency: 'USD', minor: '1250' },
       platformFeeDrops: { currency: 'USD', minor: '63' },
       buyerPaysDrops: { currency: 'USD', minor: '1250' },
+      // 10 XRP less the 0.5 XRP fee, at US$1.25: what the seller receives before the royalty.
+      sellerReceivesDrops: { currency: 'USD', minor: '1188' },
     })
     expect(on.market.priceDrops).toBe('10000000')
     expect(on.ev.fiat).toBeTypeOf('object')

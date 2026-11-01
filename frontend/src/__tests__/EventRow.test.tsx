@@ -20,6 +20,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { EventRow } from '@/components/EventRow'
 import type { EventSummary } from '@/lib/api'
+import { priced } from './usd'
 
 function event(over: Partial<EventSummary> = {}): EventSummary {
   return {
@@ -186,13 +187,15 @@ describe('only a live auction makes a row act on its own', () => {
  * tab stop.
  */
 describe('Buy', () => {
-  const ON_SALE = event({
-    slug: 'neon-rooftop-session',
-    title: 'Neon Rooftop Session',
-    startsAt: new Date(Date.now() + 86_400_000).toISOString(),
-    primaryPriceDrops: '25000000',
-    ticketsForSale: 12,
-  })
+  const ON_SALE = priced(
+    event({
+      slug: 'neon-rooftop-session',
+      title: 'Neon Rooftop Session',
+      startsAt: new Date(Date.now() + 86_400_000).toISOString(),
+      primaryPriceDrops: '25000000',
+      ticketsForSale: 12,
+    }),
+  )
 
   const buyRow = (over: Partial<EventSummary> = {}, live = false, onBuy = vi.fn()) => {
     row({ ...ON_SALE, ...over }, live, onBuy)
@@ -201,8 +204,9 @@ describe('Buy', () => {
 
   it('offers the price and how many are left, with a name that says what it does', () => {
     buyRow()
-    const button = screen.getByRole('button', { name: /buy a ticket to neon rooftop session for 25 xrp/i })
-    expect(button.textContent).toMatch(/25 XRP/)
+    const button = screen.getByRole('button', { name: /buy a ticket to neon rooftop session for US\$25\.00/i })
+    expect(button.textContent).toMatch(/US\$25\.00/)
+    expect(button.textContent).not.toMatch(/XRP/)
     expect(button.textContent).toMatch(/12 left/)
   })
 

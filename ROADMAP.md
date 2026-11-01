@@ -876,6 +876,15 @@ lands squarely in §6.
 
 **Decided 2026-11-01. Design only: no code, and nothing here changes what is built today.**
 
+> **Superseded in part, later on 2026-11-01 (strategy handoff §13, "fiat-first").** The RLUSD float for card RESALE is
+> **dropped**. Fans see US$ only; card buyers get the same features as wallet buyers (Privy wallet, door code, gift,
+> resale); the organizer royalty is paid on EVERY paid resale (XRP, RLUSD or card), with the rate read from the NFT's
+> TransferFee, one shared split function, and a card resale's ticket moving only after a confirmed charge that includes
+> the organizer's share. Order of work: (1) US$-only display, done; (1b) USD canonical pricing; (2) card primary sales in
+> Stripe test mode; (3) configurable fan fee with a St. Lucia profile behind a flag; (4) claim and door code for tickets
+> held for their owner; (5) shared royalty split + invariant tests; (6) refund-on-resale for card buyers; (7) gift limits.
+> Read the rest of this section as history where it disagrees.
+
 **The decision.** For production events, USD is the price an organizer sets: face value, the resale cap and the royalty are all
 USD amounts. Card buyers pay USD. When a ticket bought by card is resold on the ledger, that resale settles in **RLUSD**. XRP
 pricing stays for testnet demos and for optional crypto-native payers, and nowhere else is it the unit of account.

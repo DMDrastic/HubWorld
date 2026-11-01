@@ -17,6 +17,7 @@ export function SignStep({
   uuid,
   sign,
   context,
+  shownPrice,
   onSubmitted,
   onCancel,
 }: {
@@ -24,6 +25,11 @@ export function SignStep({
   sign: SignBlock
   /** Everything the review needs except the account, which is the signed-in wallet itself. */
   context: Omit<ReviewContext, 'account'>
+  /**
+   * The price as the page shows it (formatted by the caller), large under the title. Display only: the review never
+   * sees it and nothing is checked against it. What is SIGNED is in the review's own lines, always shown under Details.
+   */
+  shownPrice?: string
   /** The server has the signature and has submitted it. The caller's own poll reports the outcome. */
   onSubmitted: (txid: string) => void
   onCancel: () => void
@@ -106,7 +112,10 @@ export function SignStep({
     <div className="space-y-4">
       <div>
         <h3 className="font-heading text-base font-semibold tracking-tight">{review.title}</h3>
-        <ul className="text-muted-foreground mt-2 space-y-1.5 text-sm">
+        {shownPrice && <p className="mt-1 text-2xl font-semibold tracking-[-0.02em] tabular-nums">{shownPrice}</p>}
+        {/* The exact transaction, from the decoded bytes. Always shown, even under a friendlier figure. */}
+        <div className="text-muted-foreground mt-3 text-xs font-medium tracking-wide uppercase">Details</div>
+        <ul className="text-muted-foreground mt-1 space-y-1.5 text-xs">
           {review.lines.map((line) => (
             <li key={line} className={line.startsWith('Authorising') || line.startsWith('Their wallet') ? 'font-mono text-xs break-all' : undefined}>
               {line}

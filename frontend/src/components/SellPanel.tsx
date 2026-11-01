@@ -30,7 +30,7 @@ import {
   walletNeedsFunds,
 } from "@/lib/api";
 import type { ReviewAction } from "@/lib/sign-review";
-import { commitLine, formatFiat } from "@/lib/fiat";
+import { formatFiat } from "@/lib/fiat";
 import { useQuote } from "@/lib/use-quote";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -309,8 +309,8 @@ export function SellPanel({
       track(
         l.listingId,
         payload,
-        // Where the buyer commits: the XRP is what they pay, the dollars an estimate. The review gets the drops.
-        commitLine(l.buyerPaysDrops, l.fiat?.buyerPaysDrops),
+        // Fans see US$; the exact XRP is under Details on the approval screen. The review gets the drops.
+        l.fiat?.buyerPaysDrops ? `Buy for ${formatFiat(l.fiat.buyerPaysDrops)}` : "Buy this ticket",
         // What the card the buyer pressed said they would pay.
         { kind: "buy", amountDrops: l.buyerPaysDrops, label: l.ticket.event.title },
       );
@@ -371,7 +371,11 @@ export function SellPanel({
             {" · "}
             {auctions.length} live{" "}
             {auctions.length === 1 ? "auction" : "auctions"}
-            {lowest && <> · from {xrpOrUsd(lowest, market.find((l) => l.buyerPaysDrops === lowest)?.fiat?.buyerPaysDrops)}</>}
+            {(() => {
+              // Fans see US$ only: the lowest price is left out when there is no fresh figure for it.
+              const f = lowest ? market.find((l) => l.buyerPaysDrops === lowest)?.fiat?.buyerPaysDrops : undefined;
+              return f ? <> · from {formatFiat(f)}</> : null;
+            })()}
           </p>
 
           {auctions.length > 0 && onOpenAuction && (
@@ -624,6 +628,11 @@ export function SellPanel({
                 action={phase.action}
                 qrAlt="Xaman signing QR code"
                 qrHint="Scan in Xaman to sign."
+                // The amount being signed, as the server priced it in US$ (display only; Details carries the XRP).
+                shownPrice={(() => {
+                  const f = phase.payload.fiat?.paysDrops ?? phase.payload.fiat?.priceDrops;
+                  return f ? formatFiat(f) : undefined;
+                })()}
                 onSubmitted={() => setApproved(true)}
               />
             )}

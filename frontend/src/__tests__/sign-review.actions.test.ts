@@ -72,7 +72,8 @@ const ACTIONS: Array<{
     name: 'a purchase at the box office or on the marketplace',
     good: () => buy(drops(10)),
     action: { kind: 'buy', amountDrops: drops(10), label: 'Neon Night' },
-    title: /^Buy 1 ticket to Neon Night for 10 XRP$/,
+    // The title says what is done; the exact amount signed is in the lines (shown under Details).
+    title: /^Buy 1 ticket to Neon Night$/,
     says: [/You pay 10 XRP/, /1234/, /Only HubWorld/],
     tampered: [
       ['a bigger amount than the page showed', () => buy(drops(10.000001))],
@@ -84,7 +85,7 @@ const ACTIONS: Array<{
     name: 'a bid in an auction',
     good: () => buy(drops(30)),
     action: { kind: 'bid', amountDrops: drops(30), label: 'Neon Night' },
-    title: /^Bid 30 XRP on a ticket to Neon Night$/,
+    title: /^Bid on a ticket to Neon Night$/,
     says: [/You offer 30 XRP/, /nothing is charged/i, /1234/],
     tampered: [
       ['a bigger bid than typed', () => buy(drops(31))],
