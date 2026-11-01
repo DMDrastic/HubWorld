@@ -63,3 +63,14 @@ export function cheapest(listings: readonly Listing[]): string | null {
   if (listings.length === 0) return null
   return listings.reduce((lo, l) => (BigInt(l.buyerPaysDrops) < BigInt(lo) ? l.buyerPaysDrops : lo), listings[0]!.buyerPaysDrops)
 }
+
+/**
+ * What the seller receives before the organizer's royalty. Under the new terms the seller pays the fee out of the
+ * price; under the old ones the buyer paid it on top, so the seller gets the whole price. A listing from a server
+ * that sends no model is the old terms.
+ */
+export function sellerReceivesDrops(l: Pick<Listing, 'priceDrops' | 'platformFeeDrops' | 'feeModel'>): string {
+  return l.feeModel === 'SELLER_PAYS_V2'
+    ? (BigInt(l.priceDrops) - BigInt(l.platformFeeDrops)).toString()
+    : l.priceDrops
+}

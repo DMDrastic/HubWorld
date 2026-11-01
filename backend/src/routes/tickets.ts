@@ -15,6 +15,7 @@ import { accountNfts } from '../ledger.js'
 import { canAuction } from '../auction-policy.js'
 import { resaleCeiling, maxAskForCap, isPrimarySale, capSource } from '../resale-policy.js'
 import { paidCostOf } from '../paid-cost.js'
+import { feeModelV2 } from '../env.js'
 
 export const ticketsRouter = Router()
 
@@ -149,8 +150,14 @@ ticketsRouter.get('/tickets/mine', requireAuth, async (req, res) => {
             // split as listings.ts vs. open-auction.ts/bids.ts.
             return {
               resaleAllowed: true,
+              // Under the new terms the buyer pays exactly the price, so the cap is the most that can be listed; under the
+              // old terms the fee is added on top of the ask, so it is backed out of the cap first.
               maxListingPriceDrops:
-                ceiling.maxDrops === null ? null : maxAskForCap(ceiling.maxDrops, t.event.platformBps).toString(),
+                ceiling.maxDrops === null
+                  ? null
+                  : feeModelV2
+                    ? ceiling.maxDrops.toString()
+                    : maxAskForCap(ceiling.maxDrops, t.event.platformBps).toString(),
               maxAuctionReserveDrops: ceiling.maxDrops?.toString() ?? null,
               resaleBlockedReason: null,
               // Why the limit is what it is, so the seller is told "capped at what the buyer paid"

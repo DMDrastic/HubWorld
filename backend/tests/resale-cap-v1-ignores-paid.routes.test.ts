@@ -234,4 +234,19 @@ describe('fee model OFF: a recorded all-in amount is ignored', () => {
     expect(t.maxAuctionReserveDrops).toBeNull()
     expect(t.resaleCapSource).toBe('NONE')
   })
+
+  it('opening an auction records no fee rate, so it settles at the event\'s rate as it always did', async () => {
+    const organizer = await mkUser('org', 'ORGANIZER')
+    const holder = await mkUser('holder')
+    const event = await mkEvent(organizer, { ticketCount: 1, resalePolicy: 'UNRESTRICTED' })
+    const ticket = await mkTicket(event.id, holder, null, paid(8))
+    const res = await request(app).post(`/api/tickets/${ticket.nfTokenId}/auction`).set('Authorization', as(holder)).send({ reserveDrops: (10n * XRP).toString() })
+    expect(res.status).toBe(201)
+    const auction = await prisma.auction.findFirstOrThrow({ where: { ticketId: ticket.id } })
+    expect(auction.feeBps).toBeNull()
+    const listing = await prisma.listing.findFirstOrThrow({ where: { auctionId: auction.id } })
+    expect(listing.feeBps).toBeNull()
+    // 2.5% of 10 XRP = 0.25 XRP, the event's rate.
+    expect(listing.platformFeeDrops).toBe(250_000n)
+  })
 })

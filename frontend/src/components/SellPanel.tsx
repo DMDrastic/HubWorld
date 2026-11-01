@@ -6,7 +6,7 @@ import {
   MyListingRow,
 } from "@/components/MarketCards";
 import { Segmented } from "@/components/Segmented";
-import { cheapest, sortListings, type SortKey } from "@/lib/market";
+import { cheapest, sellerReceivesDrops, sortListings, type SortKey } from "@/lib/market";
 import {
   ApiError,
   buyListing,
@@ -599,7 +599,7 @@ export function SellPanel({
                 <div className="bg-muted/40 w-full space-y-1 rounded-xl p-3.5 text-xs">
                   <div className="text-muted-foreground">seller receives</div>
                   <div>
-                    {dropsToXrp(listing.priceDrops)} XRP minus the royalty
+                    {dropsToXrp(sellerReceivesDrops(listing))} XRP minus the royalty
                   </div>
                   <div className="text-muted-foreground mt-1">platform fee</div>
                   <div>{dropsToXrp(listing.platformFeeDrops)} XRP</div>

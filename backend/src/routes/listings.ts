@@ -20,13 +20,14 @@ import { Router } from 'express'
 import { z } from 'zod'
 import { prisma } from '../prisma.js'
 import { NETWORK } from '../network.js'
-import { brokerMode, xamanMode } from '../env.js'
+import { brokerMode, xamanMode, feeModelV2 } from '../env.js'
 import { signing, SIGNIN_TTL_MINUTES, signingFor } from '../signing.js'
 import { issuesOf } from '../schemas.js'
 import { requireAuth } from '../session.js'
 import { advanceListing, listingInclude, listingView } from '../listing-advance.js'
 import { checkResalePrice, maxAskForCap, isPrimarySale } from '../resale-policy.js'
 import { paidCostOf } from '../paid-cost.js'
+import { buyerPaysDrops, configuredMinimumResaleDrops, primaryFeeDrops, resaleListingTerms } from '../listing-terms.js'
 import {
   buildBuyOfferTx,
   buildCancelOfferTx,
@@ -149,8 +150,6 @@ listingsRouter.post('/tickets/:nfTokenId/list', requireAuth, async (req, res) =>
     return
   }
 
-  const fee = platformFeeDrops(priceDrops, ticket.event.platformBps)
-
   // See isPrimarySale's doc comment in resale-policy.ts for why this is NOT
   // simply "the seller is the organizer". The actual write happens below,
   // together with the Listing — not here, where a later failure (building
@@ -161,24 +160,71 @@ listingsRouter.post('/tickets/:nfTokenId/list', requireAuth, async (req, res) =>
     sellerId: me.id,
     faceValueDrops: ticket.faceValueDrops,
   })
+
+  // The terms this listing is created under, frozen on it. Which fee model applies is decided HERE, once:
+  // a listing already quoted to a buyer must settle to exactly what it said, whatever the rules become later.
+  //  - Old model (the default): the buyer pays the fee ON TOP of the ask.
+  //  - New model, a FIRST sale: the same shape, with the new fan fee (only the proportional part in XRP).
+  //  - New model, a RESALE: the SELLER pays. The buyer pays exactly the price; the sell offer is price - fee.
+  let fee: bigint
+  let feeModel: 'BUYER_PAYS_V1' | 'SELLER_PAYS_V2' = 'BUYER_PAYS_V1'
+  let feeBps: number | null = null
+  let sellOfferAmount = priceDrops
+  if (!feeModelV2) {
+    fee = platformFeeDrops(priceDrops, ticket.event.platformBps)
+  } else if (primarySale) {
+    const f = primaryFeeDrops({ priceDrops, event: ticket.event, organizerFounding: me.foundingOrganizer })
+    fee = f.feeDrops
+    feeBps = f.feeBps
+  } else {
+    const terms = resaleListingTerms({ priceDrops, minimumDrops: configuredMinimumResaleDrops() })
+    if (!terms.ok) {
+      // The cap below is checked first for a ticket that cannot be sold for money at all; a price too small to
+      // be worth listing is told so here.
+      const cap = checkResalePrice({
+        policy: ticket.event.resalePolicy,
+        capBps: ticket.event.resaleCapBps,
+        capDrops: ticket.event.resaleCapDrops,
+        faceValueDrops: ticket.faceValueDrops,
+        paid: paidCostOf(ticket),
+        priceDrops,
+      })
+      if (!cap.allowed) {
+        res.status(400).json({ error: cap.reason, maxResaleDrops: cap.maxDrops?.toString() ?? null })
+        return
+      }
+      res.status(400).json({ error: terms.reason })
+      return
+    }
+    fee = terms.feeDrops
+    feeModel = 'SELLER_PAYS_V2'
+    feeBps = terms.feeBps
+    sellOfferAmount = terms.sellOfferDrops
+  }
+
   if (!primarySale) {
-    // Checked against what the BUYER actually pays (priceDrops + fee), not
-    // the seller's bare ask — otherwise the platform fee lets the final price
-    // creep past the organizer's stated cap. Auctions/bids need no such
-    // adjustment; a bid amount already IS the buyer's total.
+    // Checked against what the BUYER actually pays. Under the old terms that is the ask plus the fee, so the
+    // fee lets the final price creep past the organizer's cap unless it is counted. Under the new terms the
+    // buyer pays exactly the price, so the price is compared as it stands. Auctions/bids need no adjustment
+    // either way; a bid amount already IS the buyer's total.
+    const buyerTotal = feeModel === 'SELLER_PAYS_V2' ? priceDrops : priceDrops + fee
     const cap = checkResalePrice({
       policy: ticket.event.resalePolicy,
       capBps: ticket.event.resaleCapBps,
       capDrops: ticket.event.resaleCapDrops,
       faceValueDrops: ticket.faceValueDrops,
       paid: paidCostOf(ticket),
-      priceDrops: priceDrops + fee,
+      priceDrops: buyerTotal,
     })
     if (!cap.allowed) {
       res.status(400).json({
         error: cap.reason,
         maxResaleDrops:
-          cap.maxDrops !== null ? maxAskForCap(cap.maxDrops, ticket.event.platformBps).toString() : null,
+          cap.maxDrops === null
+            ? null
+            : feeModel === 'SELLER_PAYS_V2'
+              ? cap.maxDrops.toString()
+              : maxAskForCap(cap.maxDrops, ticket.event.platformBps).toString(),
       })
       return
     }
@@ -193,7 +239,8 @@ listingsRouter.post('/tickets/:nfTokenId/list', requireAuth, async (req, res) =>
     txjson = buildSellOfferTx({
       ownerAddress: me.xrplAddress,
       nfTokenId,
-      amountDrops: priceDrops,
+      // The seller's side of the match: their ask under the old terms, price - fee under the new.
+      amountDrops: sellOfferAmount,
       brokerAddress,
     })
   } catch (err) {
@@ -237,6 +284,9 @@ listingsRouter.post('/tickets/:nfTokenId/list', requireAuth, async (req, res) =>
         // Frozen at listing time: changing platformBps later must not alter
         // the terms a buyer has already been shown.
         platformFeeDrops: fee,
+        feeModel,
+        feeBps,
+        isPrimarySale: primarySale,
         listPayloadUuid: payload.uuid,
         expiresAt: new Date(Date.now() + LIST_TTL_MS),
       },
@@ -251,6 +301,8 @@ listingsRouter.post('/tickets/:nfTokenId/list', requireAuth, async (req, res) =>
     mode: xamanMode,
     priceDrops: priceDrops.toString(),
     platformFeeDrops: fee.toString(),
+    feeModel,
+    buyerPaysDrops: (feeModel === 'SELLER_PAYS_V2' ? priceDrops : priceDrops + fee).toString(),
   })
 })
 
@@ -381,8 +433,9 @@ listingsRouter.post('/listings/:id/buy', requireAuth, async (req, res) => {
       buyerAddress: me.xrplAddress,
       ownerAddress: listing.sellerAddress,
       nfTokenId: ticket.nfTokenId,
-      // The ledger requires buy >= sell + brokerFee.
-      amountDrops: listing.priceDrops + listing.platformFeeDrops,
+      // The ledger requires buy >= sell + brokerFee. What the buyer owes depends on the terms THIS listing was
+      // created under: the price plus the fee (old), or exactly the price (new).
+      amountDrops: buyerPaysDrops(listing),
       // The LISTING's broker, not whatever is configured now. Both offers must
       // name the same `Destination` or the pair can never be brokered — and if
       // the platform key has rotated since the seller listed, "now" is a
@@ -419,7 +472,7 @@ listingsRouter.post('/listings/:id/buy', requireAuth, async (req, res) => {
     next: payload.next,
     qrPng: payload.qrPng,
     mode: xamanMode,
-    paysDrops: (listing.priceDrops + listing.platformFeeDrops).toString(),
+    paysDrops: buyerPaysDrops(listing).toString(),
   })
 })
 

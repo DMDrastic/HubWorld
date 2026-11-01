@@ -74,6 +74,11 @@ const EnvSchema = z.object({
   // promise something that will not happen; they are off by default there and on under v1. Setting this
   // explicitly turns them on or off whatever the model.
   ALLOW_LOOSE_RESALE_POLICIES: emptyAsAbsent(z.enum(['true', 'false'])),
+  // The XRP price in US cents (e.g. 134 for $1.34), used ONLY to turn the US$5 resale floor into drops at the
+  // moment a listing is made. Required when FEE_MODEL=v2 (the server refuses to start without it, rather than
+  // quietly skipping the floor). Set by hand until there is a price feed; a stale value moves the floor, not any
+  // amount anyone pays.
+  XRP_USD_CENTS: emptyAsAbsent(z.coerce.number().int().min(1).max(100_000)),
 
   // Ceiling on the royalty an organizer may set for themselves. The royalty is
   // theirs to choose, but an unbounded one makes resale pointless and the ticket
@@ -251,6 +256,13 @@ if (signersEnabled.has('privy') && !env.PRIVY_APP_ID) {
 
 /** Whether new sales use the new fee model. */
 export const feeModelV2: boolean = env.FEE_MODEL === 'v2'
+
+// The resale floor is part of the new model, so a deploy that turns the model on without a price for it would either
+// skip the floor or invent one. Refuse at boot instead, where it is one line in a log.
+if (feeModelV2 && env.XRP_USD_CENTS === undefined) {
+  console.error('Refusing to start: FEE_MODEL=v2 needs XRP_USD_CENTS (the XRP price in US cents) for the US$5 resale floor.')
+  process.exit(1)
+}
 
 /** Whether an organizer may pick a resale policy that allows more than the buyer paid. */
 export const looseResalePolicies: boolean =

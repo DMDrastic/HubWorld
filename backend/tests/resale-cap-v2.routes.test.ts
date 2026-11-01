@@ -20,10 +20,10 @@ import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vites
 
 vi.hoisted(() => {
   process.env.FEE_MODEL = 'v2'
+  process.env.XRP_USD_CENTS = '134'
 })
 
 import request from 'supertest'
-import { maxAskForCap } from '../src/resale-policy.js'
 
 const holdsNft = vi.fn<(address: string, nfTokenId: string) => Promise<boolean>>()
 const accountNfts = vi.fn<(address: string) => Promise<{ NFTokenID: string }[]>>()
@@ -255,34 +255,8 @@ describe('opening an auction: the reserve may not exceed what the buyer paid', (
 })
 
 // ------------------------------------------------------------------ listing --
-
-describe('a fixed-price listing: what the BUYER pays may not exceed what the ticket\'s buyer paid', () => {
-  // The listing's terms are still the buyer-pays ones here (the fee is added on top of the ask); when the
-  // listing terms change with the new model, this is the test that changes with them.
-  const list = async (opts: ResaleConfig & { paidXrp: number | null }, ask: bigint) => {
-    const organizer = await mkUser('org', 'ORGANIZER')
-    const holder = await mkUser('holder')
-    const event = await mkEvent(organizer, { ticketCount: 5, ...opts })
-    const ticket = await mkTicket(event.id, holder, 6n * XRP, opts.paidXrp === null ? null : paid(opts.paidXrp))
-    return request(app).post(`/api/tickets/${ticket.nfTokenId}/list`).set('Authorization', as(holder)).send({ priceDrops: ask.toString() })
-  }
-
-  it('unrestricted, 8 paid: the largest ask whose total clears 8 is allowed', async () => {
-    const res = await list({ resalePolicy: 'UNRESTRICTED', paidXrp: 8 }, maxAskForCap(8n * XRP, 250))
-    expect(res.status).toBe(201)
-  })
-
-  it('and an ask of exactly 8, whose buyer would pay 8.2, is refused, saying it is what the buyer paid', async () => {
-    // (maxAskForCap is a safe lower bound rather than an exact edge, so the refusal is tested well clear of it.)
-    const res = await list({ resalePolicy: 'UNRESTRICTED', paidXrp: 8 }, 8n * XRP)
-    expect(res.status).toBe(400)
-    expect(res.body.error).toMatch(/what its buyer paid/)
-  })
-
-  it('a ticket with no recorded amount lists at whatever its policy allows', async () => {
-    expect((await list({ resalePolicy: 'UNRESTRICTED', paidXrp: null }, 1_000n * XRP)).status).toBe(201)
-  })
-})
+// Fixed-price listings under the new model (the buyer pays exactly the price, so the cap is compared with the
+// price as it stands) are tested in listing-v2.routes.test.ts, alongside the rest of their new terms.
 
 // -------------------------------------------------------------------- bid --
 
@@ -338,6 +312,12 @@ describe('GET /tickets/mine tells the seller the cap and where it comes from', (
     const t = await mine({ resalePolicy: 'FIXED_CAP', resaleCapDrops: 5n * XRP, paidXrp: 8 })
     expect(t.maxAuctionReserveDrops).toBe((5n * XRP).toString())
     expect(t.resaleCapSource).toBe('POLICY')
+  })
+
+  it('under the new terms the buyer pays exactly the price, so the most that can be LISTED is the cap itself (no fee backed out)', async () => {
+    const t = await mine({ resalePolicy: 'UNRESTRICTED', paidXrp: 8 })
+    expect(t.maxListingPriceDrops).toBe((8n * XRP).toString())
+    expect(t.maxAuctionReserveDrops).toBe((8n * XRP).toString())
   })
 
   it('a ticket with no recorded amount: no limit from this rule, exactly as before', async () => {

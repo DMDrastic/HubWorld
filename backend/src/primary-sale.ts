@@ -27,6 +27,7 @@ import { NETWORK } from './network.js'
 import { brokerMode, xamanMode } from './env.js'
 import { currentDelegate } from './delegate-account.js'
 import { buildBuyOfferTx, buildSellOfferTx, platformAddress, platformFeeDrops, XAMAN_NETWORK } from './ledger.js'
+import { firstSaleQuote } from './listing-terms.js'
 import { tryGetPayload, signing, signingFor } from './signing.js'
 import { evaluateSoldOut } from './auction-policy.js'
 import { withOrganizerLease } from './organizer-lease.js'
@@ -83,6 +84,11 @@ export async function claimTicket(input: {
   priceDrops: bigint
   platformBps: number
   /**
+   * The first-sale fee under the new fee model, with the rate that produced it. Absent under the old model, where
+   * the fee is the event's own rate and no rate is recorded on the listing.
+   */
+  firstSaleFee?: { feeDrops: bigint; feeBps: number }
+  /**
    * Called inside the transaction once the claim is made, before it commits.
    * Exists so a test can hold one claim open and prove a second does not wait
    * behind it — overlap that real traffic produces only by chance.
@@ -119,7 +125,11 @@ export async function claimTicket(input: {
         // Frozen, exactly as a resale freezes it: both offers name this broker.
         brokerAddress: input.brokerAddress,
         priceDrops: input.priceDrops,
-        platformFeeDrops: platformFeeDrops(input.priceDrops, input.platformBps),
+        platformFeeDrops: input.firstSaleFee?.feeDrops ?? platformFeeDrops(input.priceDrops, input.platformBps),
+        // Recorded only under the new model, which is also what lets the sale record what the buyer paid.
+        feeBps: input.firstSaleFee?.feeBps ?? null,
+        // A box-office sale is always the first sale of the ticket.
+        isPrimarySale: true,
         // No Xaman payload exists for a delegated offer; the column is unique and
         // required, so it carries a marker that cannot collide with a real uuid.
         listPayloadUuid: `delegate:${randomUUID()}`,
@@ -250,10 +260,17 @@ export async function startCheckout(input: {
       : refuse(503, 'Sales are temporarily unavailable for this event. Try again later.', 'UNAVAILABLE')
   }
 
+  // The fee on this sale, worked out once and used for the claim AND for what the buyer is asked to sign, so the two
+  // cannot disagree. Under the new model it is the first-sale fan fee (the event's own time zone decides the founding
+  // rate); otherwise the event's rate, as it always was.
+  const quote = firstSaleQuote({ priceDrops: event.primaryPriceDrops, event, organizerFounding: event.organizer.foundingOrganizer })
+  const feeDrops = quote.feeDrops
+
   // ---- claim a ticket the organizer really still holds --------------------
   let claim: Awaited<ReturnType<typeof claimTicket>> = null
   for (let attempt = 0; attempt < CLAIM_ATTEMPTS; attempt++) {
     claim = await claimTicket({
+      firstSaleFee: quote.feeBps === null ? undefined : { feeDrops: quote.feeDrops, feeBps: quote.feeBps },
       eventId: event.id,
       organizerId: event.organizerId,
       organizerAddress: event.organizer.xrplAddress,
@@ -344,7 +361,7 @@ export async function startCheckout(input: {
   const offer = created
 
   // ---- the buyer's side: one signature ------------------------------------
-  const owed = event.primaryPriceDrops + platformFeeDrops(event.primaryPriceDrops, event.platformBps)
+  const owed = event.primaryPriceDrops + feeDrops
   let payload
   try {
     const buyTx = buildBuyOfferTx({

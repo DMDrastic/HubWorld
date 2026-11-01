@@ -191,6 +191,11 @@ export function primaryQuote(input: PrimaryInput, schedule: FeeSchedule = DEFAUL
   }
 }
 
+/** The resale fee on a price, floored: HubWorld rounds against itself. */
+export function resaleFee(priceMinor: bigint, schedule: FeeSchedule = DEFAULT_SCHEDULE): bigint {
+  return (priceMinor * BigInt(schedule.resale.bps)) / 10_000n
+}
+
 export type ResaleRefusal = 'BELOW_MINIMUM' | 'ABOVE_CAP'
 
 export type ResaleTerms =
@@ -207,7 +212,7 @@ export function resaleTerms(
 ): ResaleTerms {
   if (input.priceMinor > input.originalCostMinor) return { ok: false, reason: 'ABOVE_CAP' }
   if (input.priceMinor < input.minimumMinor) return { ok: false, reason: 'BELOW_MINIMUM' }
-  const feeMinor = (input.priceMinor * BigInt(schedule.resale.bps)) / 10_000n
+  const feeMinor = resaleFee(input.priceMinor, schedule)
   return { ok: true, feeMinor, sellOfferMinor: input.priceMinor - feeMinor, buyerPaysMinor: input.priceMinor }
 }
 

@@ -17,6 +17,7 @@ import { z } from 'zod'
 import { prisma } from '../prisma.js'
 import { NETWORK } from '../network.js'
 import { env, doorTokenMode, feeModelV2, looseResalePolicies, privyMode, signersEnabled } from '../env.js'
+import { configuredMinimumResaleDrops } from '../listing-terms.js'
 import { issuesOf, slugSchema } from '../schemas.js'
 import { requireAdmin, requireAuth, requireOrganizer } from '../session.js'
 import {
@@ -497,5 +498,8 @@ organizersRouter.get('/policy', (_req, res) => {
     // offered, so the organizer form shows only choices that will be honoured.
     feeModel: feeModelV2 ? 'v2' : 'v1',
     looseResalePolicies,
+    // The US$5 resale floor in drops at the configured XRP price, so a seller's form can show it. Only under the new
+    // model: the old one has no floor.
+    ...(feeModelV2 ? { minResaleDrops: configuredMinimumResaleDrops().toString() } : {}),
   })
 })

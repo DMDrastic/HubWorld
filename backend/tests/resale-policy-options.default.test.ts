@@ -28,7 +28,9 @@ describe('with the fee model off (the default)', () => {
     const u = await prisma.user.create({ data: { username: `${P}org`, xrplAddress: Wallet.generate().classicAddress, role: 'ORGANIZER' } })
     const { token } = await createSession(u.id)
     const cookie = `hubworld_session=${token}`
-    expect((await request(app).get('/api/policy')).body).toMatchObject({ feeModel: 'v1', looseResalePolicies: true })
+    const policy = (await request(app).get('/api/policy')).body
+    expect(policy).toMatchObject({ feeModel: 'v1', looseResalePolicies: true })
+    expect(policy.minResaleDrops).toBeUndefined() // no floor exists under the old model
 
     const body = { title: 'Default Night', startsAt: new Date(Date.now() + 30 * 86_400_000).toISOString(), ticketCount: 10, royaltyBps: 500 }
     expect((await request(app).post('/api/events').set('Cookie', cookie).send({ ...body, slug: `${S}a` })).status).toBe(201)
