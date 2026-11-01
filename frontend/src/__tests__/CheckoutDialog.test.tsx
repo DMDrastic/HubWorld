@@ -16,8 +16,10 @@ import { PolicyContext } from '@/lib/policy-context'
 import { reviewer } from '@/lib/sign-review-loader'
 import type { EventSummary, Policy } from '@/lib/api'
 import { WALLET, WithRuntime, fakeRuntime } from './fakeRuntime'
+import { priced } from './usd'
 
-const EVENT: EventSummary = {
+// US$ beside each amount, as the server sends it with a fresh price: fans see US$ only.
+const EVENT: EventSummary = priced({
   slug: 'neon-rooftop-session',
   title: 'Neon Rooftop Session',
   venue: 'Hub World',
@@ -28,7 +30,7 @@ const EVENT: EventSummary = {
   primaryPriceDrops: '25000000',
   ticketsForSale: 12,
   organizer: { username: 'dm_drastic', displayName: null },
-}
+})
 
 const CREATED = {
   listingId: 'l-1',
@@ -108,7 +110,7 @@ const renderDialog = (over: Partial<{ signedIn: boolean; onSold: () => void }> =
     </StrictMode>,
   )
 
-const press = async () => (await screen.findByRole('button', { name: /buy a ticket for 25 xrp/i })).click()
+const press = async () => (await screen.findByRole('button', { name: /buy a ticket for US\$25\.00/i })).click()
 
 describe('CheckoutDialog', () => {
   it('holds nothing until the button is pressed, and says what pressing does', async () => {
@@ -116,7 +118,7 @@ describe('CheckoutDialog', () => {
     renderDialog()
 
     expect(await screen.findByText(/holds one ticket for you/i)).toBeTruthy()
-    expect(screen.getByText(/25 XRP per ticket/i)).toBeTruthy()
+    expect(screen.getByText(/US\$25\.00 per ticket/i)).toBeTruthy()
     expect(calls.checkouts).toBe(0)
   })
 
@@ -137,9 +139,8 @@ describe('CheckoutDialog', () => {
 
     expect(await screen.findByAltText(/purchase qr/i)).toBeTruthy()
     // 25 XRP + the 2.5% fee, in drops-exact terms.
-    // Said twice now: once as what you pay (beside any estimate) and once in the QR hint. Both are the exact XRP.
-    expect(screen.getByText('You’ll pay 25.625 XRP')).toBeTruthy()
-    expect(screen.getByText(/scan in xaman to pay 25\.625 xrp/i)).toBeTruthy()
+    // On the Xaman path the exact amount being signed is named beside the QR (Xaman shows it too). Fans see US$ elsewhere.
+    expect(screen.getByText('Scan in Xaman to approve. Exact amount: 25.625 XRP.')).toBeTruthy()
     expect(screen.getByText(/held for a few minutes/i)).toBeTruthy()
     expect(screen.getByText(/nothing is charged/i)).toBeTruthy()
   })

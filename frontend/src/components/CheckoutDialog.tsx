@@ -12,7 +12,7 @@ import {
   type WalletNeedsFunds,
   walletNeedsFunds,
 } from '@/lib/api'
-import { commitLine, formatFiat } from '@/lib/fiat'
+import { PRICE_UNAVAILABLE, formatFiat } from '@/lib/fiat'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -65,10 +65,11 @@ export function CheckoutDialog({
   // The all-in amount from the server (the figure the checkout charges); the bare ticket price against a server that
   // sends none. The fee inside it is named so the total is never a surprise at the signing screen.
   const shown = event.primaryAllInDrops ?? event.primaryPriceDrops
-  const price = shown ? dropsToXrp(shown) : null
-  const fee = event.primaryAllInDrops && event.primaryFeeDrops ? dropsToXrp(event.primaryFeeDrops) : null
-  // Display only: the server's estimate for that same figure, when it had a fresh price.
+  // Fans see US$ only. The event is priced in XRP, so with no fresh dollar figure buying pauses (never XRP, never an old
+  // figure). The exact XRP is shown where it belongs: on the approval screen, under Details.
   const shownFiat = event.fiat?.[event.primaryAllInDrops ? 'primaryAllInDrops' : 'primaryPriceDrops']
+  const price = shownFiat ? formatFiat(shownFiat) : null
+  const feeFiat = event.primaryAllInDrops ? event.fiat?.primaryFeeDrops : undefined
 
   async function start() {
     setPhase({ kind: 'reserving' })
@@ -155,9 +156,7 @@ export function CheckoutDialog({
         <DialogHeader>
           <DialogTitle>{event.title}</DialogTitle>
           <DialogDescription>
-            {price
-              ? `${shownFiat ? `${formatFiat(shownFiat)} (≈ ${price} XRP)` : `${price} XRP`} per ticket${fee ? `, fee included` : ''}.`
-              : 'Tickets for this event.'}
+            {price ? `${price} per ticket${feeFiat ? ', fee included' : ''}.` : 'Tickets for this event.'}
           </DialogDescription>
         </DialogHeader>
 
@@ -165,18 +164,17 @@ export function CheckoutDialog({
           <div className="space-y-4">
             <p className="text-muted-foreground text-sm leading-relaxed">
               Pressing buy holds one ticket for you for a few minutes. You approve it once with your wallet, and the
-              ticket goes into it. {fee
-                ? `That price includes a ${fee} XRP HubWorld fee.`
-                : "A small HubWorld fee is added, and you'll see the exact total before you sign."}
+              ticket goes into it. {feeFiat
+                ? `That price includes a ${formatFiat(feeFiat)} HubWorld fee.`
+                : "A small HubWorld fee is added, and you'll see the exact total before you approve."}
             </p>
-            {shown && (
-              <p className="text-sm font-medium" data-commit>
-                {commitLine(shown, shownFiat)}
+            {shown && !price ? (
+              <p className="text-sm" role="status">
+                {PRICE_UNAVAILABLE}. Try again in a few minutes.
               </p>
-            )}
-            {signedIn ? (
+            ) : signedIn ? (
               <Button onClick={() => void start()} className="w-full">
-                {price ? `Buy a ticket for ${price} XRP` : 'Buy a ticket'}
+                {price ? `Buy a ticket for ${price}` : 'Buy a ticket'}
               </Button>
             ) : (
               <p className="text-sm">Sign in to buy a ticket.</p>
@@ -194,15 +192,13 @@ export function CheckoutDialog({
           <div className="flex flex-col items-center gap-3">
             {NEEDS_SIGNATURE.has(phase.state) && !phase.signed ? (
               <>
-                {/* What is HELD and signed: the XRP figure, with the estimate labelled as one. */}
-                <p className="text-sm font-medium" data-commit>
-                  {commitLine(phase.created.paysDrops, phase.created.fiat?.paysDrops)}
-                </p>
                 <SigningPrompt
                   payload={phase.created}
                   action={{ kind: 'buy', amountDrops: phase.created.paysDrops, label: event.title }}
                   qrAlt="Xaman purchase QR code"
-                  qrHint={`Scan in Xaman to pay ${dropsToXrp(phase.created.paysDrops)} XRP.`}
+                  // The held amount's own figure; the exact XRP is under Details on the approval screen, and in Xaman.
+                  shownPrice={phase.created.fiat?.paysDrops ? formatFiat(phase.created.fiat.paysDrops) : undefined}
+                  qrHint={`Scan in Xaman to approve. Exact amount: ${dropsToXrp(phase.created.paysDrops)} XRP.`}
                 />
                 <p className="text-muted-foreground text-center text-xs">
                   Your ticket is held for a few minutes. If you don't sign, it goes back on sale and

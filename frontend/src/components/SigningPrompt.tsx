@@ -28,6 +28,7 @@ export function SigningPrompt({
   qrAlt,
   qrHint,
   qrClassName,
+  shownPrice,
   onSubmitted,
   onCancel,
 }: {
@@ -37,6 +38,8 @@ export function SigningPrompt({
   qrAlt: string
   qrHint: string
   qrClassName?: string
+  /** The price as the page shows it, formatted by the caller. Display only: never checked, never signed. */
+  shownPrice?: string
   /** The server has the signature and has submitted it (own-wallet path only). The caller's own poll reports the outcome. */
   onSubmitted?: (txid: string) => void
   onCancel?: () => void
@@ -53,6 +56,7 @@ export function SigningPrompt({
         uuid={payload.uuid}
         sign={payload.sign}
         context={{ hubworldDelegate: null, broker: policy?.brokerAddress ?? null, action }}
+        shownPrice={shownPrice}
         onSubmitted={(txid) => {
           setApproved(true)
           onSubmitted?.(txid)

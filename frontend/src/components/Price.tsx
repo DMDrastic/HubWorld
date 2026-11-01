@@ -1,26 +1,11 @@
 /**
- * A price as people read it: the dollar estimate large, the XRP it actually is small underneath. With no fresh price,
- * the XRP alone, exactly as before. Display only; the server supplied the estimate, nothing is converted here.
+ * A price as a fan reads it: US$ only. With no fresh price, a plain note instead; never XRP, never an old dollar figure.
+ * Display only; the server supplied the figure, nothing is converted here.
  */
-import { dropsToXrp, type Fiat } from '@/lib/api'
-import { formatFiat } from '@/lib/fiat'
+import type { Fiat } from '@/lib/api'
+import { PRICE_UNAVAILABLE, formatFiat } from '@/lib/fiat'
 
-export function Price({
-  drops,
-  fiat,
-  className,
-  subClassName = 'text-muted-foreground text-xs font-normal',
-}: {
-  drops: string
-  fiat: Fiat | undefined
-  className?: string
-  subClassName?: string
-}) {
-  if (!fiat) return <span className={`tabular-nums ${className ?? ''}`}>{dropsToXrp(drops)} XRP</span>
-  return (
-    <span className={`inline-flex flex-col leading-tight ${className ?? ''}`}>
-      <span className="tabular-nums">{formatFiat(fiat)}</span>
-      <span className={`tabular-nums ${subClassName}`}>≈ {dropsToXrp(drops)} XRP</span>
-    </span>
-  )
+export function Price({ fiat, className }: { fiat: Fiat | undefined; className?: string }) {
+  if (!fiat) return <span className={`text-muted-foreground ${className ?? ''}`}>{PRICE_UNAVAILABLE}</span>
+  return <span className={`tabular-nums ${className ?? ''}`}>{formatFiat(fiat)}</span>
 }

@@ -10,13 +10,15 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen, within } from '@testing-library/react'
 import { SellPanel } from '@/components/SellPanel'
 import type { AuctionSummary, EventSummary, Listing } from '@/lib/api'
+import { priced } from './usd'
 
 const XRP = (n: number) => String(Math.round(n * 1_000_000))
 const json = (body: unknown) =>
   new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } })
 
+// US$ beside each amount, as the server sends it with a fresh price: fans see US$ only.
 function event(slug: string, over: Partial<EventSummary> = {}): EventSummary {
-  return {
+  return priced({
     slug,
     title: `Event ${slug}`,
     venue: null,
@@ -28,11 +30,11 @@ function event(slug: string, over: Partial<EventSummary> = {}): EventSummary {
     primaryPriceDrops: null,
     organizer: { username: 'o', displayName: null },
     ...over,
-  }
+  })
 }
 
 function listing(id: string, slug: string, price: number, fee = 0, over: Partial<Listing> = {}): Listing {
-  return {
+  return priced({
     listingId: id,
     state: 'active',
     priceDrops: XRP(price),
@@ -42,7 +44,7 @@ function listing(id: string, slug: string, price: number, fee = 0, over: Partial
     buyer: null,
     ticket: { nfTokenId: id.padEnd(64, 'a'), seat: null, tier: null, event: { slug, title: `Event ${slug}` } },
     ...over,
-  }
+  })
 }
 
 function mockApi(market: Listing[], mine: Listing[] = []) {
@@ -58,7 +60,7 @@ function mockApi(market: Listing[], mine: Listing[] = []) {
   )
 }
 
-const auction = (over: Partial<AuctionSummary> = {}): AuctionSummary => ({
+const auction = (over: Partial<AuctionSummary> = {}): AuctionSummary => priced({
   id: 'a1',
   eventSlug: 'neon',
   eventTitle: 'Neon Rooftop Session',
@@ -87,8 +89,9 @@ describe('tickets for sale', () => {
     mockApi([listing('l1', 'neon', 30, 0.75)])
     renderPanel({ events: [event('neon')] })
     const card = (await screen.findByRole('heading', { name: 'Event neon', level: 3 })).closest('li')!
-    expect(within(card).getByText('30.75')).toBeTruthy()
-    expect(within(card).getByText(/30 \+ 0\.75 platform fee/)).toBeTruthy()
+    expect(within(card).getByText('US$30.75')).toBeTruthy()
+    expect(within(card).getByText(/US\$30\.00 \+ US\$0\.75 platform fee/)).toBeTruthy()
+    expect(card.textContent).not.toMatch(/XRP/)
     expect(within(card).getByText('Sold by @ayo')).toBeTruthy()
   })
 
@@ -99,13 +102,13 @@ describe('tickets for sale', () => {
     })
     expect(await screen.findByText('20% over face value')).toBeTruthy()
     expect(screen.getByText('15% under face value')).toBeTruthy()
-    expect(screen.getByText('(25 XRP)')).toBeTruthy()
+    expect(screen.getByText('(US$25.00)')).toBeTruthy()
   })
 
   it('leaves the comparison out when the event has no face value, rather than guessing', async () => {
     mockApi([listing('l1', 'neon', 30)])
     renderPanel({ events: [event('neon', { primaryPriceDrops: null })] })
-    await screen.findByText('30')
+    await screen.findByText('US$30.00')
     expect(screen.queryByText(/face value/i)).toBeNull()
   })
 
@@ -113,7 +116,7 @@ describe('tickets for sale', () => {
     mockApi([listing('l1', 'ghost', 12)])
     renderPanel({ events: [] })
     const card = (await screen.findByRole('heading', { name: 'Event ghost', level: 3 })).closest('li')!
-    expect(within(card).getByText('12')).toBeTruthy()
+    expect(within(card).getByText('US$12.00')).toBeTruthy()
     expect(card.querySelector('img')).toBeNull()
     expect(within(card).queryByText(/face value/i)).toBeNull()
   })
@@ -129,7 +132,7 @@ describe('tickets for sale', () => {
   it('summarises the market in one line from the real data', async () => {
     mockApi([listing('l1', 'a', 30), listing('l2', 'a', 5)])
     renderPanel({ events: [event('a')], auctions: [auction()] })
-    expect(await screen.findByText(/2 tickets for sale · 1 live auction · from 5 XRP/)).toBeTruthy()
+    expect(await screen.findByText(/2 tickets for sale · 1 live auction · from US\$5\.00/)).toBeTruthy()
   })
 
   it('sorts by lowest price on request, and by soonest event by default', async () => {
@@ -157,7 +160,7 @@ describe('tickets for sale', () => {
   it('names each Buy button for its ticket and price', async () => {
     mockApi([listing('l1', 'neon', 30, 0.75)])
     renderPanel({ events: [event('neon')] })
-    expect(await screen.findByRole('button', { name: 'Buy Event neon for 30.75 XRP' })).toBeTruthy()
+    expect(await screen.findByRole('button', { name: 'Buy Event neon for US$30.75' })).toBeTruthy()
   })
 })
 
@@ -166,7 +169,7 @@ describe('live auctions', () => {
     mockApi([])
     const onOpenAuction = vi.fn()
     renderPanel({ auctions: [auction()], onOpenAuction, events: [event('neon')] })
-    expect(await screen.findByText(/Top bid 34 XRP · 7 bids/)).toBeTruthy()
+    expect(await screen.findByText(/Top bid US\$34\.00 · 7 bids/)).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'View live bidding for Neon Rooftop Session' }))
     expect(onOpenAuction).toHaveBeenCalledWith('neon')
   })
@@ -174,7 +177,7 @@ describe('live auctions', () => {
   it('says reserve and no bids yet, rather than a top bid of zero', async () => {
     mockApi([])
     renderPanel({ auctions: [auction({ bidCount: 0, topBidDrops: '0' })], onOpenAuction: vi.fn() })
-    expect(await screen.findByText(/Reserve 20 XRP · no bids yet/)).toBeTruthy()
+    expect(await screen.findByText(/Reserve US\$20\.00 · no bids yet/)).toBeTruthy()
     expect(screen.queryByText(/Top bid/)).toBeNull()
   })
 

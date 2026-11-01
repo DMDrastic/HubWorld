@@ -29,7 +29,7 @@ import { checkResalePrice, maxAskForCap, isPrimarySale } from '../resale-policy.
 import { paidCostOf } from '../paid-cost.js'
 import { privyBuyerShortfall } from '../wallet-funds.js'
 import { currentDisplayRate, displayCurrency, fiatOf } from '../fiat-display.js'
-import { PRICE_UNAVAILABLE, buyerPaysDrops, currentMinimumResaleDrops, primaryFeeDrops, resaleListingTerms } from '../listing-terms.js'
+import { PRICE_UNAVAILABLE, buyerPaysDrops, currentMinimumResaleDrops, primaryFeeDrops, resaleListingTerms, sellOfferDrops } from '../listing-terms.js'
 import {
   buildBuyOfferTx,
   buildCancelOfferTx,
@@ -322,12 +322,18 @@ listingsRouter.post('/tickets/:nfTokenId/list', requireAuth, async (req, res) =>
 })
 
 /** A listing's view with the display estimate beside its three XRP amounts (computed AFTER any override of them). */
-function withFiat<V extends { priceDrops: string; platformFeeDrops: string; buyerPaysDrops: string }>(
-  view: V,
-  rate: Awaited<ReturnType<typeof currentDisplayRate>>,
-  event: { timeZone: string },
-) {
-  return { ...view, fiat: fiatOf(view, ['priceDrops', 'platformFeeDrops', 'buyerPaysDrops'], rate, displayCurrency(event)) }
+function withFiat<
+  V extends { priceDrops: string; platformFeeDrops: string; buyerPaysDrops: string; feeModel: 'BUYER_PAYS_V1' | 'SELLER_PAYS_V2' },
+>(view: V, rate: Awaited<ReturnType<typeof currentDisplayRate>>, event: { timeZone: string }) {
+  // What the seller receives before the royalty (the amount on their sell offer), so their own row needs no arithmetic.
+  const amounts = {
+    ...view,
+    sellerReceivesDrops: sellOfferDrops({ priceDrops: BigInt(view.priceDrops), platformFeeDrops: BigInt(view.platformFeeDrops), feeModel: view.feeModel }),
+  }
+  return {
+    ...view,
+    fiat: fiatOf(amounts, ['priceDrops', 'platformFeeDrops', 'buyerPaysDrops', 'sellerReceivesDrops'], rate, displayCurrency(event)),
+  }
 }
 
 /**

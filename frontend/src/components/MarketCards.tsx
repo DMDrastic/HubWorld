@@ -19,14 +19,13 @@ import { ArrowDown, ArrowUp, MapPin } from "lucide-react";
 import { FallbackThumb } from "@/components/EventRow";
 import { Button } from "@/components/ui/button";
 import {
-  dropsToXrp,
   type AuctionSummary,
   type EventSummary,
   type Fiat,
   type Listing,
 } from "@/lib/api";
-import { formatFiat, spokenPrice } from "@/lib/fiat";
-import { faceDelta, sellerReceivesDrops } from "@/lib/market";
+import { PRICE_UNAVAILABLE, formatFiat } from "@/lib/fiat";
+import { faceDelta } from "@/lib/market";
 import { posterSrcSet, posterUrl } from "@/lib/poster";
 
 const dayFmt = new Intl.DateTimeFormat(undefined, {
@@ -94,6 +93,7 @@ export function ListingCard({
   const hasFee = listing.platformFeeDrops !== "0";
   // Under the new terms the seller pays the fee out of the price, so the buyer pays exactly what is shown.
   const sellerPays = listing.feeModel === "SELLER_PAYS_V2";
+  const buyFiat = listing.fiat?.buyerPaysDrops;
   const when = event ? new Date(event.startsAt) : null;
   const seat = [ticket.tier, ticket.seat].filter(Boolean).join(" · ");
 
@@ -125,30 +125,22 @@ export function ListingCard({
         {seat && <p className="text-muted-foreground mt-1 text-sm">{seat}</p>}
 
         <div className="mt-auto pt-5">
-          {/* The dollar estimate leads when the server had a fresh price; the XRP is what is charged. */}
-          {listing.fiat?.buyerPaysDrops ? (
-            <div>
-              <span className="text-2xl font-semibold tracking-[-0.03em] tabular-nums">
-                {formatFiat(listing.fiat.buyerPaysDrops)}
-              </span>
-              <p className="text-muted-foreground text-sm tabular-nums">
-                ≈ {dropsToXrp(listing.buyerPaysDrops)} XRP
-              </p>
-            </div>
+          {/* Fans see US$ only. With no fresh dollar figure the listing cannot be bought (it is priced in XRP). */}
+          {buyFiat ? (
+            <span className="text-2xl font-semibold tracking-[-0.03em] tabular-nums">{formatFiat(buyFiat)}</span>
           ) : (
-            <div className="flex items-baseline gap-1.5">
-              <span className="text-2xl font-semibold tracking-[-0.03em] tabular-nums">
-                {dropsToXrp(listing.buyerPaysDrops)}
-              </span>
-              <span className="text-muted-foreground text-sm">XRP</span>
-            </div>
+            <span className="text-muted-foreground text-sm">{PRICE_UNAVAILABLE}</span>
           )}
           <p className="text-muted-foreground mt-0.5 min-h-5 text-xs tabular-nums">
-            {sellerPays
-              ? "All fees included"
-              : hasFee
-                ? `${dropsToXrp(listing.priceDrops)} + ${dropsToXrp(listing.platformFeeDrops)} platform fee`
-                : "No platform fee"}
+            {!buyFiat
+              ? null
+              : sellerPays
+                ? "All fees included"
+                : hasFee && listing.fiat?.priceDrops && listing.fiat?.platformFeeDrops
+                  ? `${formatFiat(listing.fiat.priceDrops)} + ${formatFiat(listing.fiat.platformFeeDrops)} platform fee`
+                  : hasFee
+                    ? "Includes the platform fee"
+                    : "No platform fee"}
           </p>
           {delta && (
             <p className="mt-1 flex items-center gap-1 text-xs font-medium">
@@ -159,10 +151,10 @@ export function ListingCard({
                 <ArrowDown className="size-3.5" aria-hidden />
               )}
               {delta.label}
-              {event?.primaryPriceDrops && (
+              {event?.fiat?.primaryPriceDrops && (
                 <span className="text-muted-foreground font-normal tabular-nums">
                   {" "}
-                  ({dropsToXrp(event.primaryPriceDrops)} XRP)
+                  ({formatFiat(event.fiat.primaryPriceDrops)})
                 </span>
               )}
             </p>
@@ -174,9 +166,9 @@ export function ListingCard({
             </span>
             <Button
               size="sm"
-              disabled={busy}
+              disabled={busy || !buyFiat}
               onClick={() => onBuy(listing)}
-              aria-label={`Buy ${ticket.event.title} for ${spokenPrice(listing.buyerPaysDrops, listing.fiat?.buyerPaysDrops)}`}
+              aria-label={buyFiat ? `Buy ${ticket.event.title} for ${formatFiat(buyFiat)}` : `Buy ${ticket.event.title} (price unavailable)`}
             >
               Buy
             </Button>
@@ -222,8 +214,10 @@ export function AuctionPlate({
         </div>
         <p className="text-muted-foreground mt-1 text-sm tabular-nums">
           {hasBids
-            ? `Top bid ${usdThenXrp(auction.topBidDrops, auction.fiat?.topBidDrops)} · ${auction.bidCount} ${auction.bidCount === 1 ? "bid" : "bids"}`
-            : `Reserve ${usdThenXrp(auction.reserveDrops, auction.fiat?.reserveDrops)} · no bids yet`}
+            ? `${auction.fiat?.topBidDrops ? `Top bid ${formatFiat(auction.fiat.topBidDrops)} · ` : ""}${auction.bidCount} ${auction.bidCount === 1 ? "bid" : "bids"}`
+            : auction.fiat?.reserveDrops
+              ? `Reserve ${formatFiat(auction.fiat.reserveDrops)} · no bids yet`
+              : "No bids yet"}
         </p>
         <p className="text-muted-foreground text-xs tabular-nums">
           Closes {dayFmt.format(closes)} at {timeFmt.format(closes)}
@@ -241,9 +235,9 @@ export function AuctionPlate({
   );
 }
 
-/** One-line form for tight spots: "US$35.00 (≈ 28 XRP)", or "28 XRP" with no fresh price. */
-function usdThenXrp(drops: string, fiat: Fiat | undefined): string {
-  return fiat ? `${formatFiat(fiat)} (≈ ${dropsToXrp(drops)} XRP)` : `${dropsToXrp(drops)} XRP`;
+/** A fan-facing amount: US$ only, or the plain note when there is no fresh price. */
+function usd(fiat: Fiat | undefined): string {
+  return fiat ? formatFiat(fiat) : PRICE_UNAVAILABLE.toLowerCase();
 }
 
 export function MyListingRow({
@@ -274,12 +268,14 @@ export function MyListingRow({
           {listing.ticket.event.title}
         </div>
         <div className="text-muted-foreground text-xs tabular-nums">
-          {usdThenXrp(listing.priceDrops, listing.fiat?.priceDrops)}
+          {usd(listing.fiat?.priceDrops)}
           {listing.feeModel === "SELLER_PAYS_V2"
             ? !buying &&
-              ` · you receive ${dropsToXrp(sellerReceivesDrops(listing))} before royalty`
+              listing.fiat?.sellerReceivesDrops &&
+              ` · you receive ${formatFiat(listing.fiat.sellerReceivesDrops)} before royalty`
             : listing.platformFeeDrops !== "0" &&
-              ` · buyer pays ${dropsToXrp(listing.buyerPaysDrops)}`}
+              listing.fiat?.buyerPaysDrops &&
+              ` · buyer pays ${formatFiat(listing.fiat.buyerPaysDrops)}`}
           {" · "}
           {listing.state.replace("_", " ")}
           {buying ? " · buying" : ""}
