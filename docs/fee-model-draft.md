@@ -193,3 +193,17 @@ whose bid is signed (read from our own payload record, so no Xaman call), v1 and
 - **An unreadable ledger is not "gone".** `offerOnLedgerState` has three answers; only a definite "no such entry" lets go.
 - **Visibility.** A sale SETTLING for over 15 minutes is logged once as `[sale-stuck]`.
 
+## 12. Turning FEE_MODEL back off is a safe undo (tested 2026-11-01)
+
+Every listing and auction records its own model, fee and rate when it is created, and settlement reads only those. So after
+`FEE_MODEL=v2` has been on and is set back to v1 (a restart with the switch off):
+
+- listings made under the new terms still ask their buyer for the recorded amount (the price alone, for a seller-pays listing) and
+  pay the broker the recorded fee; auctions still settle at their frozen rate; a first sale still records what its buyer paid.
+  Pinned by running the settlement and buy-route tests in a process where the model is off, with a guard that fails if it is not
+  (`fee-model-off-settlement.test.ts`, `fee-model-off-buy.routes.test.ts`), mutation-checked.
+- NEW listings are priced the old way again, and the resale cap goes back to the organizer's policy alone (the cap by amount paid
+  applies only while the model is on).
+- What is not undone: rows already written keep their v2 fields (`feeBps`, `originalCostMinor`, free-ticket cost 0). They are inert
+  under v1 and take effect again if the model is turned back on.
+

@@ -961,4 +961,14 @@ pass, and both are currently unanswerable.
   outage each make a new client and the one being reconnected is dropped without being closed. Sockets leak until
   the outage ends. Found 2026-11-01 while answering whether the app survives a dropped connection; not urgent.
   Fix when touched: keep one in-flight connect promise and reuse the client xrpl.js is already reconnecting.
+- **`XRP_USD_CENTS` is a manual number (blocks mainnet).** Under `FEE_MODEL=v2` it sets the US$5 resale floor in XRP
+  (`minimumResaleDrops`), and the server refuses to boot without it. It is set by hand in the host's environment and
+  nothing keeps it current, so it drifts from the real XRP price: too high a number lets in resales worth less than
+  US$5, too low shuts out resales that are worth more. Harmless on testnet, where the floor is a demonstration. Before
+  mainnet, do ONE of these, and record which in the runbook: (a) refresh it from a price source on a schedule (a
+  scheduled job writing it to the database, read at listing time, with a staleness limit that refuses new resale
+  listings if the price is older than a day or two rather than guessing), or (b) a monthly review step in the
+  mainnet runbook (`docs/mainnet-dress-rehearsal.md`) with a named owner. (a) removes the chore; (b) is acceptable
+  while volume is small. Either way the floor is evaluated when a listing is created and frozen on it, so a stale
+  number can only ever mis-price NEW listings, never ones already made. Found 2026-11-01 when preparing to switch v2 on.
 
