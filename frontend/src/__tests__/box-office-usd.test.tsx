@@ -163,6 +163,7 @@ describe('the checkout', () => {
     const c = mockApi({ polls: [{ state: 'buyer_pending' }, { state: 'expired' }] })
     open(EVENT())
     fireEvent.click(await screen.findByRole('button', { name: 'Pay with XRP' }))
+    await screen.findByText(/held for 2 minutes/i)
     await vi.advanceTimersByTimeAsync(10_000)
     expect(await screen.findByText(/quote expired.*nothing was charged/i)).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Get a new quote' }))

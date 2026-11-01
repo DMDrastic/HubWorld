@@ -104,21 +104,21 @@ describe('where the server has turned the loose policies off', () => {
     expect(created[0]).toMatchObject({ resalePolicy: 'PERCENTAGE_CAP', resaleCapBps: 10_000 })
   })
 
-  it('refuses a fixed cap above the ticket price, and sends one at the price', async () => {
+  it('offers a fixed cap (in XRP until resale moves to US$) only for an event with no US$ box-office price', async () => {
     const created = mockApi(OFF)
     renderPanel()
     const select = (await screen.findByLabelText('resale policy')) as HTMLSelectElement
     await waitFor(() => expect(optionValues(select)).not.toContain('UNRESTRICTED'))
-    fireEvent.change(screen.getByLabelText(/ticket price/i), { target: { value: '20' } })
     fireEvent.change(select, { target: { value: 'FIXED_CAP' } })
     fireEvent.change(screen.getByLabelText('resale cap in XRP'), { target: { value: '25' } })
     await fillAndCreate()
-    expect(await screen.findByText(/cannot be above the ticket price/i)).toBeTruthy()
-    expect(created).toHaveLength(0)
-
-    fireEvent.change(screen.getByLabelText('resale cap in XRP'), { target: { value: '20' } })
-    fireEvent.click(screen.getByRole('button', { name: /create event/i }))
     await waitFor(() => expect(created).toHaveLength(1))
-    expect(created[0]).toMatchObject({ resalePolicy: 'FIXED_CAP' })
+    expect(created[0]).toMatchObject({ resalePolicy: 'FIXED_CAP', resaleCapDrops: '25000000' })
+    expect(created[0]).not.toHaveProperty('primaryPriceUsdCents')
+
+    // With a price, the option goes, and a cap already chosen falls back to face value only.
+    fireEvent.change(screen.getByLabelText(/ticket price/i), { target: { value: '20' } })
+    expect(optionValues(select)).not.toContain('FIXED_CAP')
+    expect(select.value).toBe('FACE_VALUE_ONLY')
   })
 })

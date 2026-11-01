@@ -418,3 +418,27 @@ describe('an organizer sets the box-office price in US$', () => {
     expect(JSON.stringify(res.body)).toMatch(/percentage cap/i)
   })
 })
+
+describe('after conversion: the US$ price wins over the XRP price kept as history', () => {
+  it('a converted event (both prices stored) is sold and shown at its US$ price', async () => {
+    rate.value = { microUsdPerXrp: 1_250_000n, at: new Date() }
+    const org = await mkUser('org', 'ORGANIZER')
+    const event = await mkEvent(org, { primaryPriceDrops: 99n * XRP, primaryPriceMinor: 3500n, primaryPriceCurrency: 'USD' })
+    await mkTickets(event, org, 1)
+    const res = await checkout(await mkUser('buyer'), event.slug)
+    expect(res.status).toBe(201)
+    expect(fake.created[0]).toMatchObject({ Amount: '28000000' })
+    const shown = (await request(app).get(`/api/events/${event.slug}`)).body
+    expect(shown.boxOffice).toMatchObject({ priceMinor: '3500' })
+    expect(shown.primaryPriceDrops).toBeNull()
+  })
+
+  it('the event LIST says XRP cannot be paid when the price is stale, too', async () => {
+    rate.value = null
+    const org = await mkUser('org', 'ORGANIZER')
+    const event = await mkEvent(org, USD(3500n))
+    await mkTickets(event, org, 1)
+    const listed = (await request(app).get('/api/events?limit=100')).body.events.find((e: { slug: string }) => e.slug === event.slug)
+    expect(listed.boxOffice).toMatchObject({ priceMinor: '3500', xrpPayable: false })
+  })
+})

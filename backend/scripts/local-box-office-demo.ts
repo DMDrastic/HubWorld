@@ -8,7 +8,7 @@
  * Normally run through `scripts/local-stack.sh event`, which supplies the environment. By hand:
  *
  *   DOTENV_CONFIG_PATH=<local .env> XRPL_NETWORK=testnet DELEGATE_ENV_FILE=<path> \
- *     npx tsx scripts/local-box-office-demo.ts [--tickets 5] [--price 10]
+ *     npx tsx scripts/local-box-office-demo.ts [--tickets 5] [--price 12.50]   (the price is US$; XRP is quoted at checkout)
  *
  * The delegate's seed lives in DELEGATE_ENV_FILE (default ~/.hubworld-local-delegate.env, mode 600, outside the repo). It is created
  * and funded on the first run and reused after, because the local stack signs as that delegate. It is never printed. Test network
@@ -36,7 +36,8 @@ async function main() {
   assertSafeDatabase('local-box-office-demo')
   const file = process.env.DELEGATE_ENV_FILE || join(homedir(), '.hubworld-local-delegate.env')
   const tickets = arg('tickets', 5)
-  const priceDrops = BigInt(Math.round(arg('price', 10) * 1_000_000))
+  // US$ is the canonical price: XRP is quoted when someone pays, from a fresh price, and held for two minutes.
+  const priceCents = BigInt(Math.round(arg('price', 12.5) * 100))
 
   const c = await ledger()
 
@@ -75,7 +76,7 @@ async function main() {
     data: {
       network: NETWORK, slug, title: `Privy Demo Night ${tag}`, venue: 'The Demo Hub',
       startsAt: new Date(Date.now() + 7 * 86_400_000), organizerId: user.id, nftTaxon: taxon, royaltyBps: 500,
-      platformBps: env.PLATFORM_FEE_BPS, ticketCount: tickets, status: 'PUBLISHED', primaryPriceDrops: priceDrops,
+      platformBps: env.PLATFORM_FEE_BPS, ticketCount: tickets, status: 'PUBLISHED', primaryPriceMinor: priceCents, primaryPriceCurrency: 'USD',
       // The code door, as the create form now defaults to, when this stack can sign codes (local-stack.sh makes the secret).
       doorMode: process.env.DOOR_TOKEN_SECRET ? 'QR' : 'SIGNATURE',
     },
@@ -87,7 +88,7 @@ async function main() {
     await prisma.ticket.create({ data: { nfTokenId, network: NETWORK, eventId: event.id, ownerId: user.id, ownerAddress: organizer.classicAddress, status: 'MINTED' } })
     console.log(`  minted ${i + 1}/${tickets}`)
   }
-  console.log(`\nReady: "${event.title}" at ${Number(priceDrops) / 1e6} XRP, ${tickets} tickets, slug ${slug}`)
+  console.log(`\nReady: "${event.title}" at US$${(Number(priceCents) / 100).toFixed(2)}, ${tickets} tickets, slug ${slug}`)
 }
 
 main()

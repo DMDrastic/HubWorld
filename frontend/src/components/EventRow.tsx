@@ -131,13 +131,17 @@ export function EventRow({
   // What the buyer actually pays, as the server worked it out (the same figure the checkout charges). A server that
   // sends no all-in price shows the ticket price, as it always did.
   // The dollar estimate for that same figure, when the server had a fresh price. Display only.
-  const buyFiat = event.fiat?.[event.primaryAllInDrops ? 'primaryAllInDrops' : 'primaryPriceDrops']
+  // A US$ box office is its own figure (no exchange rate needed to show it); an event still priced in XRP shows the
+  // server's estimate for its all-in.
+  const buyFiat = event.boxOffice
+    ? { currency: 'USD' as const, minor: event.boxOffice.allInMinor }
+    : event.fiat?.[event.primaryAllInDrops ? 'primaryAllInDrops' : 'primaryPriceDrops']
 
   const onSale =
     onBuy !== undefined &&
     !live &&
     event.status === 'PUBLISHED' &&
-    event.primaryPriceDrops != null &&
+    (event.primaryPriceDrops != null || event.boxOffice !== undefined) &&
     (event.ticketsForSale ?? 0) > 0
   // Fans see US$ only, and the event is priced in XRP: with no fresh dollar figure there is nothing honest to show, so
   // buying pauses here (never XRP, never an old figure). USD-priced events (item 1b) will not need this.

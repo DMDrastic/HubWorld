@@ -880,7 +880,8 @@ lands squarely in §6.
 > **dropped**. Fans see US$ only; card buyers get the same features as wallet buyers (Privy wallet, door code, gift,
 > resale); the organizer royalty is paid on EVERY paid resale (XRP, RLUSD or card), with the rate read from the NFT's
 > TransferFee, one shared split function, and a card resale's ticket moving only after a confirmed charge that includes
-> the organizer's share. Order of work: (1) US$-only display, done; (1b) USD canonical pricing; (2) card primary sales in
+> the organizer's share. Order of work: (1) US$-only display, done; (1b-i) US$ box-office price with XRP quoted at
+> payment and held two minutes, done; (1b-ii, after Demo Day) resale and auctions priced and settled in RLUSD; (2) card primary sales in
 > Stripe test mode; (3) configurable fan fee with a St. Lucia profile behind a flag; (4) claim and door code for tickets
 > held for their owner; (5) shared royalty split + invariant tests; (6) refund-on-resale for card buyers; (7) gift limits.
 > Read the rest of this section as history where it disagrees.

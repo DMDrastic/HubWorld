@@ -12,12 +12,14 @@ const { prisma } = await import('../src/prisma.js')
 const { NETWORK } = await import('../src/network.js')
 const { convertEventPricesToUsd } = await import('../src/price-conversion.js')
 
-const TAG = 'pcv-'
+// Prefixes chosen so no other suite's cleanup can match them: Prisma's startsWith does not escape '_', which SQL reads
+// as "any character", so a suite cleaning up 'pc_' users would also match 'pcv_'.
+const TAG = 'zconv-'
 const RATE = { microUsdPerXrp: 1_250_000n, at: new Date('2026-11-01T20:00:00Z') }
 let uniq = ''
 
 async function mkEvent(over: Record<string, unknown>) {
-  const org = await prisma.user.create({ data: { username: `pcv_${uniq}_${Math.random().toString(36).slice(2, 6)}`, xrplAddress: Wallet.generate().classicAddress, role: 'ORGANIZER' } })
+  const org = await prisma.user.create({ data: { username: `zconv${uniq}_${Math.random().toString(36).slice(2, 6)}`, xrplAddress: Wallet.generate().classicAddress, role: 'ORGANIZER' } })
   return prisma.event.create({
     data: {
       network: NETWORK, slug: `${TAG}${uniq}-${Math.random().toString(36).slice(2, 6)}`, title: 'Convert me', startsAt: new Date(Date.now() + 864e5),
@@ -28,13 +30,17 @@ async function mkEvent(over: Record<string, unknown>) {
 }
 const mine = (id: string) => (r: { eventId: string }) => r.eventId === id
 
-beforeEach(async () => {
-  uniq = Math.random().toString(36).slice(2, 7)
+async function cleanup() {
   await prisma.priceConversion.deleteMany({ where: { subject: 'Event.primaryPrice', subjectId: { in: (await prisma.event.findMany({ where: { slug: { startsWith: TAG } }, select: { id: true } })).map((e) => e.id) } } })
   await prisma.event.deleteMany({ where: { slug: { startsWith: TAG } } })
-  await prisma.user.deleteMany({ where: { username: { startsWith: 'pcv_' } } })
+  await prisma.user.deleteMany({ where: { username: { startsWith: 'zconv' } } })
+}
+beforeEach(async () => {
+  uniq = Math.random().toString(36).slice(2, 7)
+  await cleanup()
 })
 afterAll(async () => {
+  await cleanup()
   await prisma.$disconnect()
 })
 

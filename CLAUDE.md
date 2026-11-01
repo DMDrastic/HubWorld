@@ -1354,6 +1354,25 @@ omit the price and no offer is created. Zero is refused rather than treated as
 free, because a zero-amount offer with no destination is one anyone can take;
 giveaways go through the gift flow, which names its recipient.
 
+### The box office is priced in US$; XRP is quoted when someone pays (since 2026-11-01)
+
+An event's canonical price is `primaryPriceMinor` + `primaryPriceCurrency` (US cents), set by the organizer in US$.
+`primaryPriceDrops` is history on a converted event and the price only on one not yet converted;
+`boxOfficePrice` (`src/box-office-price.ts`) is the one reader, so the checkout and the pages cannot disagree.
+
+- **XRP exists only at the moment of paying** (`src/xrp-quote.ts`): worked out from a stored feed price under two hours
+  old (never the manual `XRP_USD_CENTS`), rounded UP to the next drop so the organizer is never short, and held for
+  `QUOTE_LOCK_MS` (two minutes). The hold, the Xaman request and the Privy request all end with it, so an expired quote
+  cannot be signed; the buyer gets "Get a new quote". Kept apart from `fiat-display.ts`, which is display only.
+- **A stale or missing price disables only XRP payment** (`XRP_PRICE_UNAVAILABLE`). The US$ price stays on every
+  page. Card and RLUSD will not need a rate.
+- **The fee shown in cents uses the same rate the checkout charges on the quoted XRP** (`firstSaleFeeBps`), floored.
+- **Converting old events** is `scripts/price-in-usd.ts`: dry run by default, a fresh price only, one `PriceConversion`
+  row per event with the rate and when it was read, and the XRP price kept as history. Run it against production only
+  deliberately (`--allow-remote-database`).
+- **A fixed resale cap cannot go with a US$ price** until resale moves to US$ (1b-ii): it is still a number of XRP. Use a
+  percentage cap.
+
 ### Bulk minting: why this caps out in the low hundreds
 
 `NFTokenMint` is one NFT per transaction, and the organizer must sign each one

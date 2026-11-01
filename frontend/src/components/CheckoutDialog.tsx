@@ -32,6 +32,11 @@ type Phase =
   /** The wallet cannot pay: nothing was held. Shows the address to fund and how much. */
   | { kind: 'needs-funds'; info: WalletNeedsFunds }
   | { kind: 'stopped'; reason: string }
+  /** An XRP quote's two minutes passed before it was signed. Nothing was charged; one press quotes again. */
+  | { kind: 'requote' }
+
+/** Shown in place of "Pay with XRP" when there is no fresh XRP price. The US$ price stays on screen. */
+const XRP_UNAVAILABLE = 'XRP payment unavailable right now'
 
 /** States in which the buyer still has something to sign, so the QR belongs on screen. */
 const NEEDS_SIGNATURE = new Set<Listing['state']>(['pending_offer', 'active', 'buyer_pending'])
@@ -64,12 +69,17 @@ export function CheckoutDialog({
   const [phase, setPhase] = useState<Phase>({ kind: 'idle' })
   // The all-in amount from the server (the figure the checkout charges); the bare ticket price against a server that
   // sends none. The fee inside it is named so the total is never a surprise at the signing screen.
-  const shown = event.primaryAllInDrops ?? event.primaryPriceDrops
-  // Fans see US$ only. The event is priced in XRP, so with no fresh dollar figure buying pauses (never XRP, never an old
-  // figure). The exact XRP is shown where it belongs: on the approval screen, under Details.
-  const shownFiat = event.fiat?.[event.primaryAllInDrops ? 'primaryAllInDrops' : 'primaryPriceDrops']
+  // A box office priced in US$ shows its own price whatever XRP is doing; only paying in XRP needs a fresh price, and
+  // only that is unavailable without one. An event still priced in XRP pauses instead (never XRP, never an old figure).
+  // The exact XRP is shown where it belongs: on the approval screen, under Details.
+  const box = event.boxOffice
+  const shown = box ? box.allInMinor : (event.primaryAllInDrops ?? event.primaryPriceDrops)
+  const shownFiat = box
+    ? { currency: 'USD' as const, minor: box.allInMinor }
+    : event.fiat?.[event.primaryAllInDrops ? 'primaryAllInDrops' : 'primaryPriceDrops']
   const price = shownFiat ? formatFiat(shownFiat) : null
-  const feeFiat = event.primaryAllInDrops ? event.fiat?.primaryFeeDrops : undefined
+  const feeFiat = box ? { currency: 'USD' as const, minor: box.feeMinor } : event.primaryAllInDrops ? event.fiat?.primaryFeeDrops : undefined
+  const xrpUnavailable = box !== undefined && !box.xrpPayable
 
   async function start() {
     setPhase({ kind: 'reserving' })
@@ -98,6 +108,8 @@ export function CheckoutDialog({
   // every poll result and fire the next request at once instead of after POLL_MS
   // (the GiftPanel runaway).
   const listingId = phase.kind === 'buying' ? phase.created.listingId : null
+  // A primitive for the effect, like the listing id: whether this purchase was quoted from a US$ price.
+  const quoted = phase.kind === 'buying' && phase.created.quote !== undefined
   useEffect(() => {
     if (!listingId) return
     let stopped = false
@@ -115,10 +127,11 @@ export function CheckoutDialog({
           return
         }
         if (l.state === 'cancelled' || l.state === 'expired') {
-          setPhase({
-            kind: 'stopped',
-            reason: 'Your hold ran out before the purchase was signed. Nothing was charged — you can try again.',
-          })
+          setPhase(
+            quoted
+              ? { kind: 'requote' }
+              : { kind: 'stopped', reason: 'Your hold ran out before the purchase was signed. Nothing was charged — you can try again.' },
+          )
           return
         }
         if (l.state === 'failed') {
@@ -142,7 +155,7 @@ export function CheckoutDialog({
       stopped = true
       window.clearTimeout(timer)
     }
-  }, [listingId, onSold])
+  }, [listingId, onSold, quoted])
 
   // Closing mid-purchase abandons the poll but not the hold: it lapses on its own.
   function close(next: boolean) {
@@ -172,6 +185,17 @@ export function CheckoutDialog({
               <p className="text-sm" role="status">
                 {PRICE_UNAVAILABLE}. Try again in a few minutes.
               </p>
+            ) : signedIn && box ? (
+              <div className="space-y-2">
+                <Button onClick={() => void start()} className="w-full" disabled={xrpUnavailable}>
+                  Pay with XRP
+                </Button>
+                {xrpUnavailable && (
+                  <p className="text-muted-foreground text-sm" role="status">
+                    {XRP_UNAVAILABLE}
+                  </p>
+                )}
+              </div>
             ) : signedIn ? (
               <Button onClick={() => void start()} className="w-full">
                 {price ? `Buy a ticket for ${price}` : 'Buy a ticket'}
@@ -192,6 +216,11 @@ export function CheckoutDialog({
           <div className="flex flex-col items-center gap-3">
             {NEEDS_SIGNATURE.has(phase.state) && !phase.signed ? (
               <>
+                {phase.created.quote && (
+                  <p className="text-muted-foreground text-center text-xs">
+                    This XRP amount is held for 2 minutes. After that, get a new quote; nothing is charged.
+                  </p>
+                )}
                 <SigningPrompt
                   payload={phase.created}
                   action={{ kind: 'buy', amountDrops: phase.created.paysDrops, label: event.title }}
@@ -223,6 +252,17 @@ export function CheckoutDialog({
             </p>
             <Button variant="secondary" onClick={() => close(false)}>
               Close
+            </Button>
+          </div>
+        )}
+
+        {phase.kind === 'requote' && (
+          <div className="space-y-3">
+            <p className="text-sm" role="status">
+              The XRP quote expired after 2 minutes. Nothing was charged.
+            </p>
+            <Button onClick={() => void start()} className="w-full">
+              Get a new quote
             </Button>
           </div>
         )}
