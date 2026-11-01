@@ -308,7 +308,7 @@ function reviewAction(tx: Record<string, unknown>, ctx: ReviewContext): Review {
     return act.kind === 'buy'
       ? {
           ok: true,
-          title: `Buy 1 ticket${at} for ${xrp} XRP`,
+          title: `Buy 1 ticket${at}`,
           lines: [
             `You pay ${xrp} XRP. Nothing else leaves your wallet apart from a tiny network fee.`,
             ticket,
@@ -317,7 +317,7 @@ function reviewAction(tx: Record<string, unknown>, ctx: ReviewContext): Review {
         }
       : {
           ok: true,
-          title: `Bid ${xrp} XRP on a ticket${at}`,
+          title: `Bid on a ticket${at}`,
           lines: [
             `You offer ${xrp} XRP. If you do not win, nothing is charged.`,
             ticket,

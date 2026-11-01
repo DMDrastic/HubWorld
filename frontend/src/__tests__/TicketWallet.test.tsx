@@ -296,7 +296,11 @@ describe('TicketWallet: ordering, timing and resale context', () => {
 
   it('says what the box office and the organizer allow, only when they are known', async () => {
     mockInventory([
-      t('priced', 2, { faceValueDrops: '25000000', maxListingPriceDrops: '30000000' }),
+      t('priced', 2, {
+        faceValueDrops: '25000000',
+        maxListingPriceDrops: '30000000',
+        fiat: { faceValueDrops: { currency: 'USD', minor: '2500' }, maxListingPriceDrops: { currency: 'USD', minor: '3000' } },
+      }),
       t('bare', 3),
     ])
     render(
@@ -304,8 +308,9 @@ describe('TicketWallet: ordering, timing and resale context', () => {
         <TicketWallet version={0} onGift={vi.fn()} />
       </StrictMode>,
     )
-    expect(await screen.findByText('Face value 25 XRP · resale up to 30 XRP')).toBeTruthy()
-    // The ticket with no known terms says nothing, rather than "0 XRP".
+    // US$ only (fans never see XRP); the server's figures.
+    expect(await screen.findByText('Face value US$25.00 · resale up to US$30.00')).toBeTruthy()
+    // The ticket with no known terms says nothing, rather than "US$0.00".
     expect(screen.getAllByText(/face value/i)).toHaveLength(1)
   })
 

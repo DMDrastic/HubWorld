@@ -20,7 +20,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { ArrowUpRight } from "lucide-react";
 import {
-  dropsToXrp,
   fetchAuctions,
   fetchInventory,
   isOrganizer,
@@ -160,14 +159,13 @@ export function Hub({
                     </div>
                   </div>
                   <div className="flex shrink-0 items-center gap-3">
-                    <div className="text-right">
-                      <div className="font-mono text-lg font-semibold tabular-nums">
-                        {a.fiat?.topBidDrops ? formatFiat(a.fiat.topBidDrops) : dropsToXrp(a.topBidDrops)}
+                    {/* Fans see US$ only: with no fresh price the figure is left out rather than shown in XRP. */}
+                    {a.fiat?.topBidDrops && (
+                      <div className="text-right">
+                        <div className="font-mono text-lg font-semibold tabular-nums">{formatFiat(a.fiat.topBidDrops)}</div>
+                        <div className="text-muted-foreground text-xs">top bid</div>
                       </div>
-                      <div className="text-muted-foreground text-xs tabular-nums">
-                        {a.fiat?.topBidDrops ? `≈ ${dropsToXrp(a.topBidDrops)} XRP` : "XRP"}
-                      </div>
-                    </div>
+                    )}
                     <ArrowUpRight
                       className="text-muted-foreground group-hover:text-foreground size-4 transition-colors"
                       aria-hidden

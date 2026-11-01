@@ -30,8 +30,8 @@
  * - The year is printed only when it is not this one.
  */
 import { MapPin } from 'lucide-react'
-import { dropsToXrp, type EventSummary } from '@/lib/api'
-import { formatFiat, spokenPrice } from '@/lib/fiat'
+import type { EventSummary } from '@/lib/api'
+import { PRICE_UNAVAILABLE, formatFiat } from '@/lib/fiat'
 import { hueFrom, posterSrcSet, posterUrl } from '@/lib/poster'
 
 const dayFmt = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' })
@@ -130,16 +130,18 @@ export function EventRow({
 
   // What the buyer actually pays, as the server worked it out (the same figure the checkout charges). A server that
   // sends no all-in price shows the ticket price, as it always did.
-  const buyPrice = event.primaryAllInDrops ?? event.primaryPriceDrops
   // The dollar estimate for that same figure, when the server had a fresh price. Display only.
   const buyFiat = event.fiat?.[event.primaryAllInDrops ? 'primaryAllInDrops' : 'primaryPriceDrops']
 
-  const buyable =
+  const onSale =
     onBuy !== undefined &&
     !live &&
     event.status === 'PUBLISHED' &&
     event.primaryPriceDrops != null &&
     (event.ticketsForSale ?? 0) > 0
+  // Fans see US$ only, and the event is priced in XRP: with no fresh dollar figure there is nothing honest to show, so
+  // buying pauses here (never XRP, never an old figure). USD-priced events (item 1b) will not need this.
+  const buyable = onSale && buyFiat !== undefined
 
   // Where the node sits, measured once so the rail's line can start and stop on it.
   const NODE_Y = '1.75rem'
@@ -254,19 +256,16 @@ export function EventRow({
                 <button
                   type="button"
                   onClick={() => onBuy(event)}
-                  aria-label={`Buy a ticket to ${event.title} for ${spokenPrice(buyPrice!, buyFiat)}`}
-                  className={`bg-primary text-primary-foreground focus-visible:ring-ring inline-flex items-center gap-3 rounded-full px-4 text-sm font-medium transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:outline-none ${buyFiat ? 'min-h-11 py-1.5' : 'h-11 sm:h-10'}`}
+                  aria-label={`Buy a ticket to ${event.title} for ${formatFiat(buyFiat!)}`}
+                  className="bg-primary text-primary-foreground focus-visible:ring-ring inline-flex h-11 items-center gap-3 rounded-full px-4 text-sm font-medium transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:outline-none sm:h-10"
                 >
-                  {buyFiat ? (
-                    <span className="flex flex-col items-start leading-tight">
-                      <span className="tabular-nums">Buy · {formatFiat(buyFiat)}</span>
-                      <span className="text-xs tabular-nums opacity-75">≈ {dropsToXrp(buyPrice!)} XRP</span>
-                    </span>
-                  ) : (
-                    <span>Buy · {dropsToXrp(buyPrice!)} XRP</span>
-                  )}
+                  <span className="tabular-nums">Buy · {formatFiat(buyFiat!)}</span>
                   <span className="opacity-75">{event.ticketsForSale} left</span>
                 </button>
+              )}
+
+              {onSale && !buyable && (
+                <span className="text-muted-foreground text-sm">{PRICE_UNAVAILABLE}</span>
               )}
             </div>
           </div>

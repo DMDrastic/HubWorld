@@ -1,12 +1,11 @@
 /**
- * US$ as the price people read, XRP as the price they pay. DISPLAY ONLY. Written before the code.
+ * Fans see US$ only (strategy handoff §13.1). Written before the change.
  *
- * The server sends the XRP amount and its estimate side by side; the page converts nothing, it only formats. Three
- * rules are pinned here:
- *   - no fresh price, no dollar figure: XRP alone, never a remembered number;
- *   - where someone commits, the XRP figure is what they pay and the dollars are labelled as an estimate;
- *   - the estimate never reaches signing: the approval screen's review is handed the XRP drops, and the review code
- *     does not know an estimate exists.
+ * Event pages, checkout, My Tickets and resale listings show the dollar figure and nothing in XRP. The one exception is
+ * the approval screen: it still shows the exact on-ledger amount being signed, as a small "Details" line under the
+ * dollar figure, built from the decoded transaction. Every event is still priced in XRP today (USD pricing is item 1b),
+ * so with no fresh price there is no honest dollar figure: buying pauses on that listing or event, and nothing in XRP or
+ * any old dollar figure is shown instead.
  */
 import { StrictMode } from 'react'
 import { readFileSync } from 'node:fs'
@@ -15,11 +14,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen } from '@testing-library/react'
 import { CheckoutDialog } from '@/components/CheckoutDialog'
 import { EventRow } from '@/components/EventRow'
-import { Price } from '@/components/Price'
+import { AuctionPlate, ListingCard } from '@/components/MarketCards'
+import { SignStep } from '@/components/SignStep'
 import { formatFiat } from '@/lib/fiat'
 import { PolicyContext } from '@/lib/policy-context'
 import { reviewer } from '@/lib/sign-review-loader'
-import type { EventSummary, Policy } from '@/lib/api'
+import type { AuctionSummary, EventSummary, Listing, Policy } from '@/lib/api'
 import { WALLET, WithRuntime, fakeRuntime, json } from './fakeRuntime'
 
 const USD = (minor: string) => ({ currency: 'USD' as const, minor })
@@ -41,26 +41,27 @@ const EVENT: EventSummary = {
 }
 const STALE: EventSummary = { ...EVENT, fiat: {} }
 
+const LISTING: Listing = {
+  listingId: 'l-1',
+  state: 'active',
+  priceDrops: '28000000',
+  platformFeeDrops: '1400000',
+  buyerPaysDrops: '28000000',
+  feeModel: 'SELLER_PAYS_V2',
+  seller: '@seller',
+  buyer: null,
+  ticket: { nfTokenId: 'AB', seat: null, tier: null, event: { slug: 'neon', title: 'Neon Rooftop Session' } },
+  fiat: { priceDrops: USD('3500'), platformFeeDrops: USD('175'), buyerPaysDrops: USD('3500') },
+}
+
+const noXrp = (el: Element | null) => expect(el?.textContent ?? '').not.toMatch(/XRP|≈/)
+
 describe('formatting, not converting', () => {
   it('formats minor units as US$ or EC$, with grouping', () => {
     expect(formatFiat(USD('3500'))).toBe('US$35.00')
     expect(formatFiat(USD('5'))).toBe('US$0.05')
     expect(formatFiat(USD('123456789'))).toBe('US$1,234,567.89')
     expect(formatFiat({ currency: 'XCD', minor: '9450' })).toBe('EC$94.50')
-  })
-})
-
-describe('a price, read', () => {
-  it('shows the dollars large and the XRP small underneath', () => {
-    render(<Price drops="28000000" fiat={USD('3500')} />)
-    expect(screen.getByText('US$35.00')).toBeTruthy()
-    expect(screen.getByText('≈ 28 XRP')).toBeTruthy()
-  })
-
-  it('with no fresh price shows XRP alone, and no dollar sign anywhere', () => {
-    const { container } = render(<Price drops="28000000" fiat={undefined} />)
-    expect(screen.getByText('28 XRP')).toBeTruthy()
-    expect(container.textContent).not.toMatch(/\$/)
   })
 })
 
@@ -72,20 +73,46 @@ describe('the event row', () => {
       </ol>,
     )
 
-  it('leads with the dollar estimate and keeps the XRP beside it', () => {
-    row(EVENT)
-    const buy = screen.getByRole('button', { name: /buy a ticket to neon rooftop session/i })
+  it('prices the ticket in US$ only', () => {
+    const { container } = row(EVENT)
+    const buy = screen.getByRole('button', { name: /buy a ticket to neon rooftop session for US\$35\.00/i })
     expect(buy.textContent).toContain('US$35.00')
-    expect(buy.textContent).toContain('≈ 28 XRP')
-    // The accessible name says what is actually charged.
-    expect(buy.getAttribute('aria-label')).toMatch(/28 XRP \(about US\$35\.00\)/)
+    noXrp(container)
   })
 
-  it('a stale feed: XRP only', () => {
-    row(STALE)
-    const buy = screen.getByRole('button', { name: /buy a ticket/i })
-    expect(buy.textContent).toContain('28 XRP')
-    expect(buy.textContent).not.toMatch(/\$/)
+  it('with no fresh price: no buy button, a plain note, and no XRP or old figure', () => {
+    const { container } = row(STALE)
+    expect(screen.queryByRole('button', { name: /buy/i })).toBeNull()
+    expect(screen.getByText(/price unavailable right now/i)).toBeTruthy()
+    noXrp(container)
+    expect(container.textContent).not.toMatch(/\$/)
+  })
+})
+
+describe('the marketplace', () => {
+  it('a listing is priced in US$, with its fee breakdown in US$, and no XRP', () => {
+    const { container } = render(<ol><ListingCard listing={LISTING} event={EVENT} busy={false} onBuy={vi.fn()} /></ol>)
+    expect(screen.getByText('US$35.00')).toBeTruthy()
+    expect(screen.getByRole('button', { name: /buy neon rooftop session for US\$35\.00/i })).toBeTruthy()
+    noXrp(container)
+  })
+
+  it('a listing with no fresh price cannot be bought, and shows no XRP', () => {
+    const { container } = render(<ol><ListingCard listing={{ ...LISTING, fiat: {} }} event={STALE} busy={false} onBuy={vi.fn()} /></ol>)
+    expect(screen.getByText(/price unavailable right now/i)).toBeTruthy()
+    expect((screen.getByRole('button', { name: /buy/i }) as HTMLButtonElement).disabled).toBe(true)
+    noXrp(container)
+  })
+
+  it('an auction shows its top bid in US$, or just its bid count when there is no fresh price', () => {
+    const a: AuctionSummary = { id: 'a', eventSlug: 'neon', eventTitle: 'Neon', state: 'live', endsAt: new Date(Date.now() + 3_600_000).toISOString(), reserveDrops: '20000000', topBidDrops: '28000000', bidCount: 2, fiat: { topBidDrops: USD('3500'), reserveDrops: USD('2500') } }
+    const fresh = render(<ol><AuctionPlate auction={a} event={undefined} onWatch={vi.fn()} /></ol>)
+    expect(fresh.container.textContent).toContain('Top bid US$35.00')
+    noXrp(fresh.container)
+    fresh.unmount()
+    const stale = render(<ol><AuctionPlate auction={{ ...a, fiat: {} }} event={undefined} onWatch={vi.fn()} /></ol>)
+    expect(stale.container.textContent).toContain('2 bids')
+    noXrp(stale.container)
   })
 })
 
@@ -100,10 +127,10 @@ describe('the checkout', () => {
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input)
       if (url.endsWith('/checkout') && init?.method === 'POST') return json(created, 201)
-      if (/\/listings\/[^/]+$/.test(url)) return json({ listingId: 'l-1', state: 'buyer_pending', priceDrops: '27000000', platformFeeDrops: '1000000', buyerPaysDrops: '28000000', seller: '@org', buyer: '@me', ticket: { nfTokenId: 'AB', seat: null, tier: null, event: { slug: 'neon', title: 'Neon' } } })
+      if (/\/listings\/[^/]+$/.test(url)) return json({ ...LISTING, state: 'buyer_pending' })
       throw new Error(`unexpected fetch: ${url}`)
     }))
-    render(
+    return render(
       <StrictMode>
         <PolicyContext.Provider value={{ platformBps: 250, maxRoyaltyBps: 2000, brokerAddress: 'rBroker' } as Policy}>
           <WithRuntime runtime={fakeRuntime()}>
@@ -117,7 +144,7 @@ describe('the checkout', () => {
   beforeEach(() => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
     vi.spyOn(reviewer, 'load').mockResolvedValue({ reviewSignRequest: (...a: unknown[]) => review(...a) } as never)
-    review.mockResolvedValue({ ok: true, title: 'Buy', lines: [] })
+    review.mockResolvedValue({ ok: true, title: 'Buy 1 ticket to Neon Rooftop Session', lines: ['You pay 28 XRP. Nothing else leaves your wallet apart from a tiny network fee.'] })
   })
   afterEach(() => {
     vi.useRealTimers()
@@ -126,25 +153,50 @@ describe('the checkout', () => {
     review.mockReset()
   })
 
-  it('before committing: the XRP is what you pay, the dollars are "about"', async () => {
+  it('before buying: US$ only', async () => {
     mount(EVENT, CREATED)
-    expect(await screen.findByText('You’ll pay 28 XRP (about US$35.00)')).toBeTruthy()
+    expect(await screen.findByRole('button', { name: 'Buy a ticket for US$35.00' })).toBeTruthy()
+    noXrp(screen.getByRole('dialog'))
   })
 
-  it('at the approval: the same sentence from the HELD amount, and the review is handed the XRP drops', async () => {
-    // The held amount's own estimate (the price moved since the list loaded), not the list's.
+  it('at the approval: the US$ figure large, the exact XRP in Details, and the review handed the XRP drops', async () => {
     mount(EVENT, { ...CREATED, fiat: { paysDrops: USD('3600') } })
     fireEvent.click(await screen.findByRole('button', { name: /buy a ticket/i }))
-    expect(await screen.findByText('You’ll pay 28 XRP (about US$36.00)', { selector: '[data-commit]' })).toBeTruthy()
-    await vi.waitFor(() => expect(review).toHaveBeenCalled())
+    // The HELD amount's own figure (the price moved since the list loaded), not the list's.
+    expect(await screen.findByText('US$36.00')).toBeTruthy()
+    expect(screen.getByText('Details')).toBeTruthy()
+    expect(screen.getByText(/You pay 28 XRP/)).toBeTruthy()
     expect(review.mock.calls[0]![1]).toMatchObject({ action: { kind: 'buy', amountDrops: '28000000' } })
     expect(JSON.stringify(review.mock.calls[0])).not.toMatch(/3600|USD|fiat/)
   })
 
-  it('a stale feed: "You’ll pay 28 XRP", with no estimate', async () => {
-    mount(STALE, { ...CREATED, fiat: {} })
-    expect(await screen.findByText('You’ll pay 28 XRP')).toBeTruthy()
-    expect(screen.queryByText(/US\$/)).toBeNull()
+  it('with no fresh price: says so, offers no buy button, and shows no XRP', async () => {
+    mount(STALE, CREATED)
+    expect(await screen.findByText(/price unavailable right now/i)).toBeTruthy()
+    expect(screen.queryByRole('button', { name: /buy a ticket/i })).toBeNull()
+    noXrp(screen.getByRole('dialog'))
+  })
+})
+
+describe('the approval screen always shows the exact amount being signed', () => {
+  const sign = { tx: { TransactionType: 'NFTokenCreateOffer', Account: WALLET.address }, hash: 'AB'.repeat(32), account: WALLET.address }
+  afterEach(() => vi.restoreAllMocks())
+
+  it.each([
+    ['with a dollar figure', 'US$35.00'],
+    ['without one', undefined],
+  ])('%s: the review\'s lines (which carry the signed XRP) are under "Details"', async (_n, shownPrice) => {
+    vi.spyOn(reviewer, 'load').mockResolvedValue({
+      reviewSignRequest: async () => ({ ok: true, title: 'Buy 1 ticket', lines: ['You pay 28 XRP. Nothing else leaves your wallet.'] }),
+    } as never)
+    render(
+      <WithRuntime runtime={fakeRuntime()}>
+        <SignStep uuid="u" sign={sign} context={{ hubworldDelegate: null, broker: 'rBroker' }} shownPrice={shownPrice} onSubmitted={vi.fn()} onCancel={vi.fn()} />
+      </WithRuntime>,
+    )
+    expect(await screen.findByText('Details')).toBeTruthy()
+    expect(screen.getByText(/You pay 28 XRP/)).toBeTruthy()
+    if (shownPrice) expect(screen.getByText(shownPrice)).toBeTruthy()
   })
 })
 
@@ -152,41 +204,5 @@ describe('the review code does not know an estimate exists', () => {
   it.each(['lib/sign-review.ts', 'components/SignStep.tsx', 'components/SigningPrompt.tsx'])('%s mentions no fiat, USD or EC$', (file) => {
     const src = readFileSync(join(__dirname, '..', file), 'utf8')
     expect(src).not.toMatch(/fiat|usd|xcd|EC\$|US\$/i)
-  })
-})
-
-describe('asking for an estimate of a typed amount', () => {
-  afterEach(() => {
-    vi.useRealTimers()
-    vi.unstubAllGlobals()
-  })
-
-  it('asks once after a pause, never shows the old amount\'s estimate for a new amount, and shows nothing when stale', async () => {
-    vi.useFakeTimers({ shouldAdvanceTime: true })
-    const { renderHook } = await import('@testing-library/react')
-    const { useQuote } = await import('@/lib/use-quote')
-    const asked: string[] = []
-    let fresh = true
-    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
-      const url = new URL(String(input), 'http://x')
-      const drops = url.searchParams.get('drops')!
-      asked.push(drops)
-      return json({ fiat: fresh ? Object.fromEntries(drops.split(',').map((d) => [d, USD(String(Number(d) / 800_000))])) : {} })
-    }))
-
-    const { result, rerender } = renderHook(({ d }) => useQuote([d]), { initialProps: { d: '28000000' } })
-    rerender({ d: '28000000' })
-    await vi.waitFor(() => expect(result.current['28000000']).toEqual(USD('35')))
-    expect(asked).toEqual(['28000000'])
-
-    rerender({ d: '40000000' })
-    // The 28 XRP estimate is not offered for 40 XRP while the new answer is on its way.
-    expect(result.current).toEqual({})
-    await vi.waitFor(() => expect(result.current['40000000']).toEqual(USD('50')))
-
-    fresh = false
-    rerender({ d: '1000000' })
-    await vi.waitFor(() => expect(asked).toContain('1000000'))
-    expect(result.current).toEqual({})
   })
 })
