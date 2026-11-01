@@ -31,7 +31,7 @@ import { DOOR_TOKEN_TTL_MS, signDoorToken, verifyDoorToken } from '../door-token
 export const doorQrRouter = Router()
 
 /** The page asks for a fresh code this long after it got one, inside the 45s a code lives. */
-const REFRESH_SECONDS = 30
+const REFRESH_SECONDS = 20
 
 const NfParams = z.object({
   nfTokenId: z

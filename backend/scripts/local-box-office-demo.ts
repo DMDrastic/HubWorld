@@ -76,6 +76,8 @@ async function main() {
       network: NETWORK, slug, title: `Privy Demo Night ${tag}`, venue: 'The Demo Hub',
       startsAt: new Date(Date.now() + 7 * 86_400_000), organizerId: user.id, nftTaxon: taxon, royaltyBps: 500,
       platformBps: env.PLATFORM_FEE_BPS, ticketCount: tickets, status: 'PUBLISHED', primaryPriceDrops: priceDrops,
+      // The code door, as the create form now defaults to, when this stack can sign codes (local-stack.sh makes the secret).
+      doorMode: process.env.DOOR_TOKEN_SECRET ? 'QR' : 'SIGNATURE',
     },
   })
   for (let i = 0; i < tickets; i++) {

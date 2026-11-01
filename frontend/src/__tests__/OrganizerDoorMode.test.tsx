@@ -50,26 +50,26 @@ async function fillAndCreate() {
 }
 
 describe('Creating an event: how guests get in', () => {
-  it('offers the choice where the server can run the code door, defaulting to Xaman and saying why', async () => {
+  it('offers the choice where the server can run the code door, defaulting to the code and saying why', async () => {
     mockApi(true)
     renderPanel()
 
     const select = (await screen.findByLabelText('how guests get in')) as HTMLSelectElement
-    // The stricter door is the default: the faster one is something an organizer chooses.
-    expect(select.value).toBe('SIGNATURE')
-    expect(screen.getByText(/proves the guest's own wallet is at the door/i)).toBeTruthy()
+    // The code door is the default: guests who signed in with email cannot sign at the door.
+    expect(select.value).toBe('QR')
+    expect(screen.getByText(/signed in with email cannot do it/i)).toBeTruthy()
     expect(screen.getByText(/you can change this later/i)).toBeTruthy()
   })
 
   it('sends what the organizer chose', async () => {
     const created = mockApi(true)
     renderPanel()
-    fireEvent.change(await screen.findByLabelText('how guests get in'), { target: { value: 'QR' } })
+    fireEvent.change(await screen.findByLabelText('how guests get in'), { target: { value: 'SIGNATURE' } })
 
     await fillAndCreate()
 
     await waitFor(() => expect(created).toHaveLength(1))
-    expect(created[0]!.doorMode).toBe('QR')
+    expect(created[0]!.doorMode).toBe('SIGNATURE')
   })
 
   it('sends the default choice too, rather than leaving it to the server', async () => {
@@ -80,7 +80,7 @@ describe('Creating an event: how guests get in', () => {
     await fillAndCreate()
 
     await waitFor(() => expect(created).toHaveLength(1))
-    expect(created[0]!.doorMode).toBe('SIGNATURE')
+    expect(created[0]!.doorMode).toBe('QR')
   })
 
   it('does not offer it, and does not send it, where the server cannot run the code door', async () => {
