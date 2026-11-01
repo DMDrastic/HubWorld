@@ -74,7 +74,8 @@ test('email sign-in, box-office purchase, and a gift that the recipient accepts'
     await expect(approveButton.or(faucet).first()).toBeVisible({ timeout: 60_000 })
     if (await faucet.isVisible()) {
       await faucet.click()
-      const retry = dialog.getByRole('button', { name: 'Try again' })
+      // "Try again" before the funding screen learned to wait (#145), "Continue" once it has (it then opens by itself).
+      const retry = dialog.getByRole('button', { name: /^(Try again|Continue)$/ })
       await expect(retry).toBeVisible({ timeout: 90_000 })
       // "On its way" is not "arrived": wait until the ledger shows the money, or the retry finds 0 XRP and the screen
       // goes back to the faucet button (pressing that again would spend another of the day's three).
@@ -85,6 +86,7 @@ test('email sign-in, box-office purchase, and a gift that the recipient accepts'
           message: 'the test XRP never arrived in the wallet',
         })
         .not.toBeNull()
+      await expect(retry).toBeEnabled({ timeout: 90_000 })
       await retry.click()
     }
     await approve(page)
