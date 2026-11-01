@@ -84,10 +84,11 @@ enum SignerKind {
 }
 
 model User {
-  id          String  @id @default(uuid())
-  username    String  @unique // @handle, stored lowercase
-  xrplAddress String  @unique // r-address. Never a seed — Xaman holds the keys.
-  displayName String?
+  ticketClaims TicketClaim[]
+  id           String        @id @default(uuid())
+  username     String        @unique // @handle, stored lowercase
+  xrplAddress  String        @unique // r-address. Never a seed — Xaman holds the keys.
+  displayName  String?
 
   /// What this account may do. Organizers issue tickets and run doors, which is
   /// a materially different trust level from attending, so it is an account
@@ -642,7 +643,8 @@ enum ListingFeeModel {
 // ----------------------------------------------------------------- tickets --
 
 model Ticket {
-  id        String @id @default(uuid())
+  claim     TicketClaim?
+  id        String       @id @default(uuid())
   /// 64-char hex NFTokenID — the ticket's real identity, but only WITHIN a
   /// network. An NFTokenID is derived from the issuer's AccountID, the taxon
   /// and the issuer's sequence, none of which are network-specific: the same
@@ -1096,6 +1098,7 @@ model Transfer {
 
 enum TransferKind {
   MINT
+  CLAIM
   GIFT
   SALE
   AUCTION_SETTLE
@@ -1237,4 +1240,44 @@ model XamanPayload {
   /// The usage report's shape: real spend, on one network, over a date range.
   @@index([signer, network, createdAt])
   @@index([userId])
+}
+
+enum ClaimStatus {
+  PENDING
+  ACCEPTED
+  EXPIRED
+  CANCELLED
+  FAILED
+}
+
+/// Handing a ticket that our records say someone holds to that person's own wallet, for nothing. The organizer's delegate
+/// creates one free sell offer, restricted to the holder, with a short expiry; the holder accepts it. One row per ticket
+/// (`ticketId` is unique), so a retried claim reuses or replaces its row and can never make a second offer.
+model TicketClaim {
+  id String @id @default(uuid())
+
+  network XrplNetwork
+
+  ticketId String @unique
+  ticket   Ticket @relation(fields: [ticketId], references: [id])
+
+  holderId String
+  holder   User   @relation(fields: [holderId], references: [id])
+
+  /// The wallet the offer names, frozen when the offer was made: the offer's Destination is this and cannot change.
+  holderAddress String
+
+  status ClaimStatus @default(PENDING)
+
+  offerIndex    String?
+  offerTxHash   String?
+  acceptTxHash  String?
+  failureReason String?
+
+  /// When the OFFER stops being acceptable on the ledger.
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status, expiresAt])
 }

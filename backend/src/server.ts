@@ -11,6 +11,7 @@ import { runDueMintJobs } from './bulk-mint.js'
 import { defaultMintLedger } from './mint-ledger.js'
 import { delegateConfigured } from './delegate-account.js'
 import { releaseExpiredHolds } from './primary-sale.js'
+import { expireClaims } from './claim.js'
 import { advanceStuckSales } from './listing-advance.js'
 import { defaultPrimarySaleLedger } from './primary-sale-ledger.js'
 
@@ -89,6 +90,10 @@ const sweep = async () => {
     // ledger. Idempotent, so two instances doing it together is harmless.
     const reclaimed = await releaseExpiredHolds(saleLedger)
     if (reclaimed > 0) console.log(`released ${reclaimed} abandoned checkout hold(s)`)
+
+    // Claim offers nobody accepted: take them off the ledger so they stop holding the organizer's reserve.
+    const lapsed = await expireClaims(saleLedger)
+    if (lapsed > 0) console.log(`expired ${lapsed} unaccepted claim offer(s)`)
 
     // Not wrapped in a lease here: each auction takes its own, so an instance
     // that loses one simply moves to the next instead of skipping the sweep.
