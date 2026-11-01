@@ -22,6 +22,11 @@ const SimulateParams = z.object({ uuid: z.string().uuid() })
 const SimulateBody = z.object({
   account: xrplAddressSchema.optional(),
   outcome: z.enum(['sign', 'reject']).default('sign'),
+  /**
+   * A REAL transaction's hash, for a stand-in user who signed on the real test network themselves (the local stack's
+   * end-to-end test). Without it the stub fabricates a hash on its own fake ledger, which the real ledger never heard of.
+   */
+  txid: z.string().regex(/^[0-9A-Fa-f]{64}$/).transform((h) => h.toUpperCase()).optional(),
 })
 
 /**
@@ -50,7 +55,7 @@ devRouter.post('/dev/payloads/:uuid/simulate', async (req, res) => {
   }
 
   const account = body.data.account ?? 'rLNaPoKeeBjZe2qs6x52yVPZpZ8td4dc6w'
-  const ok = stub.simulate(params.data.uuid, account, body.data.outcome)
+  const ok = stub.simulate(params.data.uuid, account, body.data.outcome, body.data.txid ?? null)
   if (!ok) {
     res.status(404).json({ error: 'Unknown payload' })
     return
