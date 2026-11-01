@@ -74,6 +74,8 @@ const EnvSchema = z.object({
   // promise something that will not happen; they are off by default there and on under v1. Setting this
   // explicitly turns them on or off whatever the model.
   ALLOW_LOOSE_RESALE_POLICIES: emptyAsAbsent(z.enum(['true', 'false'])),
+  /** Claiming a held ticket into a wallet. Off unless 'true': merging the code changes nothing until it is switched on. */
+  CLAIMS_ENABLED: emptyAsAbsent(z.enum(['true', 'false'])),
   // The XRP price in US cents (e.g. 134 for $1.34), used ONLY to turn the US$5 resale floor into drops at the
   // moment a listing is made. Required when FEE_MODEL=v2 (the server refuses to start without it, rather than
   // quietly skipping the floor). Set by hand until there is a price feed; a stale value moves the floor, not any
@@ -265,6 +267,9 @@ if (feeModelV2 && env.XRP_USD_CENTS === undefined) {
 }
 
 /** Whether an organizer may pick a resale policy that allows more than the buyer paid. */
+/** Is the claim route reachable? Default off, so nothing about it exists in production until someone turns it on. */
+export const claimsEnabled: boolean = env.CLAIMS_ENABLED === 'true'
+
 export const looseResalePolicies: boolean =
   env.ALLOW_LOOSE_RESALE_POLICIES !== undefined ? env.ALLOW_LOOSE_RESALE_POLICIES === 'true' : !feeModelV2
 

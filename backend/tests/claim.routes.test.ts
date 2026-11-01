@@ -1,5 +1,10 @@
 /** `POST /api/tickets/:nfTokenId/claim` over HTTP: the session decides who is claiming, never the body. */
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+
+vi.hoisted(() => {
+  process.env.CLAIMS_ENABLED = 'true'
+})
+
 import request from 'supertest'
 import { Wallet } from 'xrpl'
 import { makeNftId } from './nft-id.js'
