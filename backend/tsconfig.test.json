@@ -22,6 +22,7 @@
     "scripts/create-auction.ts",
     "scripts/create-event.ts",
     "scripts/demo-reset.ts",
+    "scripts/fee-model-devnet-check.ts",
     "scripts/demo-seed.ts",
     "scripts/demo-flow.ts",
     "scripts/grant-role.ts",

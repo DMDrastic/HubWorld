@@ -3,7 +3,7 @@ import path from 'node:path'
 import express, { type NextFunction, type Request, type Response } from 'express'
 import cors from 'cors'
 import cookieParser from 'cookie-parser'
-import { env } from './env.js'
+import { claimsEnabled, env } from './env.js'
 import { healthRouter } from './routes/health.js'
 import { usersRouter } from './routes/users.js'
 import { eventsRouter } from './routes/events.js'
@@ -15,6 +15,7 @@ import { mintRouter } from './routes/mint.js'
 import { delegationRouter } from './routes/delegation.js'
 import { bulkMintRouter } from './routes/bulk-mint.js'
 import { checkoutRouter } from './routes/checkout.js'
+import { claimRouter } from './routes/claim.js'
 import { giftsRouter } from './routes/gifts.js'
 import { ticketsRouter } from './routes/tickets.js'
 import { listingsRouter } from './routes/listings.js'
@@ -138,6 +139,8 @@ export function createApp() {
   app.use('/api', delegationRouter)
   app.use('/api', bulkMintRouter)
   app.use('/api', checkoutRouter)
+  // Not even registered unless switched on, so a disabled claim route is a path that does not exist.
+  if (claimsEnabled) app.use('/api', claimRouter)
   app.use('/api', giftsRouter)
   app.use('/api', ticketsRouter)
   app.use('/api', listingsRouter)
