@@ -331,6 +331,25 @@ describe('POST /events/:slug/checkin/scan', () => {
   })
 })
 
+describe('a ticket held in an email (Privy) wallet', () => {
+  // The door never asks which wallet signs: it compares the holder's address with the ticket's and asks the ledger.
+  // Pinned anyway, because the demo runs on email wallets and nothing else said they work at the door.
+  it('gets a code, is admitted once, and a second scan of the same code is "already checked in"', async () => {
+    const { org, holder, event, ticket } = await world({ doorMode: 'QR' })
+    await prisma.wallet.create({ data: { userId: holder.id, xrplAddress: holder.address, signerKind: 'PRIVY', providerUserId: `did:privy:${uniq}` } })
+    const token = await codeFor(holder, ticket.nfTokenId)
+
+    expect((await scan(org, event.slug, token)).body).toMatchObject({ state: 'redeemed', holder: `@${holder.username}` })
+    expect((await scan(org, event.slug, token)).body.state).toBe('already_used')
+    expect(holdsNft).toHaveBeenCalledWith(holder.address, ticket.nfTokenId)
+  })
+
+  // Phase 3 gap, recorded rather than pinned as behaviour: a ticket held FOR someone (in our records theirs, on the
+  // ledger still in the organizer's account) is refused a code today, because both the code route and the door
+  // match the ledger holder's address. Lazy activation needs the door to accept the database owner for these.
+  it.todo('a ticket held for its owner (NFT still in the organizer\'s account) gets a code and admits them')
+})
+
 describe('POST /events/:slug/door-mode', () => {
   const setMode = (actor: Actor, slug: string, mode: string) =>
     request(app).post(`/api/events/${slug}/door-mode`).set('Authorization', as(actor)).send({ mode })

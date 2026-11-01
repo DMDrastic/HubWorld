@@ -956,6 +956,17 @@ ships on mainnet without all of these:
   page does not mention it. If it holds, switch activation to sponsorship, since a sponsored reserve cannot be harvested, and keep
   every rule above as defence in depth. Not on mainnet when last checked (2026-10-19).
 
+**Transfer controls for organizers (added 2026-11-01, not blockers).** These are the defence against a gift paired with an
+off-platform payment, which is a resale that skips the royalty and the fee:
+
+- **A per-event transfer setting: unlimited, once, or none.** "Once" lets a buyer pass a ticket to the person who actually
+  attends, and no further. "None" suits events where the name on the ticket matters. It applies to gifts both in the database
+  and on the ledger; resale through HubWorld stays governed by the resale policy, since it pays the royalty.
+- **An optional transfer lock in the last 24-48 hours before the event**, when touting peaks. Gifts are refused inside the
+  window; HubWorld resale may stay open, because it pays the royalty.
+- On the ledger, HubWorld can only refuse to BUILD a gift. A wallet holder can still move an NFT with their own wallet. The door
+  is the backstop: it admits only the holder recorded at the start of the lock. Decide that rule when this is built.
+
 Together, these rules make farming cost more than it returns. Every funded step needs a resale paying the 5% fee, the royalty
 and the minimum, and each ticket is still capped at one funded activation.
 
