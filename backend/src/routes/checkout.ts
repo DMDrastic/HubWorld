@@ -14,6 +14,8 @@ import { z } from 'zod'
 import { issuesOf, slugSchema } from '../schemas.js'
 import { requireAuth } from '../session.js'
 import { startCheckout } from '../primary-sale.js'
+import { prisma } from '../prisma.js'
+import { currentDisplayRate, displayCurrency, fiatOf } from '../fiat-display.js'
 import { defaultPrimarySaleLedger } from '../primary-sale-ledger.js'
 
 export const checkoutRouter = Router()
@@ -42,5 +44,10 @@ checkoutRouter.post('/events/:slug/checkout', requireAuth, async (req, res) => {
 
   const { kind: _kind, ...body } = outcome
   void _kind
-  res.status(201).json(body)
+  const event = await prisma.event.findUnique({ where: { slug: params.data.slug }, select: { timeZone: true } })
+  res.status(201).json({
+    ...body,
+    // Display only, and only beside the XRP figure: the signed amount is always paysDrops.
+    fiat: event ? fiatOf(body, ['paysDrops'], await currentDisplayRate(), displayCurrency(event)) : {},
+  })
 })

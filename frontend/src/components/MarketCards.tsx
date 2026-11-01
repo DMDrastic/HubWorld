@@ -22,8 +22,10 @@ import {
   dropsToXrp,
   type AuctionSummary,
   type EventSummary,
+  type Fiat,
   type Listing,
 } from "@/lib/api";
+import { formatFiat, spokenPrice } from "@/lib/fiat";
 import { faceDelta, sellerReceivesDrops } from "@/lib/market";
 import { posterSrcSet, posterUrl } from "@/lib/poster";
 
@@ -123,12 +125,24 @@ export function ListingCard({
         {seat && <p className="text-muted-foreground mt-1 text-sm">{seat}</p>}
 
         <div className="mt-auto pt-5">
-          <div className="flex items-baseline gap-1.5">
-            <span className="text-2xl font-semibold tracking-[-0.03em] tabular-nums">
-              {dropsToXrp(listing.buyerPaysDrops)}
-            </span>
-            <span className="text-muted-foreground text-sm">XRP</span>
-          </div>
+          {/* The dollar estimate leads when the server had a fresh price; the XRP is what is charged. */}
+          {listing.fiat?.buyerPaysDrops ? (
+            <div>
+              <span className="text-2xl font-semibold tracking-[-0.03em] tabular-nums">
+                {formatFiat(listing.fiat.buyerPaysDrops)}
+              </span>
+              <p className="text-muted-foreground text-sm tabular-nums">
+                ≈ {dropsToXrp(listing.buyerPaysDrops)} XRP
+              </p>
+            </div>
+          ) : (
+            <div className="flex items-baseline gap-1.5">
+              <span className="text-2xl font-semibold tracking-[-0.03em] tabular-nums">
+                {dropsToXrp(listing.buyerPaysDrops)}
+              </span>
+              <span className="text-muted-foreground text-sm">XRP</span>
+            </div>
+          )}
           <p className="text-muted-foreground mt-0.5 min-h-5 text-xs tabular-nums">
             {sellerPays
               ? "All fees included"
@@ -162,7 +176,7 @@ export function ListingCard({
               size="sm"
               disabled={busy}
               onClick={() => onBuy(listing)}
-              aria-label={`Buy ${ticket.event.title} for ${dropsToXrp(listing.buyerPaysDrops)} XRP`}
+              aria-label={`Buy ${ticket.event.title} for ${spokenPrice(listing.buyerPaysDrops, listing.fiat?.buyerPaysDrops)}`}
             >
               Buy
             </Button>
@@ -208,8 +222,8 @@ export function AuctionPlate({
         </div>
         <p className="text-muted-foreground mt-1 text-sm tabular-nums">
           {hasBids
-            ? `Top bid ${dropsToXrp(auction.topBidDrops)} XRP · ${auction.bidCount} ${auction.bidCount === 1 ? "bid" : "bids"}`
-            : `Reserve ${dropsToXrp(auction.reserveDrops)} XRP · no bids yet`}
+            ? `Top bid ${usdThenXrp(auction.topBidDrops, auction.fiat?.topBidDrops)} · ${auction.bidCount} ${auction.bidCount === 1 ? "bid" : "bids"}`
+            : `Reserve ${usdThenXrp(auction.reserveDrops, auction.fiat?.reserveDrops)} · no bids yet`}
         </p>
         <p className="text-muted-foreground text-xs tabular-nums">
           Closes {dayFmt.format(closes)} at {timeFmt.format(closes)}
@@ -225,6 +239,11 @@ export function AuctionPlate({
       </Button>
     </li>
   );
+}
+
+/** One-line form for tight spots: "US$35.00 (≈ 28 XRP)", or "28 XRP" with no fresh price. */
+function usdThenXrp(drops: string, fiat: Fiat | undefined): string {
+  return fiat ? `${formatFiat(fiat)} (≈ ${dropsToXrp(drops)} XRP)` : `${dropsToXrp(drops)} XRP`;
 }
 
 export function MyListingRow({
@@ -255,7 +274,7 @@ export function MyListingRow({
           {listing.ticket.event.title}
         </div>
         <div className="text-muted-foreground text-xs tabular-nums">
-          {dropsToXrp(listing.priceDrops)} XRP
+          {usdThenXrp(listing.priceDrops, listing.fiat?.priceDrops)}
           {listing.feeModel === "SELLER_PAYS_V2"
             ? !buying &&
               ` · you receive ${dropsToXrp(sellerReceivesDrops(listing))} before royalty`

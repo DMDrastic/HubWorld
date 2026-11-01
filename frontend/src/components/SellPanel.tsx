@@ -22,6 +22,7 @@ import {
   xrpToDrops,
   type AuctionSummary,
   type EventSummary,
+  type Fiat,
   type Listing,
   type ListingCreated,
   type OwnedTicket,
@@ -29,6 +30,8 @@ import {
   walletNeedsFunds,
 } from "@/lib/api";
 import type { ReviewAction } from "@/lib/sign-review";
+import { commitLine, formatFiat } from "@/lib/fiat";
+import { useQuote } from "@/lib/use-quote";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input, fieldClass } from "@/components/ui/input";
@@ -123,6 +126,7 @@ export function SellPanel({
   onOpenAuction?: (slug: string) => void;
 }) {
   const sortId = useId();
+  const estimateId = useId();
   const [sort, setSort] = useState<SortKey>("soonest");
   const eventBySlug = useMemo(
     () => new Map(events.map((e) => [e.slug, e])),
@@ -180,6 +184,10 @@ export function SellPanel({
   // Eligibility belongs to the SELECTED ticket, since it depends on that
   // ticket's event and holder.
   const selected = tickets.find((t) => t.nfTokenId === nfTokenId) ?? null;
+  // Display only: the estimate for what is being typed, and for a finished sale's receipt. Asked of the server.
+  const typedDrops = /^\d+(\.\d{0,6})?$/.test(priceXrp.trim()) ? xrpToDrops(priceXrp.trim()) : null;
+  const soldReceipt = listing?.state === "sold" ? [sellerReceivesDrops(listing), listing.platformFeeDrops] : [];
+  const quoted = useQuote([typedDrops, ...soldReceipt], selected?.event.slug ?? listing?.ticket.event.slug);
   const auctionAllowed = selected?.canAuction ?? false;
 
   // Selecting a ticket that cannot be auctioned must not strand the form in
@@ -301,7 +309,8 @@ export function SellPanel({
       track(
         l.listingId,
         payload,
-        `Buy for ${dropsToXrp(l.buyerPaysDrops)} XRP`,
+        // Where the buyer commits: the XRP is what they pay, the dollars an estimate. The review gets the drops.
+        commitLine(l.buyerPaysDrops, l.fiat?.buyerPaysDrops),
         // What the card the buyer pressed said they would pay.
         { kind: "buy", amountDrops: l.buyerPaysDrops, label: l.ticket.event.title },
       );
@@ -362,7 +371,7 @@ export function SellPanel({
             {" · "}
             {auctions.length} live{" "}
             {auctions.length === 1 ? "auction" : "auctions"}
-            {lowest && <> · from {dropsToXrp(lowest)} XRP</>}
+            {lowest && <> · from {xrpOrUsd(lowest, market.find((l) => l.buyerPaysDrops === lowest)?.fiat?.buyerPaysDrops)}</>}
           </p>
 
           {auctions.length > 0 && onOpenAuction && (
@@ -514,6 +523,7 @@ export function SellPanel({
                     aria-label={
                       mode === "sell" ? "price in XRP" : "reserve in XRP"
                     }
+                    aria-describedby={typedDrops && quoted[typedDrops] ? `${estimateId}-estimate` : undefined}
                   />
                   {mode === "auction" && (
                     <Input
@@ -534,6 +544,11 @@ export function SellPanel({
                     {busy ? "…" : mode === "sell" ? "List" : "Open"}
                   </Button>
                 </div>
+                {typedDrops && quoted[typedDrops] && (
+                  <p id={`${estimateId}-estimate`} className="text-muted-foreground text-xs tabular-nums">
+                    About {formatFiat(quoted[typedDrops])} at today&rsquo;s price. The price is set, and paid, in XRP.
+                  </p>
+                )}
                 {selected && !selected.resaleAllowed && (
                   <p className="text-destructive text-xs">
                     {selected.resaleBlockedReason}
@@ -545,6 +560,7 @@ export function SellPanel({
                       mode === "sell"
                         ? selected.maxListingPriceDrops
                         : selected.maxAuctionReserveDrops;
+                    const maxFiat = selected.fiat?.[mode === "sell" ? "maxListingPriceDrops" : "maxAuctionReserveDrops"];
                     if (max === null) return null;
                     // A ticket that cost nothing cannot be sold for money, whatever the organizer's policy says.
                     if (max === "0" && selected.resaleCapSource === "PAID") {
@@ -562,7 +578,7 @@ export function SellPanel({
                         <p className="text-muted-foreground text-xs">
                           Capped at what the buyer paid:{" "}
                           {mode === "sell" ? "list for" : "reserve"} up to{" "}
-                          {dropsToXrp(max)} XRP
+                          {xrpOrUsd(max, maxFiat)}
                         </p>
                       );
                     }
@@ -570,9 +586,9 @@ export function SellPanel({
                       <p className="text-muted-foreground text-xs">
                         Organizer resale limit:{" "}
                         {mode === "sell" ? "list for" : "reserve"} up to{" "}
-                        {dropsToXrp(max)} XRP
+                        {xrpOrUsd(max, maxFiat)}
                         {selected.faceValueDrops
-                          ? ` (face value ${dropsToXrp(selected.faceValueDrops)} XRP)`
+                          ? `; face value ${xrpOrUsd(selected.faceValueDrops, selected.fiat?.faceValueDrops)}`
                           : ""}
                       </p>
                     );
@@ -629,11 +645,11 @@ export function SellPanel({
               {listing.state === "sold" && (
                 <div className="bg-muted/40 w-full space-y-1 rounded-xl p-3.5 text-xs">
                   <div className="text-muted-foreground">seller receives</div>
-                  <div>
-                    {dropsToXrp(sellerReceivesDrops(listing))} XRP minus the royalty
+                  <div className="tabular-nums">
+                    {xrpOrUsd(sellerReceivesDrops(listing), quoted[sellerReceivesDrops(listing)])} minus the royalty
                   </div>
                   <div className="text-muted-foreground mt-1">platform fee</div>
-                  <div>{dropsToXrp(listing.platformFeeDrops)} XRP</div>
+                  <div className="tabular-nums">{xrpOrUsd(listing.platformFeeDrops, quoted[listing.platformFeeDrops])}</div>
                 </div>
               )}
             </>
@@ -669,4 +685,9 @@ export function SellPanel({
       )}
     </div>
   );
+}
+
+/** "US$35.00 (≈ 28 XRP)" when the server had a fresh price, else "28 XRP". Display only. */
+function xrpOrUsd(drops: string, fiat: Fiat | undefined): string {
+  return fiat ? `${formatFiat(fiat)} (≈ ${dropsToXrp(drops)} XRP)` : `${dropsToXrp(drops)} XRP`;
 }

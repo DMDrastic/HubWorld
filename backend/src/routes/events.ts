@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { prisma } from '../prisma.js'
 import { issuesOf, slugSchema } from '../schemas.js'
 import { firstSaleQuote } from '../listing-terms.js'
+import { currentDisplayRate, displayCurrency, fiatOf } from '../fiat-display.js'
 
 import { ticketMetadata } from '../nft-metadata.js'
 
@@ -46,14 +47,20 @@ eventsRouter.get('/events', async (req, res) => {
   })
 
   const forSale = await ticketsForSale(events)
+  const rate = await currentDisplayRate()
   res.json({
-    events: events.map(({ _count, organizerId, timeZone, feeRegion, platformBps, organizer, ...e }) => ({
-      ...e,
-      organizer: { username: organizer.username, displayName: organizer.displayName },
-      ...allIn(e, { timeZone, feeRegion, platformBps }, organizer.foundingOrganizer),
-      ticketsMinted: _count.tickets,
-      ticketsForSale: forSale.get(e.slug) ?? 0,
-    })),
+    events: events.map(({ _count, organizerId, timeZone, feeRegion, platformBps, organizer, ...e }) => {
+      const prices = { primaryPriceDrops: e.primaryPriceDrops, ...allIn(e, { timeZone, feeRegion, platformBps }, organizer.foundingOrganizer) }
+      return {
+        ...e,
+        organizer: { username: organizer.username, displayName: organizer.displayName },
+        ...prices,
+        // Display only: the estimate beside each XRP amount, absent when the price is not fresh.
+        fiat: fiatOf(prices, EVENT_PRICES, rate, displayCurrency({ timeZone })),
+        ticketsMinted: _count.tickets,
+        ticketsForSale: forSale.get(e.slug) ?? 0,
+      }
+    }),
   })
 })
 
@@ -103,6 +110,8 @@ function allIn(
   return { primaryFeeDrops: q.feeDrops, primaryAllInDrops: e.primaryPriceDrops + q.feeDrops }
 }
 
+const EVENT_PRICES = ['primaryPriceDrops', 'primaryFeeDrops', 'primaryAllInDrops'] as const
+
 const SlugParams = z.object({ slug: slugSchema })
 
 /** GET /api/events/:slug */
@@ -143,10 +152,12 @@ eventsRouter.get('/events/:slug', async (req, res) => {
 
   const { _count, organizerId, timeZone, feeRegion, organizer, ...rest } = event
   const forSale = await ticketsForSale([{ slug: event.slug, organizerId, primaryPriceDrops: event.primaryPriceDrops }])
+  const prices = { primaryPriceDrops: rest.primaryPriceDrops, ...allIn(rest, { timeZone, feeRegion, platformBps: rest.platformBps }, organizer.foundingOrganizer) }
   res.json({
     ...rest,
     organizer: { username: organizer.username, displayName: organizer.displayName, xrplAddress: organizer.xrplAddress },
-    ...allIn(rest, { timeZone, feeRegion, platformBps: rest.platformBps }, organizer.foundingOrganizer),
+    ...prices,
+    fiat: fiatOf(prices, EVENT_PRICES, await currentDisplayRate(), displayCurrency({ timeZone })),
     ticketsMinted: _count.tickets, ticketsForSale: forSale.get(event.slug) ?? 0,
   })
 })

@@ -16,6 +16,15 @@ export const HealthSchema = z.object({
   timestamp: z.string(),
 })
 
+/**
+ * The display estimate beside an XRP amount, in minor units (cents). DISPLAY ONLY: computed on the server from a
+ * fresh price, never converted here, never charged, never signed. Absent when the price is not fresh.
+ */
+export const FiatSchema = z.object({ currency: z.enum(['USD', 'XCD']), minor: z.string().regex(/^[0-9]+$/) })
+export type Fiat = z.infer<typeof FiatSchema>
+/** Estimates keyed by the name of the drops field they describe. Empty when there is no fresh price. */
+const FiatMapSchema = z.record(z.string(), FiatSchema).optional()
+
 export const EventSummarySchema = z.object({
   slug: z.string(),
   title: z.string(),
@@ -32,6 +41,7 @@ export const EventSummarySchema = z.object({
   /** What the buyer pays at the box office and the fee inside it, from the same function the checkout uses. */
   primaryFeeDrops: z.string().nullable().optional(),
   primaryAllInDrops: z.string().nullable().optional(),
+  fiat: FiatMapSchema,
   /** Tickets a buyer could take right now. Absent from a server that predates it. */
   ticketsForSale: z.number().optional(),
   organizer: z.object({
@@ -523,6 +533,7 @@ export const OwnedTicketSchema = z.object({
   canAuction: z.boolean(),
   auctionBlockedReason: z.string().nullable(),
   faceValueDrops: z.string().nullable(),
+  fiat: FiatMapSchema,
   /** false only for a disabled policy or a missing face value — price-independent. */
   resaleAllowed: z.boolean(),
   /** null = no ceiling (unrestricted, or this is the organizer's own ticket). */
@@ -709,6 +720,7 @@ export const ListingSchema = z.object({
   reason: z.string().optional(),
   brokerTxHash: z.string().optional(),
   role: z.enum(['seller', 'buyer']).optional(),
+  fiat: FiatMapSchema,
 })
 
 export const ListingCreatedSchema = z.object({
@@ -722,6 +734,7 @@ export const ListingCreatedSchema = z.object({
   priceDrops: z.string().optional(),
   platformFeeDrops: z.string().optional(),
   paysDrops: z.string().optional(),
+  fiat: FiatMapSchema,
 })
 
 export type Listing = z.infer<typeof ListingSchema>
@@ -733,6 +746,16 @@ export function dropsToXrp(drops: string): string {
   const whole = d / 1_000_000n
   const frac = (d % 1_000_000n).toString().padStart(6, '0').replace(/0+$/, '')
   return frac ? `${whole}.${frac}` : whole.toString()
+}
+
+/**
+ * Estimates for amounts the page did not get from a response (what a seller is typing). The server converts; this only
+ * asks. Keyed by the drops string; an amount is missing when there is no fresh price.
+ */
+export function quotePrices(drops: string[], slug?: string): Promise<Record<string, Fiat>> {
+  const q = new URLSearchParams({ drops: drops.join(',') })
+  if (slug) q.set('slug', slug)
+  return request(`/price/quote?${q}`, z.object({ fiat: z.record(z.string(), FiatSchema) })).then((r) => r.fiat)
 }
 
 export function xrpToDrops(xrp: string): string {
@@ -767,6 +790,7 @@ export const CheckoutCreatedSchema = z.object({
   /** What the buyer signs for: the price plus the platform fee, in drops. */
   paysDrops: z.string(),
   expiresAt: z.string(),
+  fiat: FiatMapSchema,
 })
 
 export type CheckoutCreated = z.infer<typeof CheckoutCreatedSchema>
@@ -852,6 +876,7 @@ export const AuctionSummarySchema = z.object({
   reserveDrops: z.string(),
   topBidDrops: z.string(),
   bidCount: z.number(),
+  fiat: FiatMapSchema,
 })
 
 export type Bid = z.infer<typeof BidSchema>

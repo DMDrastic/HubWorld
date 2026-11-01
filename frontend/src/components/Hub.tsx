@@ -28,6 +28,7 @@ import {
   type OwnedTicket,
   type User,
 } from "@/lib/api";
+import { formatFiat } from "@/lib/fiat";
 import { PageHeader } from "@/components/PageHeader";
 import { TicketStage, TicketTimeline } from "@/components/HubTickets";
 import { groupTickets } from "@/lib/hub-tickets";
@@ -161,9 +162,11 @@ export function Hub({
                   <div className="flex shrink-0 items-center gap-3">
                     <div className="text-right">
                       <div className="font-mono text-lg font-semibold tabular-nums">
-                        {dropsToXrp(a.topBidDrops)}
+                        {a.fiat?.topBidDrops ? formatFiat(a.fiat.topBidDrops) : dropsToXrp(a.topBidDrops)}
                       </div>
-                      <div className="text-muted-foreground text-xs">XRP</div>
+                      <div className="text-muted-foreground text-xs tabular-nums">
+                        {a.fiat?.topBidDrops ? `≈ ${dropsToXrp(a.topBidDrops)} XRP` : "XRP"}
+                      </div>
                     </div>
                     <ArrowUpRight
                       className="text-muted-foreground group-hover:text-foreground size-4 transition-colors"

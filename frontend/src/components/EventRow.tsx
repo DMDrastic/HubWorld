@@ -31,6 +31,7 @@
  */
 import { MapPin } from 'lucide-react'
 import { dropsToXrp, type EventSummary } from '@/lib/api'
+import { formatFiat, spokenPrice } from '@/lib/fiat'
 import { hueFrom, posterSrcSet, posterUrl } from '@/lib/poster'
 
 const dayFmt = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' })
@@ -130,6 +131,8 @@ export function EventRow({
   // What the buyer actually pays, as the server worked it out (the same figure the checkout charges). A server that
   // sends no all-in price shows the ticket price, as it always did.
   const buyPrice = event.primaryAllInDrops ?? event.primaryPriceDrops
+  // The dollar estimate for that same figure, when the server had a fresh price. Display only.
+  const buyFiat = event.fiat?.[event.primaryAllInDrops ? 'primaryAllInDrops' : 'primaryPriceDrops']
 
   const buyable =
     onBuy !== undefined &&
@@ -251,10 +254,17 @@ export function EventRow({
                 <button
                   type="button"
                   onClick={() => onBuy(event)}
-                  aria-label={`Buy a ticket to ${event.title} for ${dropsToXrp(buyPrice!)} XRP`}
-                  className="bg-primary text-primary-foreground focus-visible:ring-ring inline-flex h-11 items-center gap-3 rounded-full px-4 text-sm font-medium transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:outline-none sm:h-10"
+                  aria-label={`Buy a ticket to ${event.title} for ${spokenPrice(buyPrice!, buyFiat)}`}
+                  className={`bg-primary text-primary-foreground focus-visible:ring-ring inline-flex items-center gap-3 rounded-full px-4 text-sm font-medium transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:outline-none ${buyFiat ? 'min-h-11 py-1.5' : 'h-11 sm:h-10'}`}
                 >
-                  <span>Buy · {dropsToXrp(buyPrice!)} XRP</span>
+                  {buyFiat ? (
+                    <span className="flex flex-col items-start leading-tight">
+                      <span className="tabular-nums">Buy · {formatFiat(buyFiat)}</span>
+                      <span className="text-xs tabular-nums opacity-75">≈ {dropsToXrp(buyPrice!)} XRP</span>
+                    </span>
+                  ) : (
+                    <span>Buy · {dropsToXrp(buyPrice!)} XRP</span>
+                  )}
                   <span className="opacity-75">{event.ticketsForSale} left</span>
                 </button>
               )}

@@ -16,6 +16,7 @@ import { prisma } from '../prisma.js'
 import { issuesOf, slugSchema } from '../schemas.js'
 import { resaleCeiling } from '../resale-policy.js'
 import { paidCostOf } from '../paid-cost.js'
+import { currentDisplayRate, displayCurrency, fiatOf } from '../fiat-display.js'
 
 export const auctionsRouter = Router()
 
@@ -115,7 +116,7 @@ auctionsRouter.get('/auctions', async (_req, res) => {
     orderBy: { endsAt: 'asc' },
     take: 100,
     include: {
-      ticket: { include: { event: { select: { slug: true, title: true } } } },
+      ticket: { include: { event: { select: { slug: true, title: true, timeZone: true } } } },
       bids: {
         where: { status: { in: [...COMMITTED_BID_STATUSES] } },
         orderBy: { amountDrops: 'desc' },
@@ -125,17 +126,24 @@ auctionsRouter.get('/auctions', async (_req, res) => {
     },
   })
 
+  const rate = await currentDisplayRate()
   res.json({
-    auctions: auctions.map((a) => ({
-      id: a.id,
-      eventSlug: a.ticket.event.slug,
-      eventTitle: a.ticket.event.title,
-      state: a.status.toLowerCase(),
-      endsAt: a.endsAt.toISOString(),
-      reserveDrops: (a.reserveDrops ?? 0n).toString(),
-      // Highest FUNDED bid — an unfunded one is not a price.
-      topBidDrops: a.bids[0]?.amountDrops.toString() ?? '0',
-      bidCount: a._count.bids,
-    })),
+    auctions: auctions.map((a) => {
+      const prices = {
+        reserveDrops: (a.reserveDrops ?? 0n).toString(),
+        // Highest FUNDED bid — an unfunded one is not a price.
+        topBidDrops: a.bids[0]?.amountDrops.toString() ?? '0',
+      }
+      return {
+        id: a.id,
+        eventSlug: a.ticket.event.slug,
+        eventTitle: a.ticket.event.title,
+        state: a.status.toLowerCase(),
+        endsAt: a.endsAt.toISOString(),
+        ...prices,
+        fiat: fiatOf(prices, ['reserveDrops', 'topBidDrops'], rate, displayCurrency(a.ticket.event)),
+        bidCount: a._count.bids,
+      }
+    }),
   })
 })

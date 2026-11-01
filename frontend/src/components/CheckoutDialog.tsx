@@ -12,6 +12,7 @@ import {
   type WalletNeedsFunds,
   walletNeedsFunds,
 } from '@/lib/api'
+import { commitLine, formatFiat } from '@/lib/fiat'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -66,6 +67,8 @@ export function CheckoutDialog({
   const shown = event.primaryAllInDrops ?? event.primaryPriceDrops
   const price = shown ? dropsToXrp(shown) : null
   const fee = event.primaryAllInDrops && event.primaryFeeDrops ? dropsToXrp(event.primaryFeeDrops) : null
+  // Display only: the server's estimate for that same figure, when it had a fresh price.
+  const shownFiat = event.fiat?.[event.primaryAllInDrops ? 'primaryAllInDrops' : 'primaryPriceDrops']
 
   async function start() {
     setPhase({ kind: 'reserving' })
@@ -152,7 +155,9 @@ export function CheckoutDialog({
         <DialogHeader>
           <DialogTitle>{event.title}</DialogTitle>
           <DialogDescription>
-            {price ? `${price} XRP per ticket${fee ? `, fee included` : ''}.` : 'Tickets for this event.'}
+            {price
+              ? `${shownFiat ? `${formatFiat(shownFiat)} (≈ ${price} XRP)` : `${price} XRP`} per ticket${fee ? `, fee included` : ''}.`
+              : 'Tickets for this event.'}
           </DialogDescription>
         </DialogHeader>
 
@@ -164,6 +169,11 @@ export function CheckoutDialog({
                 ? `That price includes a ${fee} XRP HubWorld fee.`
                 : "A small HubWorld fee is added, and you'll see the exact total before you sign."}
             </p>
+            {shown && (
+              <p className="text-sm font-medium" data-commit>
+                {commitLine(shown, shownFiat)}
+              </p>
+            )}
             {signedIn ? (
               <Button onClick={() => void start()} className="w-full">
                 {price ? `Buy a ticket for ${price} XRP` : 'Buy a ticket'}
@@ -184,6 +194,10 @@ export function CheckoutDialog({
           <div className="flex flex-col items-center gap-3">
             {NEEDS_SIGNATURE.has(phase.state) && !phase.signed ? (
               <>
+                {/* What is HELD and signed: the XRP figure, with the estimate labelled as one. */}
+                <p className="text-sm font-medium" data-commit>
+                  {commitLine(phase.created.paysDrops, phase.created.fiat?.paysDrops)}
+                </p>
                 <SigningPrompt
                   payload={phase.created}
                   action={{ kind: 'buy', amountDrops: phase.created.paysDrops, label: event.title }}
