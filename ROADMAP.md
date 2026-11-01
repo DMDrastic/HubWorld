@@ -872,6 +872,56 @@ brokered settlement, resale, auctions or the door. **Do not "fix" it by making
 HubWorld the issuer** — that trades the royalty model for a cosmetic win and
 lands squarely in §6.
 
+## 5e. Phase 3 design note: USD is the price, RLUSD is the resale rail
+
+**Decided 2026-11-01. Design only: no code, and nothing here changes what is built today.**
+
+**The decision.** For production events, USD is the price an organizer sets: face value, the resale cap and the royalty are all
+USD amounts. Card buyers pay USD. When a ticket bought by card is resold on the ledger, that resale settles in **RLUSD**. XRP
+pricing stays for testnet demos and for optional crypto-native payers, and nowhere else is it the unit of account.
+
+**The current "show USD, charge XRP" display change is a bridge for the summit, not the end state.** It lets people read a USD price
+while the ledger still moves XRP. It must not grow into a second pricing model; Phase 3 replaces it.
+
+**This supersedes the "do not start yet" in 5c for the card and RLUSD path.** 5c measured that a brokered sale in an issued
+currency works exactly like the XRP one (the royalty is charged on the bid minus the broker fee, the fee and royalty survive). What it
+said would be a real refactor still is: the money model is `BigInt` drops from the schema up (`Listing.priceDrops`,
+`platformFeeDrops`, `Bid.amountDrops`). The groundwork is partly there: `fees.ts` is already pure and currency-aware, the
+US$5 floor already has a native USD branch (no XRP price needed), and `Ticket.originalCostMinor` / `originalCostCurrency` already
+record what was paid. Order, as agreed: **3a** money model (amounts become currency-typed minor units), **3b** the card rail, **3c**
+RLUSD on the ledger.
+
+**Activating a card buyer's Privy wallet (lazy, at claim or at the first resale; the lazy-activation design is unchanged).**
+HubWorld funds about **1.5 XRP** per wallet:
+
+| | XRP |
+| --- | --- |
+| base reserve (the account must hold it to exist) | 1.0 |
+| one NFT page (holds up to about 32 tickets) | 0.2 |
+| the RLUSD trust line | 0.2 |
+| fee buffer | ~0.1 |
+| **total** | **~1.5** |
+
+- **The trust line is set up during activation**, in the same step, so the wallet can receive resale proceeds. A wallet with no
+  trust line has nowhere for RLUSD to land (5c measured this for the organizer's royalty; the same holds for any payee).
+- **Track it as a per-activation cost**: one row per activation with the drops sent, the transaction hashes and the wallet, so the cost
+  of an event is a sum and not an estimate (a 1,000-attendee event is about 1,500 XRP locked). The recovery question from 5c still
+  applies: whether reserves can be reclaimed decides if this is a loan or a gift. The `Sponsor` amendment would change the cost
+  and should be re-checked (still not on mainnet when last looked, 2026-10-19).
+- Abuse rule from 5c holds: activation follows a completed purchase or a verified sign-in, never a bare request.
+
+**Blocking open question: how does a card buyer turn RLUSD resale proceeds into cash?** Nothing in the design answers it. Until it
+is answered, a card-bought ticket can be **claimed or gifted but not resold for money**. This must be a **policy flag, not
+hard-coded**: suggested name `CARD_TICKET_RESALE_FOR_MONEY`, default off, enforced on the server where a listing or an auction is
+created, reported in `/api/policy`, and keyed on how the ticket was paid for (`originalCostCurrency`). The seller sees the same
+sentence a free ticket already shows: it can be given to someone, it cannot be sold for money yet. Candidate answers to research, none
+verified: an off-ramp partner or regulated exchange that takes RLUSD; HubWorld paying out USD itself (custodial, with the trade-offs
+5c names for fiat rails); or keeping card-bought tickets on a USD-only secondary market. Flipping the flag on is the moment the answer
+exists, not before.
+
+**Unchanged:** every resale still settles on the ledger (the royalty-preservation rule), tickets stay in a wallet the person owns,
+and organizers are paid their royalty on the ledger.
+
 ## 6. What would end HubWorld
 
 Every scaling pressure will push toward one of these. They are listed so the
