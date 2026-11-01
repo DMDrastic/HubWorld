@@ -1,4 +1,4 @@
-import { Fragment, Suspense, lazy, useCallback, useEffect, useState } from 'react'
+import { Fragment, Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react'
 import {
   ApiError,
   fetchAuctions,
@@ -35,6 +35,8 @@ import { PageBackdrop } from '@/components/PageBackdrop'
 import { SignInRequired } from '@/components/SignInRequired'
 import { WithSigner } from '@/components/WithSigner'
 import { PolicyContext } from '@/lib/policy-context'
+import { signOutEverywhere } from '@/lib/sign-out'
+import type { SignerRuntime } from '@/lib/signer-runtime'
 import { Hub } from '@/components/Hub'
 import { Footer } from '@/components/Footer'
 import { EventList } from '@/components/EventList'
@@ -220,6 +222,12 @@ export default function App() {
   // we just tried to end is the failure being fixed here. But a sign-out that
   // ended nothing is reported rather than shown as success, because that is the
   // symptom of a cookie belonging to someone other than the account on screen.
+  // The email wallet's runtime, reported by the host that loads beside the page. A ref: signing out only needs the latest.
+  const walletRef = useRef<SignerRuntime | null>(null)
+  const handleRuntime = useCallback((r: SignerRuntime | null) => {
+    walletRef.current = r
+  }, [])
+
   const handleSignOut = useCallback(async () => {
     // Cleared BEFORE the request, not after it.
     //
@@ -240,7 +248,8 @@ export default function App() {
     setMe(null)
 
     try {
-      const { revoked } = await signOut()
+      // Both sessions: HubWorld's, and the email wallet's (which otherwise remembers who signed in, and signs the next visitor in as them).
+      const { revoked } = await signOutEverywhere(signOut, () => walletRef.current?.logout() ?? Promise.resolve())
       setError(
         revoked ? null : 'Signed out here, but no active session was found to end on the server.',
       )
@@ -309,7 +318,7 @@ export default function App() {
     <PolicyContext.Provider value={policy}>
     {/* The email wallet's code is a separate chunk, fetched after the page is up and only when the server offers it. It sits
         BESIDE the page and reports upward, so loading it never remounts anything. */}
-    <WithSigner enabled={privyOn} appId={policy?.privyAppId}>
+    <WithSigner enabled={privyOn} appId={policy?.privyAppId} onRuntime={handleRuntime}>
     <div className="min-h-svh">
       <NavBar
         me={me}

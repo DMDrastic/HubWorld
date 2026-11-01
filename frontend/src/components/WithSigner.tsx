@@ -9,7 +9,7 @@
  * opened is kept. (A provider that wraps the page changes the page's parent when it loads, and React treats a new parent as a
  * new tree.) Until the host reports, the page simply sees no runtime and does not offer the email option.
  */
-import { lazy, Suspense, useState, type ReactNode } from 'react'
+import { lazy, Suspense, useEffect, useState, type ReactNode } from 'react'
 import { SignerRuntimeContext, type SignerRuntime } from '@/lib/signer-runtime'
 
 const PrivyHost = lazy(() => import('@/components/PrivyRuntime'))
@@ -17,13 +17,19 @@ const PrivyHost = lazy(() => import('@/components/PrivyRuntime'))
 export function WithSigner({
   enabled,
   appId,
+  onRuntime,
   children,
 }: {
   enabled: boolean
   appId: string | undefined
+  /** Also told whenever the runtime changes, for the parts of the app that sit above the page (signing out). */
+  onRuntime?: (runtime: SignerRuntime | null) => void
   children: ReactNode
 }) {
   const [runtime, setRuntime] = useState<SignerRuntime | null>(null)
+  useEffect(() => {
+    onRuntime?.(runtime)
+  }, [runtime, onRuntime])
   return (
     <SignerRuntimeContext.Provider value={runtime}>
       {children}

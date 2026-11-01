@@ -123,6 +123,19 @@ export function EmailSignIn({
           </Button>
         )}
 
+        {phase.kind === 'idle' && runtime.authenticated && (
+          <p className="text-muted-foreground text-xs leading-relaxed">
+            This browser remembers an email wallet from before.{' '}
+            <button
+              type="button"
+              className="text-foreground underline underline-offset-4"
+              onClick={() => void runtime.logout()}
+            >
+              Use a different email
+            </button>
+          </p>
+        )}
+
         {phase.kind === 'connecting' && <p className="text-muted-foreground text-sm">Setting up your wallet…</p>}
 
         {phase.kind === 'claiming' && (
