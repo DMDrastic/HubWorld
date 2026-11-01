@@ -84,6 +84,7 @@ enum SignerKind {
 }
 
 model User {
+  faucetGrants FaucetGrant[]
   buyerNotices ListingBuyerNotice[]
   ticketClaims TicketClaim[]
   id           String               @id @default(uuid())
@@ -1331,4 +1332,18 @@ model PriceReading {
   createdAt DateTime @default(now())
 
   @@index([pair, createdAt])
+}
+
+/// A request for free test XRP, on testnet only. A row is written BEFORE the faucet is called (holding the person's slot
+/// under a lock so simultaneous requests cannot slip past the daily limit) and deleted if the faucet does not deliver.
+model FaucetGrant {
+  id String @id @default(uuid())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+
+  address   String
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
 }

@@ -35,6 +35,7 @@ checkoutRouter.post('/events/:slug/checkout', requireAuth, async (req, res) => {
       error: outcome.error,
       ...(outcome.code ? { code: outcome.code } : {}),
       ...(outcome.listingId ? { listingId: outcome.listingId } : {}),
+      ...(outcome.details ?? {}),
     })
     return
   }

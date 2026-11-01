@@ -396,6 +396,17 @@ export async function accountFunding(
   return accountFundingOnLedger(address)
 }
 
+/**
+ * The account's whole XRP balance in drops (reserves included), for showing a person what their wallet holds.
+ * Throws if the account does not exist (see `isAccountNotFound`) or the ledger cannot be read.
+ */
+export async function accountBalanceDrops(address: string): Promise<bigint> {
+  if (xamanMode === 'stub') return (await stubLedger.accountFunding(address)).spendableDrops
+  const c = await ledger()
+  const info = await c.request({ command: 'account_info', account: address, ledger_index: 'validated' })
+  return BigInt(info.result.account_data.Balance)
+}
+
 /** `accountFunding` against the REAL ledger regardless of mode. */
 export async function accountFundingOnLedger(
   address: string,

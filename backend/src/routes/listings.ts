@@ -27,6 +27,7 @@ import { requireAuth } from '../session.js'
 import { advanceListing, listingInclude, listingView } from '../listing-advance.js'
 import { checkResalePrice, maxAskForCap, isPrimarySale } from '../resale-policy.js'
 import { paidCostOf } from '../paid-cost.js'
+import { privyBuyerShortfall } from '../wallet-funds.js'
 import { PRICE_UNAVAILABLE, buyerPaysDrops, currentMinimumResaleDrops, primaryFeeDrops, resaleListingTerms } from '../listing-terms.js'
 import {
   buildBuyOfferTx,
@@ -304,6 +305,8 @@ listingsRouter.post('/tickets/:nfTokenId/list', requireAuth, async (req, res) =>
     uuid: payload.uuid,
     next: payload.next,
     qrPng: payload.qrPng,
+    // A wallet the person owns signs in their browser: the transaction to approve, stored here as well.
+    sign: payload.sign,
     mode: xamanMode,
     priceDrops: priceDrops.toString(),
     platformFeeDrops: fee.toString(),
@@ -455,6 +458,13 @@ listingsRouter.post('/listings/:id/buy', requireAuth, async (req, res) => {
     return
   }
 
+  // A Privy wallet that cannot pay is told so now, with the address to fill, not after it has approved the purchase.
+  const short = await privyBuyerShortfall(me.id, buyerPaysDrops(listing))
+  if (short) {
+    res.status(409).json(short)
+    return
+  }
+
   let txjson
   try {
     txjson = buildBuyOfferTx({
@@ -499,6 +509,8 @@ listingsRouter.post('/listings/:id/buy', requireAuth, async (req, res) => {
     uuid: payload.uuid,
     next: payload.next,
     qrPng: payload.qrPng,
+    // A wallet the person owns signs in their browser: the transaction to approve, stored here as well.
+    sign: payload.sign,
     mode: xamanMode,
     paysDrops: buyerPaysDrops(listing).toString(),
   })
@@ -557,6 +569,8 @@ listingsRouter.post('/listings/:id/cancel', requireAuth, async (req, res) => {
     uuid: payload.uuid,
     next: payload.next,
     qrPng: payload.qrPng,
+    // A wallet the person owns signs in their browser: the transaction to approve, stored here as well.
+    sign: payload.sign,
     mode: xamanMode,
   })
 })

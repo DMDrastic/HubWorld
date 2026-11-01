@@ -14,6 +14,7 @@ import { xaman, tryGetPayload, asStub, SIGNIN_TTL_MINUTES } from './xaman.js'
 import { prisma } from './prisma.js'
 import { privyMode } from './env.js'
 import { privySigner } from './privy-signing.js'
+import { PRIVY_FLOW_RULES } from './privy-flows.js'
 
 export type CreatedPayload = {
   uuid: string
@@ -98,12 +99,11 @@ export function providerFor(): SigningProvider {
 }
 
 /**
- * The flows a Privy user can complete today. Organizers first: granting and revoking the
- * delegation, and minting. Everything else a person does with a ticket is not built for Privy
- * yet, and says so plainly rather than quietly asking Xaman to sign for a wallet it does not
- * hold.
+ * The flows a Privy user can complete: whatever `privy-flows.ts` lists, which is the only place that list is written.
+ * Anything not on it is not built for Privy yet, and says so plainly rather than quietly asking Xaman to sign for a
+ * wallet it does not hold.
  */
-export const PRIVY_FLOWS: ReadonlySet<PayloadFlow> = new Set(['DELEGATE_GRANT', 'DELEGATE_REVOKE', 'MINT'])
+export const PRIVY_FLOWS: ReadonlySet<PayloadFlow> = new Set(PRIVY_FLOW_RULES.keys())
 
 /** This person's wallet cannot do this yet. Not an error in the app; an honest "not built". */
 export class SignerNotSupported extends Error {

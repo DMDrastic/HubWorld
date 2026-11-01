@@ -56,6 +56,7 @@ import { CircleCheck, Link2, SlidersHorizontal, TrendingUp } from 'lucide-react'
 import stageLights from '@/assets/landing-stage-lights.jpg'
 import { PageBackdrop } from '@/components/PageBackdrop'
 import { SignIn } from '@/components/SignIn'
+import { EmailSignIn } from '@/components/EmailSignIn'
 import { LandingAuctionDemo } from '@/components/LandingAuctionDemo'
 import { LandingCreateDemo } from '@/components/LandingCreateDemo'
 import { LandingPhoneShowcase } from '@/components/LandingPhoneShowcase'
@@ -254,6 +255,10 @@ export function Landing({
               >
                 See events
               </a>
+            </div>
+            {/* No app to install: an email makes the wallet. Draws nothing unless the deployment offers it. */}
+            <div className="mx-auto mt-6 max-w-sm text-left">
+              <EmailSignIn onAuthenticated={onAuthenticated} />
             </div>
           </div>
         </div>

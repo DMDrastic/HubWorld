@@ -272,6 +272,8 @@ openAuctionRouter.post('/tickets/:nfTokenId/auction', requireAuth, async (req, r
     uuid: payload.uuid,
     next: payload.next,
     qrPng: payload.qrPng,
+    // A wallet the person owns signs in their browser: the transaction to approve, stored here as well.
+    sign: payload.sign,
     mode: xamanMode,
     reserveDrops: reserveDrops.toString(),
     sellOfferDrops: sellAmount.toString(),

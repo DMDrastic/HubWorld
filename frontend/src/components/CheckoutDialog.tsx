@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { QrCode } from '@/components/QrCode'
+import { SigningPrompt } from '@/components/SigningPrompt'
+import { WalletFunding } from '@/components/WalletFunding'
 import {
   ApiError,
   checkout,
@@ -8,6 +9,8 @@ import {
   type CheckoutCreated,
   type EventSummary,
   type Listing,
+  type WalletNeedsFunds,
+  walletNeedsFunds,
 } from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import {
@@ -25,6 +28,8 @@ type Phase =
   | { kind: 'reserving' }
   | { kind: 'buying'; created: CheckoutCreated; state: Listing['state']; signed: boolean }
   | { kind: 'done' }
+  /** The wallet cannot pay: nothing was held. Shows the address to fund and how much. */
+  | { kind: 'needs-funds'; info: WalletNeedsFunds }
   | { kind: 'stopped'; reason: string }
 
 /** States in which the buyer still has something to sign, so the QR belongs on screen. */
@@ -68,6 +73,11 @@ export function CheckoutDialog({
       const created = await checkout(event.slug)
       setPhase({ kind: 'buying', created, state: 'buyer_pending', signed: false })
     } catch (err) {
+      const short = walletNeedsFunds(err)
+      if (short) {
+        setPhase({ kind: 'needs-funds', info: short })
+        return
+      }
       setPhase({
         kind: 'stopped',
         reason:
@@ -149,8 +159,8 @@ export function CheckoutDialog({
         {phase.kind === 'idle' && (
           <div className="space-y-4">
             <p className="text-muted-foreground text-sm leading-relaxed">
-              Pressing buy holds one ticket for you for a few minutes. You sign once in Xaman, and the
-              ticket goes into your wallet. {fee
+              Pressing buy holds one ticket for you for a few minutes. You approve it once with your wallet, and the
+              ticket goes into it. {fee
                 ? `That price includes a ${fee} XRP HubWorld fee.`
                 : "A small HubWorld fee is added, and you'll see the exact total before you sign."}
             </p>
@@ -174,15 +184,12 @@ export function CheckoutDialog({
           <div className="flex flex-col items-center gap-3">
             {NEEDS_SIGNATURE.has(phase.state) && !phase.signed ? (
               <>
-                <QrCode
-                  src={phase.created.qrPng}
-                  alt="Xaman purchase QR code"
-                  next={phase.created.next}
-                  mode={phase.created.mode}
+                <SigningPrompt
+                  payload={phase.created}
+                  action={{ kind: 'buy', amountDrops: phase.created.paysDrops, label: event.title }}
+                  qrAlt="Xaman purchase QR code"
+                  qrHint={`Scan in Xaman to pay ${dropsToXrp(phase.created.paysDrops)} XRP.`}
                 />
-                <p className="text-center text-sm">
-                  Scan in Xaman to pay {dropsToXrp(phase.created.paysDrops)} XRP.
-                </p>
                 <p className="text-muted-foreground text-center text-xs">
                   Your ticket is held for a few minutes. If you don't sign, it goes back on sale and
                   nothing is charged.
@@ -195,6 +202,8 @@ export function CheckoutDialog({
             )}
           </div>
         )}
+
+        {phase.kind === 'needs-funds' && <WalletFunding info={phase.info} onRetry={() => void start()} />}
 
         {phase.kind === 'done' && (
           <div className="space-y-3">

@@ -34,6 +34,7 @@ import { Landing } from '@/components/Landing'
 import { PageBackdrop } from '@/components/PageBackdrop'
 import { SignInRequired } from '@/components/SignInRequired'
 import { WithSigner } from '@/components/WithSigner'
+import { PolicyContext } from '@/lib/policy-context'
 import { Hub } from '@/components/Hub'
 import { Footer } from '@/components/Footer'
 import { EventList } from '@/components/EventList'
@@ -305,6 +306,10 @@ export default function App() {
   const organizing = me ? events.filter((e) => e.organizer.username === me.username) : []
 
   return (
+    <PolicyContext.Provider value={policy}>
+    {/* The email wallet's code is a separate chunk, fetched after the page is up and only when the server offers it. It sits
+        BESIDE the page and reports upward, so loading it never remounts anything. */}
+    <WithSigner enabled={privyOn} appId={policy?.privyAppId}>
     <div className="min-h-svh">
       <NavBar
         me={me}
@@ -408,13 +413,10 @@ export default function App() {
             />
           ))}
 
-        {/* The email wallet's code is a separate chunk, fetched only here and only when the
-            server offers it, so no one else downloads it. */}
         {route === '/organize' && (
-          <WithSigner enabled={privyOn} appId={policy?.privyAppId}>
+          <>
           {route === '/organize' && !me && (
             <SignInRequired
-              emailSignIn
               title="Organize"
               blurb="Issuing tickets means minting from your own wallet, so it starts with signing in. Organizer access is reviewed by a person."
               onAuthenticated={handleAuthenticated}
@@ -443,7 +445,7 @@ export default function App() {
               <OrganizerPanel role={me.role} onChanged={handleMinted} refreshKey={emailVerifiedTick} />
             </section>
           )}
-          </WithSigner>
+          </>
         )}
       </main>
       </Backdrop>
@@ -476,5 +478,7 @@ export default function App() {
         </Suspense>
       )}
     </div>
+    </WithSigner>
+    </PolicyContext.Provider>
   )
 }

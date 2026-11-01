@@ -8,7 +8,8 @@
  */
 import { useEffect, useState } from 'react'
 import { AlertTriangle } from 'lucide-react'
-import { QrCode } from '@/components/QrCode'
+import { SigningPrompt } from '@/components/SigningPrompt'
+import { WalletFunding } from '@/components/WalletFunding'
 import {
   ApiError,
   dropsToXrp,
@@ -18,6 +19,8 @@ import {
   type Auction,
   type BidCreated,
   type BidState,
+  type WalletNeedsFunds,
+  walletNeedsFunds,
 } from '@/lib/api'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -27,7 +30,9 @@ const POLL_MS = 2500
 
 type Phase =
   | { kind: 'idle' }
-  | { kind: 'active'; payload: BidCreated }
+  // `typedDrops` is what the bidder entered: the signing review is checked against it, never against the server's reply.
+  | { kind: 'active'; payload: BidCreated; typedDrops: string }
+  | { kind: 'needs-funds'; info: WalletNeedsFunds }
   | { kind: 'failed'; reason: string }
 
 const MESSAGES: Record<BidState['state'], string> = {
@@ -90,8 +95,8 @@ export function BidForm({
     }
   }, [activeBidId, onPlaced])
 
-  async function submit(e: React.FormEvent) {
-    e.preventDefault()
+  async function submit(e?: React.FormEvent) {
+    e?.preventDefault()
     setBusy(true)
     try {
       const drops = xrpToDrops(amountXrp)
@@ -102,8 +107,13 @@ export function BidForm({
         )
       }
       setBid(null)
-      setPhase({ kind: 'active', payload: await placeBid(auction.id, drops) })
+      setPhase({ kind: 'active', payload: await placeBid(auction.id, drops), typedDrops: drops })
     } catch (err) {
+      const short = walletNeedsFunds(err)
+      if (short) {
+        setPhase({ kind: 'needs-funds', info: short })
+        return
+      }
       setPhase({
         kind: 'failed',
         reason: err instanceof ApiError ? err.message : 'Could not place the bid',
@@ -114,6 +124,14 @@ export function BidForm({
   }
 
   const closed = new Date(auction.endsAt).getTime() <= Date.now()
+
+  if (phase.kind === 'needs-funds') {
+    return (
+      <div className="border-t pt-4">
+        <WalletFunding info={phase.info} onRetry={() => void submit()} />
+      </div>
+    )
+  }
 
   if (phase.kind === 'active') {
     return (
@@ -146,16 +164,13 @@ export function BidForm({
           </p>
         )}
         {(bid === null || bid.state === 'pending') && (
-          <>
-            <QrCode
-              src={phase.payload.qrPng}
-              alt="Xaman bid QR code"
-              className="size-40"
-              next={phase.payload.next}
-              mode={phase.payload.mode}
-            />
-            <p className="text-muted-foreground text-center text-sm">{MESSAGES.pending}</p>
-          </>
+          <SigningPrompt
+            payload={phase.payload}
+            action={{ kind: 'bid', amountDrops: phase.typedDrops, label: auction.eventTitle }}
+            qrAlt="Xaman bid QR code"
+            qrHint={MESSAGES.pending}
+            qrClassName="size-40"
+          />
         )}
         {bid && (
           <>

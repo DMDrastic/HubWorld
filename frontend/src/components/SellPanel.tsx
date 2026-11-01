@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useId, useMemo, useState } from "react";
-import { QrCode } from "@/components/QrCode";
+import { SigningPrompt } from "@/components/SigningPrompt";
+import { WalletFunding } from "@/components/WalletFunding";
 import {
   AuctionPlate,
   ListingCard,
@@ -24,7 +25,10 @@ import {
   type Listing,
   type ListingCreated,
   type OwnedTicket,
+  type WalletNeedsFunds,
+  walletNeedsFunds,
 } from "@/lib/api";
+import type { ReviewAction } from "@/lib/sign-review";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input, fieldClass } from "@/components/ui/input";
@@ -40,7 +44,11 @@ type Phase =
       listingId: string;
       payload: ListingCreated | null;
       label: string;
+      /** What the person asked for, so a transaction to approve can be checked against it. */
+      action: ReviewAction | null;
     }
+  /** The wallet cannot pay: nothing was started. `retry` does the same thing again. */
+  | { kind: "needs-funds"; info: WalletNeedsFunds; retry: () => void }
   | { kind: "failed"; reason: string };
 
 /** States where a signature is still outstanding, so the QR belongs on screen. */
@@ -130,6 +138,8 @@ export function SellPanel({
   const [phase, setPhase] = useState<Phase>({ kind: "idle" });
   const [listing, setListing] = useState<Listing | null>(null);
   const [busy, setBusy] = useState(false);
+  // The wallet's own approval has been sent: the prompt gives way to the sale's progress.
+  const [approved, setApproved] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
@@ -221,9 +231,11 @@ export function SellPanel({
     listingId: string,
     payload: ListingCreated | null,
     label: string,
+    action: ReviewAction | null,
   ) {
     setListing(null);
-    setPhase({ kind: "active", listingId, payload, label });
+    setApproved(false);
+    setPhase({ kind: "active", listingId, payload, label, action });
   }
 
   async function list() {
@@ -233,7 +245,13 @@ export function SellPanel({
       if (BigInt(drops) <= 0n) throw new ApiError("Enter a price above zero");
       checkResaleCap(selected, drops, "sell");
       const payload = await createListing(nfTokenId, drops);
-      track(payload.listingId, payload, `List for ${priceXrp} XRP`);
+      track(
+        payload.listingId,
+        payload,
+        `List for ${priceXrp} XRP`,
+        // The price the seller TYPED, not anything the server replied with.
+        { kind: "list", askDrops: drops, label: selected?.event.title },
+      );
     } catch (err) {
       setPhase({
         kind: "failed",
@@ -263,6 +281,7 @@ export function SellPanel({
         result.listingId,
         { ...result, priceDrops: drops },
         `Auction at ${priceXrp} XRP reserve`,
+        { kind: "auction", reserveDrops: drops, label: selected?.event.title },
       );
     } catch (err) {
       setPhase({
@@ -283,8 +302,15 @@ export function SellPanel({
         l.listingId,
         payload,
         `Buy for ${dropsToXrp(l.buyerPaysDrops)} XRP`,
+        // What the card the buyer pressed said they would pay.
+        { kind: "buy", amountDrops: l.buyerPaysDrops, label: l.ticket.event.title },
       );
     } catch (err) {
+      const short = walletNeedsFunds(err);
+      if (short) {
+        setPhase({ kind: "needs-funds", info: short, retry: () => void buy(l) });
+        return;
+      }
       setPhase({
         kind: "failed",
         reason:
@@ -302,7 +328,10 @@ export function SellPanel({
     try {
       const result = await cancelListing(listingId);
       if ("uuid" in result) {
-        track(listingId, result, "Withdraw listing");
+        track(listingId, result, "Withdraw listing", {
+          kind: "withdraw",
+          label: mine.find((m) => m.listingId === listingId)?.ticket.event.title,
+        });
       } else {
         setPhase({ kind: "idle" });
         void refresh();
@@ -424,7 +453,7 @@ export function SellPanel({
                     event={eventBySlug.get(l.ticket.event.slug)}
                     busy={busy}
                     onCheck={(x) =>
-                      track(x.listingId, null, x.ticket.event.title)
+                      track(x.listingId, null, x.ticket.event.title, null)
                     }
                     onWithdraw={(x) => void withdraw(x.listingId)}
                   />
@@ -571,19 +600,21 @@ export function SellPanel({
           <div className="text-sm font-medium">{phase.label}</div>
 
           {phase.payload !== null &&
+            phase.action !== null &&
+            !approved &&
             (listing === null || NEEDS_SIGNATURE.has(listing.state)) && (
-              <>
-                <QrCode
-                  src={phase.payload.qrPng}
-                  alt="Xaman signing QR code"
-                  next={phase.payload.next}
-                  mode={phase.payload.mode}
-                />
-                <p className="text-muted-foreground text-center text-sm">
-                  Scan in Xaman to sign.
-                </p>
-              </>
+              <SigningPrompt
+                payload={phase.payload}
+                action={phase.action}
+                qrAlt="Xaman signing QR code"
+                qrHint="Scan in Xaman to sign."
+                onSubmitted={() => setApproved(true)}
+              />
             )}
+
+          {approved && (listing === null || listing.state === "pending_offer" || listing.state === "buyer_pending") && (
+            <p className="text-muted-foreground text-center text-sm">Approved. Waiting for the network to confirm…</p>
+          )}
 
           {listing && (
             <>
@@ -615,6 +646,12 @@ export function SellPanel({
           >
             Done
           </Button>
+        </div>
+      )}
+
+      {phase.kind === "needs-funds" && (
+        <div className="surface p-6">
+          <WalletFunding info={phase.info} onRetry={phase.retry} />
         </div>
       )}
 

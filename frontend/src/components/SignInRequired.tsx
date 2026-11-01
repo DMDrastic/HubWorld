@@ -20,17 +20,11 @@ export function SignInRequired({
   title,
   blurb,
   onAuthenticated,
-  emailSignIn = false,
 }: {
   title: string
   /** Why an account is needed here specifically, not a generic "please log in". */
   blurb: string
   onAuthenticated: (u: AuthUser) => void
-  /**
-   * Also offer signing in with an email. For organizers: it is only offered on their page, and it
-   * draws nothing at all unless the deployment has the email wallet switched on.
-   */
-  emailSignIn?: boolean
 }) {
   return (
     <section className="space-y-2 pb-8">
@@ -38,7 +32,8 @@ export function SignInRequired({
 
       <div className="max-w-sm space-y-4">
         <SignIn onAuthenticated={onAuthenticated} />
-        {emailSignIn && <EmailSignIn onAuthenticated={onAuthenticated} />}
+        {/* Draws nothing unless the deployment has the email wallet switched on and its code has loaded. */}
+        <EmailSignIn onAuthenticated={onAuthenticated} />
       </div>
     </section>
   )

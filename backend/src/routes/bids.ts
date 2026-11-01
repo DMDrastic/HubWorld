@@ -17,7 +17,8 @@ import { Router } from 'express'
 import { z } from 'zod'
 import { prisma } from '../prisma.js'
 import { NETWORK } from '../network.js'
-import { brokerMode, xamanMode } from '../env.js'
+import { brokerMode, env, xamanMode } from '../env.js'
+import { faucetOffered, privyBuyerShortfall } from '../wallet-funds.js'
 import { tryGetPayload, signing, signingFor } from '../signing.js'
 import { issuesOf } from '../schemas.js'
 import { requireAuth } from '../session.js'
@@ -175,6 +176,13 @@ bidsRouter.post('/auctions/:id/bid', requireAuth, async (req, res) => {
     return
   }
 
+  // A Privy wallet that cannot pay (or does not exist yet) is told so with the address to fill; see `wallet-funds.ts`.
+  const short = await privyBuyerShortfall(me.id, amountDrops)
+  if (short) {
+    res.status(409).json(short)
+    return
+  }
+
   // Funds are not locked by a buy offer, so the least we can do is refuse a bid
   // the bidder demonstrably cannot honour right now.
   let funding: { spendableDrops: bigint; reserveIncDrops: bigint } | null = null
@@ -202,6 +210,13 @@ bidsRouter.post('/auctions/:id/bid', requireAuth, async (req, res) => {
         spendableDrops: funding.spendableDrops.toString(),
         reserveIncDrops: funding.reserveIncDrops.toString(),
         shortfallDrops: shortfall.toString(),
+        // The same shape as every other "your wallet needs XRP" answer, so the screen can show the address to fill.
+        code: 'WALLET_NEEDS_FUNDS',
+        address: me.xrplAddress,
+        network: env.XRPL_NETWORK,
+        neededDrops: (funding.spendableDrops + shortfall).toString(),
+        haveDrops: funding.spendableDrops.toString(),
+        canFund: faucetOffered(),
       })
       return
     }
@@ -253,6 +268,8 @@ bidsRouter.post('/auctions/:id/bid', requireAuth, async (req, res) => {
     uuid: payload.uuid,
     next: payload.next,
     qrPng: payload.qrPng,
+    // A wallet the person owns signs in their browser: the transaction to approve, stored here as well.
+    sign: payload.sign,
     mode: xamanMode,
     amountDrops: amountDrops.toString(),
     // Carried so the bidder sees what the bid leaves them BEFORE they sign.

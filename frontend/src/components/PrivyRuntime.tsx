@@ -3,16 +3,19 @@
  *
  * Only ever imported through `React.lazy` (see `WithSigner`), so Privy and its dependencies are
  * a separate chunk fetched on demand. Do not import this file from anywhere else.
+ *
+ * It does not wrap the page: it is loaded beside it and reports the runtime upward (see `WithSigner`).
  */
-import { useCallback, useLayoutEffect, useMemo, useRef, type ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef } from 'react'
 import { PrivyProvider, getIdentityToken, usePrivy } from '@privy-io/react-auth'
 import { useCreateWallet, useSignRawHash } from '@privy-io/react-auth/extended-chains'
-import { SignerRuntimeContext, type SignerRuntime } from '@/lib/signer-runtime'
+import type { SignerRuntime } from '@/lib/signer-runtime'
 import { findOrCreateWallet, firstXrplWallet as xrplWalletOf } from '@/lib/wallet-lookup'
 
 type LinkedWallet = { type?: string; chainType?: string; address?: string; publicKey?: string; public_key?: string }
 
-function Bridge({ children }: { children: ReactNode }) {
+/** Reads the Privy hooks and reports the app-facing runtime upward. Draws nothing. */
+function Bridge({ onRuntime }: { onRuntime: (r: SignerRuntime) => void }) {
   const { ready, authenticated, login, logout, user, getAccessToken } = usePrivy()
   const { createWallet } = useCreateWallet()
   const { signRawHash } = useSignRawHash()
@@ -27,28 +30,14 @@ function Bridge({ children }: { children: ReactNode }) {
     userRef.current = user
   }, [user])
 
-  const getTokens = useCallback(async () => {
-    const accessToken = await getAccessToken()
-    const identityToken = await getIdentityToken()
-    return accessToken && identityToken ? { accessToken, identityToken } : null
-  }, [getAccessToken])
-
-  const ensureWallet = useCallback(
-    () =>
-      findOrCreateWallet({
-        read: () => xrplWalletOf(userRef.current),
-        create: async () => (await createWallet({ chainType: 'xrpl' })).wallet as unknown as LinkedWallet,
-      }),
-    [createWallet],
-  )
-
-  const signHash = useCallback(
-    async (address: string, hashHex: string) => {
-      const { signature } = await signRawHash({ address, chainType: 'xrpl', hash: `0x${hashHex}` })
-      return signature.replace(/^0x/, '')
-    },
-    [signRawHash],
-  )
+  // The SDK hands back NEW function identities on every render. Anything reported upward must not depend on them, or the
+  // page re-renders, so this re-renders, so the "different" runtime is reported again, for ever (React stops it with
+  // "Maximum update depth exceeded"). So the functions are read through a ref that always holds the latest, and the object
+  // reported upward changes only when something the page can SEE changes: ready, authenticated, or the wallet address.
+  const latest = useRef({ login, logout, getAccessToken, createWallet, signRawHash })
+  useLayoutEffect(() => {
+    latest.current = { login, logout, getAccessToken, createWallet, signRawHash }
+  })
 
   const walletAddress = xrplWalletOf(user)?.address ?? null
   const runtime = useMemo<SignerRuntime>(
@@ -56,19 +45,34 @@ function Bridge({ children }: { children: ReactNode }) {
       ready,
       authenticated,
       walletAddress,
-      openLogin: () => login(),
-      getTokens,
-      ensureWallet,
-      signHash,
-      logout: () => logout(),
+      openLogin: () => latest.current.login(),
+      getTokens: async () => {
+        const accessToken = await latest.current.getAccessToken()
+        const identityToken = await getIdentityToken()
+        return accessToken && identityToken ? { accessToken, identityToken } : null
+      },
+      ensureWallet: () =>
+        findOrCreateWallet({
+          read: () => xrplWalletOf(userRef.current),
+          create: async () => (await latest.current.createWallet({ chainType: 'xrpl' })).wallet as unknown as LinkedWallet,
+        }),
+      signHash: async (address: string, hashHex: string) => {
+        const { signature } = await latest.current.signRawHash({ address, chainType: 'xrpl', hash: `0x${hashHex}` })
+        return signature.replace(/^0x/, '')
+      },
+      logout: () => latest.current.logout(),
     }),
-    [ready, authenticated, walletAddress, login, getTokens, ensureWallet, signHash, logout],
+    [ready, authenticated, walletAddress],
   )
 
-  return <SignerRuntimeContext.Provider value={runtime}>{children}</SignerRuntimeContext.Provider>
+  useEffect(() => {
+    onRuntime(runtime)
+  }, [runtime, onRuntime])
+
+  return null
 }
 
-export default function PrivyRuntime({ appId, children }: { appId: string; children: ReactNode }) {
+export default function PrivyRuntime({ appId, onRuntime }: { appId: string; onRuntime: (r: SignerRuntime) => void }) {
   return (
     <PrivyProvider
       appId={appId}
@@ -78,7 +82,7 @@ export default function PrivyRuntime({ appId, children }: { appId: string; child
         embeddedWallets: { ethereum: { createOnLogin: 'off' }, solana: { createOnLogin: 'off' } },
       }}
     >
-      <Bridge>{children}</Bridge>
+      <Bridge onRuntime={onRuntime} />
     </PrivyProvider>
   )
 }

@@ -36,7 +36,7 @@ export function SignStep({
   const wallet = runtime?.walletAddress ?? null
   // Primitives only in the dependency list (the polling discipline): `context` and `sign` are
   // objects the parent re-creates, and keying on them would re-run the check on every render.
-  const key = JSON.stringify([uuid, wallet, context.hubworldDelegate, context.delegation, context.eventTitle])
+  const key = JSON.stringify([uuid, wallet, context.hubworldDelegate, context.delegation, context.eventTitle, context.broker, context.action])
   useEffect(() => {
     if (!wallet) return
     let stale = false
