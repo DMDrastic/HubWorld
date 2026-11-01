@@ -910,6 +910,55 @@ HubWorld funds about **1.5 XRP** per wallet:
   and should be re-checked (still not on mainnet when last looked, 2026-10-19).
 - Abuse rule from 5c holds: activation follows a completed purchase or a verified sign-in, never a bare request.
 
+**MAINNET BLOCKER (added 2026-11-01): platform-funded activation must be farm-resistant.** XRPL `AccountDelete` lets an
+account's owner delete it and reclaim most of its XRP. So a free activation can be harvested: buy one cheap ticket, gift it
+through dozens of new accounts, let HubWorld fund each recipient, then delete those accounts and collect roughly 1 XRP from
+each. The gift flow on testnet answers a new recipient with "add funds" and the faucet, which is fine there. On mainnet,
+asking someone who received a gift to go and buy XRP is a bad first experience, so HubWorld will fund them, as planned for
+claims, and that is exactly the opening.
+
+**What the attack yields, checked against the XRPL docs (AccountDelete reference and "Deleting Accounts", 2026-11-01):**
+
+- Deleting an account burns at least the owner reserve, **0.2 XRP**, and sends the rest to any funded account the deleter names.
+- **Holding an NFT blocks deletion** (`NFTokenPage` is a deletion blocker), so the farmer passes the ticket on first, which is
+  exactly what a gift chain does. One ticket can feed an unbounded chain of new accounts.
+- An account can be deleted once its `Sequence` + 255 is at or below the current ledger index: about **15-17 minutes** after
+  it is created. The chain parallelises freely.
+- A trust line does not stop it: at zero balance the holder removes it with one `TrustSet`.
+- HubWorld funds ~1.3 XRP per gift recipient (~1.5 with the RLUSD line); **~1.1-1.3 XRP of it comes back** per account.
+  Nearly all of it is the 1 XRP base reserve, which no design can avoid funding.
+- A Privy wallet is user-owned and its key can be exported, so the farmer signs `AccountDelete` outside HubWorld. Restricting
+  what our signing route allows does not help.
+- **Not exposed today**: nothing sends XRP to a user's wallet on mainnet. The only funding path is the faucet, refused on any
+  network but testnet (`src/faucet.ts`). A mainnet gift recipient is asked to fund themselves.
+
+**Design rule for Phase 3: gifts of tickets HubWorld still holds for their owner stay in the database.** Under lazy
+activation a card-bought ticket sits in an account HubWorld holds for its owner. Giving one changes ownership in our records,
+and the gift takes effect at once: no wallet is created, nothing is funded, and the recipient has the ticket and a working
+door code immediately. Door codes are bound to the holder, so the giver's codes stop working from that moment. A rotated per-ticket secret is
+the extra step if Phase 3 adds one. This does not weaken "a resale is never a database-only change": that rule exists to
+protect the royalty, and a gift carries none. (A gift paired with an off-platform payment is a royalty-free resale, but that
+is equally true of an on-ledger gift today; it is not new here.) Tickets already in a wallet keep gifting on-ledger as built
+in #139, and their recipient funds their own activation unless the ticket's one allowance below covers it.
+
+**Platform-funded activation happens only on resale or claim to the person's own wallet**, and no platform-funded activation
+ships on mainnet without all of these:
+
+- **A ticket can trigger at most one funded activation in its whole life. This is the primary rule**, because the ticket
+  passing along the chain is what drives the attack. After that, recipients fund themselves or wait for sponsorship.
+- **At most one funded activation per verified identity, ever** (email plus phone, or similar). Weaker on its own: new emails
+  and numbers are cheap.
+- **A daily cap on total funded activations platform-wide**, with an alert when it is hit.
+- **Watch funded accounts for `AccountDelete`, and group the deletions by where their XRP went.** A deletion names its
+  destination, and a farm sweeps to a few addresses, so the grouping is a strong early signal. Flag and block the pattern.
+- **XLS-68 (`Sponsor`): test on devnet whether a sponsored account's remaining XRP must go back to its sponsor.** The
+  AccountDelete reference says so (`tecNO_SPONSOR_PERMISSION` when the destination is not the sponsor); the "Deleting Accounts"
+  page does not mention it. If it holds, switch activation to sponsorship, since a sponsored reserve cannot be harvested, and keep
+  every rule above as defence in depth. Not on mainnet when last checked (2026-10-19).
+
+Together, these rules make farming cost more than it returns. Every funded step needs a resale paying the 5% fee, the royalty
+and the minimum, and each ticket is still capped at one funded activation.
+
 **Blocking open question: how does a card buyer turn RLUSD resale proceeds into cash?** Nothing in the design answers it. Until it
 is answered, a card-bought ticket can be **claimed or gifted but not resold for money**. This must be a **policy flag, not
 hard-coded**: suggested name `CARD_TICKET_RESALE_FOR_MONEY`, default off, enforced on the server where a listing or an auction is
