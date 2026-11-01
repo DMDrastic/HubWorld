@@ -39,6 +39,8 @@ export default defineConfig({
     baseURL: WEB,
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
+    // To watch it: `npm run e2e:privy -- --headed`, and E2E_SLOWMO=<ms> to pause between actions.
+    launchOptions: { slowMo: Number(process.env.E2E_SLOWMO ?? 0) },
     // A trace records typed text, so the one-time code would be in it. Keep traces local (they are gitignored); never share one.
   },
   projects: [{ name: 'desktop', use: { ...devices['Desktop Chrome'] } }],
