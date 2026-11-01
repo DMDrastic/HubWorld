@@ -5,15 +5,60 @@
  * on the TEST network, a button for free test XRP; on mainnet, the plain instruction to send real XRP. Whether the button
  * exists is the SERVER's answer (`canFund`), because the server is also what would refuse the request.
  */
-import { useState } from 'react'
-import { ApiError, dropsToXrp, fundWallet, type WalletNeedsFunds } from '@/lib/api'
+import { useEffect, useState } from 'react'
+import { ApiError, dropsToXrp, fetchWalletStatus, fundWallet, type WalletNeedsFunds } from '@/lib/api'
 import { Button } from '@/components/ui/button'
+
+/** How often to look for the test XRP after the faucet answers, and how long before letting them go on regardless. */
+const ARRIVAL_POLL_MS = 2_000
+const ARRIVAL_PATIENCE_MS = 60_000
 
 export function WalletFunding({ info, onRetry }: { info: WalletNeedsFunds; onRetry: () => void }) {
   const [phase, setPhase] = useState<
     { kind: 'idle' } | { kind: 'asking' } | { kind: 'funded'; amountXrp: number } | { kind: 'failed'; reason: string }
   >({ kind: 'idle' })
   const [copied, setCopied] = useState(false)
+  // "On its way" is not "arrived". Going on before the ledger shows it finds 0 XRP and puts the faucet button back, and
+  // pressing that again spends another of the day's three. So the way on opens once the balance is there (or after a
+  // minute, saying so). Held apart from `phase` and keyed on a NUMBER: a poll keyed on its own answers restarts itself.
+  const [arrival, setArrival] = useState<'waiting' | 'arrived' | 'late'>('waiting')
+  const fundedXrp = phase.kind === 'funded' ? phase.amountXrp : null
+
+  useEffect(() => {
+    if (fundedXrp === null) return
+    let stopped = false
+    let timer: number | undefined
+    const started = Date.now()
+    // The faucet's amount, in drops: a balance at least that big means it landed (a wallet asking for test XRP had less).
+    const landed = BigInt(Math.round(fundedXrp * 1_000_000))
+    setArrival('waiting')
+
+    async function check() {
+      if (stopped) return
+      try {
+        const s = await fetchWalletStatus()
+        if (stopped) return
+        // An unreadable ledger (no balance) is "not known yet", never "arrived".
+        if (s.balanceDrops !== undefined && BigInt(s.balanceDrops) >= landed) {
+          setArrival('arrived')
+          return
+        }
+      } catch {
+        // A blip is not an answer; keep looking.
+      }
+      if (Date.now() - started >= ARRIVAL_PATIENCE_MS) {
+        setArrival('late')
+        return
+      }
+      timer = window.setTimeout(() => void check(), ARRIVAL_POLL_MS)
+    }
+
+    timer = window.setTimeout(() => void check(), ARRIVAL_POLL_MS)
+    return () => {
+      stopped = true
+      window.clearTimeout(timer)
+    }
+  }, [fundedXrp])
 
   async function copy() {
     try {
@@ -57,8 +102,16 @@ export function WalletFunding({ info, onRetry }: { info: WalletNeedsFunds; onRet
         <div className="space-y-2">
           {phase.kind === 'funded' ? (
             <>
-              <p className="text-sm">{phase.amountXrp} test XRP is on its way. It can take a few seconds to arrive.</p>
-              <Button onClick={onRetry}>Try again</Button>
+              <p className="text-sm" role="status">
+                {arrival === 'arrived'
+                  ? `${phase.amountXrp} test XRP is on its way. It has arrived.`
+                  : arrival === 'late'
+                    ? `${phase.amountXrp} test XRP is on its way, but it has not shown up yet. Try again in a moment.`
+                    : `${phase.amountXrp} test XRP is on its way. It can take a few seconds to arrive.`}
+              </p>
+              <Button onClick={onRetry} disabled={arrival === 'waiting'}>
+                {arrival === 'arrived' ? 'Continue' : arrival === 'late' ? 'Try again' : 'Waiting for it to arrive…'}
+              </Button>
             </>
           ) : (
             <>
