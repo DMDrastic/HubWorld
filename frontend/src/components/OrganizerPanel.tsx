@@ -395,13 +395,21 @@ function CreateEventForm({ policy, onCreated }: { policy: Policy | null; onCreat
   const [startsAt, setStartsAt] = useState('')
   const [ticketCount, setTicketCount] = useState('100')
   const [royaltyPct, setRoyaltyPct] = useState('5')
-  const [priceXrp, setPriceXrp] = useState('')
+  const [priceUsd, setPriceUsd] = useState('')
   const [chosenPolicy, setResalePolicy] = useState<ResalePolicyMode>('UNRESTRICTED')
   // Under the new fee model a ticket is never resold for more than its buyer paid, so a policy that allows
   // more is not offered. An older server that says nothing keeps offering everything.
   const loose = policy?.looseResalePolicies !== false
   // Derived, not stored: the server's answer arrives after the form is up, and a stored default would stay stale.
-  const resalePolicy: ResalePolicyMode = !loose && chosenPolicy === 'UNRESTRICTED' ? 'FACE_VALUE_ONLY' : chosenPolicy
+  // A fixed cap is still a number of XRP, which cannot go with a US$ price until resale moves to US$: with a price, the
+  // option is not offered, and a cap already chosen falls back to face value only.
+  const priced = priceUsd.trim() !== ''
+  const resalePolicy: ResalePolicyMode =
+    !loose && chosenPolicy === 'UNRESTRICTED'
+      ? 'FACE_VALUE_ONLY'
+      : priced && chosenPolicy === 'FIXED_CAP'
+        ? 'FACE_VALUE_ONLY'
+        : chosenPolicy
   const [resaleCapPct, setResaleCapPct] = useState('120')
   const [resaleCapXrp, setResaleCapXrp] = useState('')
   // Offered only where this server can run the code door; otherwise the server's own default (the signature door) applies.
@@ -457,15 +465,14 @@ function CreateEventForm({ policy, onCreated }: { policy: Policy | null; onCreat
       if (resalePolicy === 'FIXED_CAP' && !(BigInt(resaleCapDrops) > 0n)) {
         throw new ApiError('Enter a resale cap price above zero')
       }
-      // Optional: an event without a price has no box office, and tickets are
-      // minted to hold or listed by hand. Validated as the CONVERTED drops, like
-      // the cap above, so a price that rounds to zero is refused here.
-      const primaryPriceDrops = priceXrp.trim() ? xrpToDrops(priceXrp) : undefined
-      if (primaryPriceDrops !== undefined && !(BigInt(primaryPriceDrops) > 0n)) {
-        throw new ApiError('Enter a ticket price above zero, or leave it blank')
+      // Optional: an event without a price has no box office, and tickets are minted to hold or listed by hand. In US$,
+      // whole cents only: XRP is worked out when someone pays.
+      const primaryPriceUsdCents = priced ? usdToCents(priceUsd) : undefined
+      if (primaryPriceUsdCents === null) {
+        throw new ApiError('Enter the ticket price in US dollars, like 35 or 35.50, or leave it blank')
       }
-      if (!loose && resalePolicy === 'FIXED_CAP' && primaryPriceDrops !== undefined && BigInt(resaleCapDrops) > BigInt(primaryPriceDrops)) {
-        throw new ApiError('A fixed resale cap cannot be above the ticket price: a ticket is never resold for more than its buyer paid')
+      if (primaryPriceUsdCents !== undefined && !(BigInt(primaryPriceUsdCents) > 0n)) {
+        throw new ApiError('Enter a ticket price above zero, or leave it blank')
       }
       const event = await createEvent({
         title,
@@ -473,7 +480,7 @@ function CreateEventForm({ policy, onCreated }: { policy: Policy | null; onCreat
         startsAt: new Date(startsAt).toISOString(),
         ticketCount: Number(ticketCount),
         royaltyBps: Math.round(Number(royaltyPct) * 100),
-        ...(primaryPriceDrops ? { primaryPriceDrops } : {}),
+        ...(primaryPriceUsdCents ? { primaryPriceUsdCents } : {}),
         resalePolicy,
         ...(offerDoorMode ? { doorMode } : {}),
         ...(resalePolicy === 'PERCENTAGE_CAP' ? { resaleCapBps } : {}),
@@ -497,7 +504,7 @@ function CreateEventForm({ policy, onCreated }: { policy: Policy | null; onCreat
       setCreated(event.title)
       setTitle('')
       setVenue('')
-      setPriceXrp('')
+      setPriceUsd('')
       setStartsAt('')
       setPoster(null)
       setError(null)
@@ -591,17 +598,17 @@ function CreateEventForm({ policy, onCreated }: { policy: Policy | null; onCreat
           <Option
             icon={Ticket}
             label="Ticket price"
-            hint="Per ticket at the box office. Leave it blank to sell by hand instead."
+            hint="Per ticket at the box office, in US dollars. Leave it blank to sell by hand instead."
           >
+            <span className="text-muted-foreground">US$</span>
             <input
-              value={priceXrp}
-              onChange={(e) => setPriceXrp(e.target.value)}
+              value={priceUsd}
+              onChange={(e) => setPriceUsd(e.target.value)}
               placeholder="Not for sale"
               inputMode="decimal"
-              aria-label="ticket price in XRP"
+              aria-label="ticket price in US$"
               className={VALUE_INPUT}
             />
-            <span className="text-muted-foreground">XRP</span>
           </Option>
 
           <Option icon={Users} label="Tickets">
@@ -680,7 +687,7 @@ function CreateEventForm({ policy, onCreated }: { policy: Policy | null; onCreat
             >
               {loose && <option value="UNRESTRICTED">Unrestricted</option>}
               <option value="PERCENTAGE_CAP">Capped at % of face value</option>
-              <option value="FIXED_CAP">Capped at a fixed price</option>
+              {!priced && <option value="FIXED_CAP">Capped at a fixed price</option>}
               <option value="FACE_VALUE_ONLY">Face value only, no markup</option>
               <option value="DISABLED">Disabled</option>
             </select>
@@ -857,4 +864,11 @@ export function OrganizerPanel({
       </CardContent>
     </Card>
   )
+}
+
+/** "35", "35.5" or "35.50" to US cents as a string; null for anything else (more than two decimals, signs, letters). */
+function usdToCents(typed: string): string | null {
+  const m = /^(\d{1,10})(?:\.(\d{1,2}))?$/.exec(typed.trim())
+  if (!m) return null
+  return (BigInt(m[1]!) * 100n + BigInt((m[2] ?? '').padEnd(2, '0') || '0')).toString()
 }

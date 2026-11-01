@@ -103,6 +103,19 @@ export function primaryFeeDrops(input: {
   return { feeDrops: q.fanFeeMinor, feeBps: line.bps, promoApplied: q.promoApplied }
 }
 
+/**
+ * The rate of the fee on a FIRST sale paid on the ledger, under whichever model is on: the same rate `firstSaleQuote`
+ * charges, so a fee shown in US cents and the fee charged on the quoted XRP agree.
+ */
+export function firstSaleFeeBps(input: {
+  event: { startsAt: Date; timeZone: string; feeRegion: Region; platformBps?: number }
+  organizerFounding: boolean
+}): number {
+  // Any positive price: the rate does not depend on it, but a zero price returns before the founding rate is decided.
+  if (feeModelV2) return primaryFeeDrops({ priceDrops: 1_000_000n, ...input }).feeBps
+  return input.event.platformBps ?? 0
+}
+
 /** Plain decimal XRP for messages, never for ledger amounts. */
 function xrp(drops: bigint): string {
   return `${drops / 1_000_000n}.${(drops % 1_000_000n).toString().padStart(6, '0')}`

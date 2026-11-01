@@ -383,6 +383,12 @@ model Event {
   /// drops like all money — never a float.
   primaryPriceDrops BigInt?
 
+  /// The box-office price as the organizer set it: the CANONICAL price once set (USD since 2026-11-01). Minor units of
+  /// `primaryPriceCurrency` (US cents). When present, `primaryPriceDrops` is history only: XRP is worked out from this at
+  /// payment time, from a fresh price, and locked for a short window. Set together, never one alone.
+  primaryPriceMinor    BigInt?
+  primaryPriceCurrency PriceCurrency?
+
   /// Organizer-set, create-time only — there is no event-edit route, same as
   /// royaltyBps/platformBps/ticketCount. UNRESTRICTED is a safe, honest
   /// default: it means "no cap configured," not a guess about intent.
@@ -1346,4 +1352,27 @@ model FaucetGrant {
   createdAt DateTime @default(now())
 
   @@index([userId, createdAt])
+}
+
+/// Every change of a stored price from one currency to another, with the rate used. Written by the script that moved
+/// testnet events from XRP prices to US$ prices (`scripts/price-in-usd.ts`), so a converted price can always be traced.
+model PriceConversion {
+  id String @id @default(uuid())
+
+  /// What was converted, e.g. "Event.primaryPrice", and which row.
+  subject   String
+  subjectId String
+
+  fromCurrency   PriceCurrency
+  fromMinor      BigInt
+  toCurrency     PriceCurrency
+  toMinor        BigInt
+  /// US$ per XRP, in millionths, from the stored reading that was used.
+  microUsdPerXrp BigInt
+  /// When that reading was taken, so its age at conversion is known.
+  rateAt         DateTime
+
+  createdAt DateTime @default(now())
+
+  @@index([subject, subjectId])
 }

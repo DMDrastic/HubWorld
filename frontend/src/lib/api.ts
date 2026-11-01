@@ -42,6 +42,19 @@ export const EventSummarySchema = z.object({
   primaryFeeDrops: z.string().nullable().optional(),
   primaryAllInDrops: z.string().nullable().optional(),
   fiat: FiatMapSchema,
+  /**
+   * A box office priced in US$ (the canonical price since 2026-11-01): price, fee and all-in in cents, and whether XRP
+   * can be paid right now. Absent for an event still priced in XRP.
+   */
+  boxOffice: z
+    .object({
+      currency: z.literal('USD'),
+      priceMinor: z.string(),
+      feeMinor: z.string(),
+      allInMinor: z.string(),
+      xrpPayable: z.boolean(),
+    })
+    .optional(),
   /** Tickets a buyer could take right now. Absent from a server that predates it. */
   ticketsForSale: z.number().optional(),
   organizer: z.object({
@@ -791,6 +804,8 @@ export const CheckoutCreatedSchema = z.object({
   paysDrops: z.string(),
   expiresAt: z.string(),
   fiat: FiatMapSchema,
+  /** For a US$ price: the XRP above was quoted at this rate and is held until `expiresAt` (two minutes). */
+  quote: z.object({ currency: z.literal('USD'), priceMinor: z.string(), microUsdPerXrp: z.string(), rateAt: z.string() }).optional(),
 })
 
 export type CheckoutCreated = z.infer<typeof CheckoutCreatedSchema>
@@ -1245,6 +1260,8 @@ export function createEvent(body: {
   resaleCapDrops?: string
   /** Box-office price in drops. Omit for an event with no checkout. */
   primaryPriceDrops?: string
+  /** The box-office price in US cents: the canonical price. One currency or the other. */
+  primaryPriceUsdCents?: string
   /** How guests are let in. Omit to take the server's default. */
   doorMode?: DoorMode
 }): Promise<z.infer<typeof CreatedEventSchema>> {

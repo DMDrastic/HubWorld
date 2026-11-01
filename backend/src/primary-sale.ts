@@ -28,6 +28,8 @@ import { brokerMode, xamanMode } from './env.js'
 import { currentDelegate } from './delegate-account.js'
 import { buildBuyOfferTx, buildSellOfferTx, platformAddress, platformFeeDrops, XAMAN_NETWORK } from './ledger.js'
 import { firstSaleQuote } from './listing-terms.js'
+import { QUOTE_LOCK_MS, currentQuoteRate, usdMinorToDrops } from './xrp-quote.js'
+import { boxOfficePrice } from './box-office-price.js'
 import { tryGetPayload, signing, signingFor, type CreatedPayload } from './signing.js'
 import { evaluateSoldOut } from './auction-policy.js'
 import { privyBuyerShortfall } from './wallet-funds.js'
@@ -58,6 +60,8 @@ export type CheckoutOutcome =
       mode: 'live' | 'stub'
       paysDrops: string
       expiresAt: string
+      /** For a box office priced in US$: the price and the rate the XRP above was worked out at. */
+      quote?: { currency: 'USD'; priceMinor: string; microUsdPerXrp: string; rateAt: string }
     }
   | { kind: 'refused'; status: number; error: string; code?: string; listingId?: string; details?: Record<string, unknown> }
 
@@ -91,6 +95,8 @@ export async function claimTicket(input: {
    * the fee is the event's own rate and no rate is recorded on the listing.
    */
   firstSaleFee?: { feeDrops: bigint; feeBps: number }
+  /** How long the hold lasts: the quote's two minutes for a US$ price, the usual hold otherwise. */
+  holdMs?: number
   /**
    * Called inside the transaction once the claim is made, before it commits.
    * Exists so a test can hold one claim open and prove a second does not wait
@@ -138,7 +144,7 @@ export async function claimTicket(input: {
         listPayloadUuid: `delegate:${randomUUID()}`,
         reservedForId: input.buyerId,
         status: 'PENDING_OFFER',
-        expiresAt: new Date(Date.now() + HOLD_MS),
+        expiresAt: new Date(Date.now() + (input.holdMs ?? HOLD_MS)),
       },
     })
     await input.whileHeld?.()
@@ -210,14 +216,29 @@ export async function startCheckout(input: {
   if (!event) return refuse(404, 'Event not found')
   if (!buyer) return refuse(404, 'User no longer exists')
 
-  if (event.primaryPriceDrops === null || event.primaryPriceDrops <= 0n) {
-    return refuse(409, 'This event has no box office', 'NO_PRICE')
-  }
+  const price = boxOfficePrice(event)
+  if (!price) return refuse(409, 'This event has no box office', 'NO_PRICE')
   if (event.status !== 'PUBLISHED') {
     return refuse(409, `Tickets are not on sale for a ${event.status.toLowerCase().replace('_', ' ')} event`, 'NOT_ON_SALE')
   }
   if (event.organizerId === buyer.id) {
     return refuse(400, 'You cannot buy a ticket to your own event here')
+  }
+
+  // A US$ price is paid in XRP worked out NOW, from a fresh price, and held for two minutes (QUOTE_LOCK_MS): the hold
+  // and the signing request end with it, and a new checkout quotes again. With no fresh price there is no XRP payment,
+  // and nothing is held. (Card and RLUSD, when they exist, do not need this.)
+  let priceDrops: bigint
+  let quote: { currency: 'USD'; priceMinor: string; microUsdPerXrp: string; rateAt: string } | undefined
+  let holdMs = HOLD_MS
+  if (price.currency === 'USD') {
+    const rate = await currentQuoteRate()
+    if (!rate) return refuse(503, 'XRP payment unavailable right now', 'XRP_PRICE_UNAVAILABLE')
+    priceDrops = usdMinorToDrops(price.minor, rate)
+    quote = { currency: 'USD', priceMinor: price.minor.toString(), microUsdPerXrp: rate.microUsdPerXrp.toString(), rateAt: rate.at.toISOString() }
+    holdMs = QUOTE_LOCK_MS
+  } else {
+    priceDrops = price.drops
   }
 
   if (brokerMode !== 'live') return refuse(503, 'Sales are not available on this server')
@@ -266,13 +287,13 @@ export async function startCheckout(input: {
   // The fee on this sale, worked out once and used for the claim AND for what the buyer is asked to sign, so the two
   // cannot disagree. Under the new model it is the first-sale fan fee (the event's own time zone decides the founding
   // rate); otherwise the event's rate, as it always was.
-  const quote = firstSaleQuote({ priceDrops: event.primaryPriceDrops, event, organizerFounding: event.organizer.foundingOrganizer })
-  const feeDrops = quote.feeDrops
+  const fee = firstSaleQuote({ priceDrops, event, organizerFounding: event.organizer.foundingOrganizer })
+  const feeDrops = fee.feeDrops
 
   // A Privy wallet starts empty, and an account does not even exist until it holds the base reserve. Say so now, in words
   // and with the address to fill, BEFORE a ticket is held or an offer made, rather than after the person has approved a
   // payment that cannot go through. (A Xaman buyer sees their own balance in Xaman and is not asked here.)
-  const short = await privyBuyerShortfall(buyer.id, event.primaryPriceDrops + feeDrops)
+  const short = await privyBuyerShortfall(buyer.id, priceDrops + feeDrops)
   if (short) {
     const { error, code, ...details } = short
     return { kind: 'refused', status: 409, error, code, details }
@@ -282,13 +303,14 @@ export async function startCheckout(input: {
   let claim: Awaited<ReturnType<typeof claimTicket>> = null
   for (let attempt = 0; attempt < CLAIM_ATTEMPTS; attempt++) {
     claim = await claimTicket({
-      firstSaleFee: quote.feeBps === null ? undefined : { feeDrops: quote.feeDrops, feeBps: quote.feeBps },
+      firstSaleFee: fee.feeBps === null ? undefined : { feeDrops: fee.feeDrops, feeBps: fee.feeBps },
+      holdMs,
       eventId: event.id,
       organizerId: event.organizerId,
       organizerAddress: event.organizer.xrplAddress,
       brokerAddress: broker,
       buyerId: buyer.id,
-      priceDrops: event.primaryPriceDrops,
+      priceDrops,
       platformBps: event.platformBps,
     })
     if (!claim) break
@@ -314,7 +336,7 @@ export async function startCheckout(input: {
     ...buildSellOfferTx({
       ownerAddress: event.organizer.xrplAddress,
       nfTokenId: claim.nfTokenId,
-      amountDrops: event.primaryPriceDrops,
+      amountDrops: priceDrops,
       brokerAddress: broker,
     }),
     Delegate: delegate,
@@ -325,7 +347,7 @@ export async function startCheckout(input: {
   const verdict = checkSellOffer(tx, {
     organizerAddress: event.organizer.xrplAddress,
     brokerAddress: broker,
-    priceDrops: event.primaryPriceDrops,
+    priceDrops,
     eventTaxon: event.nftTaxon,
     nfTokenId: claim.nfTokenId,
   })
@@ -373,7 +395,7 @@ export async function startCheckout(input: {
   const offer = created
 
   // ---- the buyer's side: one signature ------------------------------------
-  const owed = event.primaryPriceDrops + feeDrops
+  const owed = priceDrops + feeDrops
   let payload
   try {
     const buyTx = buildBuyOfferTx({
@@ -387,7 +409,7 @@ export async function startCheckout(input: {
     payload = await (await signingFor(buyer.id, 'LISTING_BUY')).createPayload(buyTx as unknown as Record<string, unknown>, {
       flow: 'LISTING_BUY',
       userId: buyer.id,
-      expireMinutes: Math.ceil(HOLD_MS / 60_000),
+      expireMinutes: Math.ceil(holdMs / 60_000),
       forceNetwork: XAMAN_NETWORK,
     })
   } catch (err) {
@@ -401,7 +423,7 @@ export async function startCheckout(input: {
     return refuse(503, 'Signing is unavailable right now. Nothing was charged. Try again shortly.')
   }
 
-  const expiresAt = new Date(Date.now() + HOLD_MS)
+  const expiresAt = new Date(Date.now() + holdMs)
   await prisma.listing.update({
     where: { id: claim.listingId },
     data: {
@@ -427,6 +449,7 @@ export async function startCheckout(input: {
     mode: xamanMode,
     paysDrops: owed.toString(),
     expiresAt: expiresAt.toISOString(),
+    ...(quote ? { quote } : {}),
   }
 }
 

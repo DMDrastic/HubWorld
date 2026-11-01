@@ -4,6 +4,8 @@ import { prisma } from '../prisma.js'
 import { issuesOf, slugSchema } from '../schemas.js'
 import { firstSaleQuote } from '../listing-terms.js'
 import { currentDisplayRate, displayCurrency, fiatOf } from '../fiat-display.js'
+import { currentQuoteRate } from '../xrp-quote.js'
+import { boxOfficePrice, boxOfficeView } from '../box-office-price.js'
 
 import { ticketMetadata } from '../nft-metadata.js'
 
@@ -37,6 +39,8 @@ eventsRouter.get('/events', async (req, res) => {
       status: true,
       ticketCount: true,
       primaryPriceDrops: true,
+      primaryPriceMinor: true,
+      primaryPriceCurrency: true,
       timeZone: true,
       feeRegion: true,
       platformBps: true,
@@ -46,15 +50,20 @@ eventsRouter.get('/events', async (req, res) => {
     },
   })
 
-  const forSale = await ticketsForSale(events)
+  const forSale = await ticketsForSale(events.map((e) => ({ slug: e.slug, organizerId: e.organizerId, priced: boxOfficePrice(e) !== null })))
   const rate = await currentDisplayRate()
+  const xrpPayable = (await currentQuoteRate()) !== null
   res.json({
-    events: events.map(({ _count, organizerId, timeZone, feeRegion, platformBps, organizer, ...e }) => {
-      const prices = { primaryPriceDrops: e.primaryPriceDrops, ...allIn(e, { timeZone, feeRegion, platformBps }, organizer.foundingOrganizer) }
+    events: events.map(({ _count, organizerId, timeZone, feeRegion, platformBps, organizer, primaryPriceMinor, primaryPriceCurrency, ...e }) => {
+      const usd = usdBoxOffice({ ...e, primaryPriceMinor, primaryPriceCurrency, timeZone, feeRegion, platformBps }, organizer.foundingOrganizer, xrpPayable)
+      const prices = usd
+        ? { primaryPriceDrops: null, primaryFeeDrops: null, primaryAllInDrops: null }
+        : { primaryPriceDrops: e.primaryPriceDrops, ...allIn(e, { timeZone, feeRegion, platformBps }, organizer.foundingOrganizer) }
       return {
         ...e,
         organizer: { username: organizer.username, displayName: organizer.displayName },
         ...prices,
+        ...(usd ? { boxOffice: usd } : {}),
         // Display only: the estimate beside each XRP amount, absent when the price is not fresh.
         fiat: fiatOf(prices, EVENT_PRICES, rate, displayCurrency({ timeZone })),
         ticketsMinted: _count.tickets,
@@ -72,9 +81,9 @@ eventsRouter.get('/events', async (req, res) => {
  * office; the rest report 0 rather than a number a buyer could not act on.
  */
 async function ticketsForSale(
-  events: Array<{ slug: string; organizerId: string; primaryPriceDrops: bigint | null }>,
+  events: Array<{ slug: string; organizerId: string; priced: boolean }>,
 ): Promise<Map<string, number>> {
-  const priced = events.filter((e) => e.primaryPriceDrops !== null)
+  const priced = events.filter((e) => e.priced)
   const out = new Map<string, number>()
   if (priced.length === 0) return out
 
@@ -112,6 +121,27 @@ function allIn(
 
 const EVENT_PRICES = ['primaryPriceDrops', 'primaryFeeDrops', 'primaryAllInDrops'] as const
 
+/**
+ * A US$ box office as the pages show it (price, fee, all-in in cents, and whether XRP can be paid now), or null for an
+ * event still priced in XRP. A US$ price needs no exchange rate to SHOW; only paying in XRP does.
+ */
+function usdBoxOffice(
+  e: {
+    startsAt: Date
+    timeZone: string
+    feeRegion: 'CARIBBEAN' | 'CANADA'
+    platformBps: number
+    primaryPriceMinor: bigint | null
+    primaryPriceCurrency: 'USD' | 'XRP' | 'RLUSD' | null
+    primaryPriceDrops: bigint | null
+  },
+  founding: boolean,
+  xrpPayable: boolean,
+) {
+  const price = boxOfficePrice(e)
+  return price?.currency === 'USD' ? boxOfficeView(price, e, founding, xrpPayable) : null
+}
+
 const SlugParams = z.object({ slug: slugSchema })
 
 /** GET /api/events/:slug */
@@ -137,6 +167,8 @@ eventsRouter.get('/events/:slug', async (req, res) => {
       royaltyBps: true,
       platformBps: true,
       primaryPriceDrops: true,
+      primaryPriceMinor: true,
+      primaryPriceCurrency: true,
       timeZone: true,
       feeRegion: true,
       organizerId: true,
@@ -150,13 +182,17 @@ eventsRouter.get('/events/:slug', async (req, res) => {
     return
   }
 
-  const { _count, organizerId, timeZone, feeRegion, organizer, ...rest } = event
-  const forSale = await ticketsForSale([{ slug: event.slug, organizerId, primaryPriceDrops: event.primaryPriceDrops }])
-  const prices = { primaryPriceDrops: rest.primaryPriceDrops, ...allIn(rest, { timeZone, feeRegion, platformBps: rest.platformBps }, organizer.foundingOrganizer) }
+  const { _count, organizerId, timeZone, feeRegion, organizer, primaryPriceMinor, primaryPriceCurrency, ...rest } = event
+  const forSale = await ticketsForSale([{ slug: event.slug, organizerId, priced: boxOfficePrice(event) !== null }])
+  const usd = usdBoxOffice({ ...rest, primaryPriceMinor, primaryPriceCurrency, timeZone, feeRegion }, organizer.foundingOrganizer, (await currentQuoteRate()) !== null)
+  const prices = usd
+    ? { primaryPriceDrops: null, primaryFeeDrops: null, primaryAllInDrops: null }
+    : { primaryPriceDrops: rest.primaryPriceDrops, ...allIn(rest, { timeZone, feeRegion, platformBps: rest.platformBps }, organizer.foundingOrganizer) }
   res.json({
     ...rest,
     organizer: { username: organizer.username, displayName: organizer.displayName, xrplAddress: organizer.xrplAddress },
     ...prices,
+    ...(usd ? { boxOffice: usd } : {}),
     fiat: fiatOf(prices, EVENT_PRICES, await currentDisplayRate(), displayCurrency({ timeZone })),
     ticketsMinted: _count.tickets, ticketsForSale: forSale.get(event.slug) ?? 0,
   })
